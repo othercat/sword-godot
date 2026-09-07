@@ -32,5 +32,31 @@ godot --path native --script res://tests/test_battle.gd -- four.palmod.zip three
 The test uses actual application windows and injected mouse events, plus explicit
 synthetic loss/callback-failure variants. It retains command-wait saves for
 independent contract validation. It is not physical-user acceptance or a full game.
-Skills, items, statuses, revival, authored enemy composition, rewards, original
-combat parity and formal hero animation assets remain pending.
+Skills, items, statuses, revival, rewards, original combat parity and formal hero
+animation assets remain pending.
+
+## Authored enemy composition
+
+Studio now authors ordered enemy instances, shared or cloned actor definitions,
+names, HP/MP maxima and attack/defense through its existing compiler. Definitions
+remain shared data; each enemy receives separate current HP/MP at battle entry.
+New worlds initialize actor maxima; editing does not migrate a running state or
+an old content-locked save. No schema or ruleset change was needed for this UI.
+
+The view and target buttons share stable encounter ordinals. Eight enemies fit
+each presentation page; all 1–32 entries remain in the battle state. Page changes
+do not issue commands or change target identity, enemy turn order or HP/MP. The
+window keeps ticking normally. Loading resets the display page while restoring
+all saved enemies, including those on other pages.
+
+```text
+godot --path native --script res://tests/test_battle_composition.gd -- four.palmod.zip three.palmod.zip five.palmod.zip capacity32.palmod.zip output
+```
+
+This parameterized window test checks three actual Studio-authored variants and
+an explicitly synthetic 32-enemy expansion. It targets duplicate-name enemies,
+skips dead retaliation, settles only after every enemy dies, saves/restores four
+states and rejects cross-content saves. Pagination compares the entire state
+after accounting for elapsed clock ticks and their one-per-tick revision delta.
+Capacity geometry and target 32 are checked at 1280×800; no other window size,
+32-enemy performance, balance or full-playthrough acceptance is implied.

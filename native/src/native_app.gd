@@ -18,7 +18,8 @@ var roster: VBoxContainer
 var dialogue: VBoxContainer
 var dialogue_text: Label
 var instructions: Label
-var options: VBoxContainer
+var options: GridContainer
+var target_pages: HBoxContainer
 var save_button: Button
 var pause_button: Button
 var picker: FileDialog
@@ -114,7 +115,8 @@ func _ready() -> void:
 	dialogue_text.text = "打开工坊导出的 MOD，开始一段新的故事。"
 	dialogue_text.add_theme_color_override("font_color", Color("e4d5b5"))
 	dialogue.add_child(dialogue_text)
-	options = VBoxContainer.new()
+	target_pages = HBoxContainer.new(); target_pages.visible = false; dialogue.add_child(target_pages)
+	options = GridContainer.new(); options.columns = 1
 	dialogue.add_child(options)
 	var footer = HBoxContainer.new()
 	layout.add_child(footer)
@@ -231,13 +233,26 @@ func _refresh() -> void:
 	for child in options.get_children():
 		options.remove_child(child)
 		child.queue_free()
+	for child in target_pages.get_children():
+		target_pages.remove_child(child); child.queue_free()
+	target_pages.visible = false; options.columns = 1
 	var node: Dictionary = session.current_node()
 	if session.battle_open():
 		var battle: Dictionary = session.state.extensions[Battle.KEY]
 		var actor: Dictionary = session.entity(battle.party[battle.turn])
 		dialogue_text.text = "%s · 第 %d 回合 · %s 行动" % [Battle.encounter(session.package.world, battle.encounter_id).display_name, battle.round, session.package.index.actor_definitions[actor.definition_id].display_name]
-		for enemy in battle.enemies:
-			var target_button = _button(options, "攻击 " + session.package.index.actor_definitions[enemy.definition_id].display_name, _battle_action.bind("attack", enemy.instance_id))
+		var start: int = battle_view.enemy_page * BattleView.PAGE_SIZE
+		options.columns = 2 if battle.enemies.size() > 1 else 1
+		if battle_view.page_count() > 1:
+			target_pages.visible = true
+			_button(target_pages, "上一组敌人", _change_enemy_page.bind(-1)).disabled = battle_view.enemy_page == 0
+			var page_label = Label.new(); page_label.text = "%d / %d" % [battle_view.enemy_page + 1, battle_view.page_count()]; target_pages.add_child(page_label)
+			_button(target_pages, "下一组敌人", _change_enemy_page.bind(1)).disabled = battle_view.enemy_page == battle_view.page_count() - 1
+		for i in range(start, mini(start + BattleView.PAGE_SIZE, battle.enemies.size())):
+			var enemy: Dictionary = battle.enemies[i]
+			var target_button = _button(options, "攻击 " + BattleView.enemy_label(session.package, enemy, i), _battle_action.bind("attack", enemy.instance_id))
+			var definition: Dictionary = session.package.index.actor_definitions[enemy.definition_id]
+			target_button.tooltip_text = "气血 %d / %d · 真气 %d / %d" % [enemy.hp, definition.max_hp, enemy.mp, definition.max_mp]
 			target_button.disabled = enemy.hp == 0
 		_button(options, "防御", _battle_action.bind("guard", ""))
 		_button(options, "撤离", _battle_action.bind("escape", "")).disabled = not Battle.encounter(session.package.world, battle.encounter_id).allow_escape
@@ -257,6 +272,11 @@ func _refresh() -> void:
 				dialogue_text.text = portal.display_name + (" · 按空格进入" if status.allowed else " · " + status.text)
 	save_button.disabled = not session.can_save()
 	pause_button.text = "继续" if session.paused else "暂停"
+
+func _change_enemy_page(direction: int) -> void:
+	if not session.battle_open(): return
+	battle_view.enemy_page = clampi(battle_view.enemy_page + direction, 0, battle_view.page_count() - 1)
+	_refresh()
 
 func _battle_action(action: String, target: String) -> void:
 	if session.battle_command(action, target): message.text = ""
