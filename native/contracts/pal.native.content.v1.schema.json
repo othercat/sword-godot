@@ -963,6 +963,44 @@
               }
             },
             "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "provenance",
+              "op",
+              "then",
+              "else",
+              "condition"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/definitions/id"
+              },
+              "provenance": {
+                "$ref": "#/definitions/provenance"
+              },
+              "op": {
+                "const": "branch"
+              },
+              "then": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+              },
+              "else": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+              },
+              "condition": {
+                "$ref": "#/definitions/condition"
+              }
+            },
+            "additionalProperties": false
           }
         ]
       },
@@ -1399,6 +1437,117 @@
         "boolean",
         "integer",
         "string"
+      ]
+    },
+    "condition": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "op",
+            "args"
+          ],
+          "properties": {
+            "op": {
+              "enum": [
+                "and",
+                "or"
+              ]
+            },
+            "args": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/condition"
+              },
+              "minItems": 1,
+              "maxItems": 32
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "op",
+            "arg"
+          ],
+          "properties": {
+            "op": {
+              "const": "not"
+            },
+            "arg": {
+              "$ref": "#/definitions/condition"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "op",
+            "variable",
+            "value"
+          ],
+          "properties": {
+            "op": {
+              "enum": [
+                "var_eq",
+                "var_ne",
+                "var_lt",
+                "var_le",
+                "var_gt",
+                "var_ge"
+              ]
+            },
+            "variable": {
+              "$ref": "#/definitions/id"
+            },
+            "value": {
+              "type": [
+                "boolean",
+                "integer",
+                "string"
+              ],
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991,
+              "maxLength": 4096
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "op",
+            "variable",
+            "values"
+          ],
+          "properties": {
+            "op": {
+              "const": "var_in"
+            },
+            "variable": {
+              "$ref": "#/definitions/id"
+            },
+            "values": {
+              "type": "array",
+              "items": {
+                "type": [
+                  "boolean",
+                  "integer",
+                  "string"
+                ],
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991,
+                "maxLength": 4096
+              },
+              "minItems": 1,
+              "maxItems": 32,
+              "uniqueItems": true
+            }
+          },
+          "additionalProperties": false
+        }
       ]
     }
   }

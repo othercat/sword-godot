@@ -26,7 +26,7 @@ func save(session, fault_before_publish: bool = false) -> bool:
 	var state: Dictionary = session.snapshot()
 	var issue: String = session.validate_saved(state)
 	if not issue.is_empty(): return _fail(issue)
-	var state_bytes: PackedByteArray = JSON.stringify(state, "", true).to_utf8_buffer()
+	var state_bytes: PackedByteArray = JSON.stringify(state, "", true, true).to_utf8_buffer()
 	var transaction: String = Session.unique("transaction")
 	var envelope: Dictionary = {"schema": "pal.native.save.v1", "save_id": Session.unique("save"), "save_revision": 1, "runtime_id": state.runtime_id, "package_id": state.package_id, "save_namespace": session.package.manifest.save_namespace, "profile_id": state.profile_id, "run_id": state.run_id, "content_lock": state.content_lock, "ruleset_hash": state.ruleset_hash, "commit_id": transaction, "payload_sha256": Schema.digest(state_bytes), "state_path": "state/current.json", "origin": "normal", "migration": [], "extensions": envelope_extensions.duplicate(true)}
 	envelope.extensions["pal.native.save.preview"] = {"created_utc": Time.get_datetime_string_from_system(true), "eligibility": "practice"}
@@ -42,7 +42,7 @@ func save(session, fault_before_publish: bool = false) -> bool:
 	var packer = ZIPPacker.new()
 	if packer.open(pending) != OK: return _fail("无法写入待完成存档。")
 	var failed: bool = false
-	for item in [["save.json", JSON.stringify(envelope, "", true).to_utf8_buffer()], ["state/current.json", state_bytes]]:
+	for item in [["save.json", JSON.stringify(envelope, "", true, true).to_utf8_buffer()], ["state/current.json", state_bytes]]:
 		if packer.start_file(item[0]) != OK or packer.write_file(item[1]) != OK or packer.close_file() != OK:
 			failed = true
 			break

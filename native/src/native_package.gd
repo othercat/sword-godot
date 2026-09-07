@@ -7,8 +7,9 @@ const MapAnimation = preload("res://src/native_map_animation.gd")
 const Terrain = preload("res://src/native_terrain.gd")
 const TexturePolicy = preload("res://src/native_texture.gd")
 const SceneTravel = preload("res://src/native_scene_travel.gd")
+const Condition = preload("res://src/native_condition.gd")
 const PartyTrail = preload("res://src/native_party_trail.gd")
-const CAPABILITIES = [PartyTrail.CAPABILITY, SceneTravel.CAPABILITY, "package.local-preview.v1", "world.tile-layers.v1", "world.isometric.v1", "movement.pal-walk.v1", "world.orthogonal.v1", "party.roster.v1", "story.dialogue.v1", "story.choice.v1", "story.variables.v1", MapAnimation.CAPABILITY]
+const CAPABILITIES = [Condition.CAPABILITY, PartyTrail.CAPABILITY, SceneTravel.CAPABILITY, "package.local-preview.v1", "world.tile-layers.v1", "world.isometric.v1", "movement.pal-walk.v1", "world.orthogonal.v1", "party.roster.v1", "story.dialogue.v1", "story.choice.v1", "story.variables.v1", MapAnimation.CAPABILITY]
 const RULES = {"schema": "pal.native.ruleset.v1", "id": "pal.native.story-core.v1", "version": "0.1.0", "operations": ["dialogue", "choice", "set", "branch", "party", "end"], "variable_assignment": "declared_type_and_scope", "save_phase": "before_node"}
 var error: String = ""
 var manifest: Dictionary = {}
@@ -59,6 +60,7 @@ func load_package(path: String) -> bool:
 		if manifest[key] != world[key]: return _fail("manifest/world mismatch: " + key)
 	if not _references(): return _fail(error)
 	if _json(payloads["content/rules.json"]) != expected_rules(world): return _fail("unsupported rules definition")
+	if Condition.used(world) and Condition.CAPABILITY not in manifest.required_capabilities: return _fail("missing condition capability")
 	if not index.sprite_sets.is_empty() and MapAnimation.CAPABILITY not in manifest.required_capabilities: return _fail("missing map animation capability")
 	var declared: Dictionary = {"content/world.json": "content", "content/rules.json": "content"}
 	var distribution = manifest.extensions.get("pal.native.distribution")
@@ -188,6 +190,10 @@ func _references() -> bool:
 			if node.has(key) and not index.nodes.has(node[key]): return _fail("unresolved node target")
 		match node.op:
 			"set", "branch":
+				if node.has("condition"):
+					var issue: String = Condition.validate(node.condition, index.variables)
+					if not issue.is_empty(): return _fail(issue)
+					continue
 				if not index.variables.has(node.variable): return _fail("unresolved variable")
 				if not Schema.is_type(node.get("value", node.get("equals")), index.variables[node.variable].type): return _fail("variable assignment/comparison type")
 			"dialogue":
@@ -246,4 +252,7 @@ static func expected_rules(content: Dictionary) -> Dictionary:
 	if PartyTrail.used(content):
 		result.version = "0.4.0"
 		result.party_movement = PartyTrail.RULE
+	if Condition.used(content):
+		result.version = "0.5.0"
+		result.conditions = Condition.RULE
 	return result

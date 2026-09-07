@@ -1,5 +1,16 @@
 # PAL Wanxiang Native preview
 
+Optional `story.conditions.v1` adds bounded typed condition trees to existing
+`branch` nodes. `native_condition.gd` evaluates declared scopes against the same
+candidate transaction as preceding `set` effects; errors roll back the activation.
+Legacy `variable`/`equals` branches remain valid source. The condition tree is
+limited to depth 8 / 128 nodes; integer comparison and typed set membership do not
+coerce strings or booleans. Rules 0.5.0 declare `native.conditions.v1`.
+`tests/test_conditions.gd` consumes an actual Studio-authored package and an
+isolated output directory, with synthetic numeric/scoped-state fixtures. It
+checks both branches, rollback and exact save recovery; no region scheduler,
+once/cooldown/mutex, battle or full-story acceptance is implied.
+
 Optional `world.scene-travel.v1` now supports named party entrances, explicit
 interaction portals with reciprocal checks, and atomic `scene_transfer` nodes.
 The same actor instances move to authored, adjacent arrival slots after checking
@@ -9,7 +20,7 @@ and 3/4/5-member round trips are exercised by `tests/test_scene_travel.gd` using
 three actual Studio packages. Run it with the 4-, 3-, 5-member ZIP paths and an
 isolated output directory. The test includes window input and synthetic failure
 cases; it does not certify battle, full playthrough, human input, general region
-triggers, persistent follower trails or other platforms. This module is independent
+triggers or other platforms. Persistent follower trails have their own suite below. This module is independent
 MIT code, as described in SOURCE_BOUNDARY.md.
 
 This is the Native runtime in the existing sword-godot repository. It is an

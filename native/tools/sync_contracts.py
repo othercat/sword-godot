@@ -30,7 +30,7 @@ for name, path in files.items():
         target.mkdir(parents=True, exist_ok=True)
         (target / name).write_bytes(data)
 if not args.check:
-    (target / "receipt.json").write_text(json.dumps(receipt, indent=2) + "\n", encoding="utf-8")
+    (target / "receipt.json").write_bytes((json.dumps(receipt, indent=2) + "\n").encode("utf-8"))
 else:
     assert json.loads((target / "receipt.json").read_text()) == receipt
 print("Native MIT contract snapshot: " + ("verified" if args.check else "updated"))

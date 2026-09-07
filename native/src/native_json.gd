@@ -91,13 +91,41 @@ func _value(depth: int) -> Variant:
 		var integer: int = token.to_int()
 		if absi(integer) > 9007199254740991: error = "integer outside exact Native range"
 		return integer
-	if token.to_lower().contains("e") and absi(token.to_lower().get_slice("e", 1).to_int()) > 308:
-		error = "exponent outside Native range"
-		return null
+	var exponent: int = 0
+	if token.to_lower().contains("e"):
+		var exponent_text: String = token.to_lower().get_slice("e", 1)
+		var magnitude: String = exponent_text.trim_prefix("-").trim_prefix("+")
+		while magnitude.begins_with("0") and magnitude.length() > 1: magnitude = magnitude.substr(1)
+		# Reject before int conversion/abs: an int64-min exponent must not wrap.
+		if magnitude.length() > 3 or magnitude.to_int() > 308:
+			error = "exponent outside Native range"
+			return null
+		exponent = magnitude.to_int() * (-1 if exponent_text.begins_with("-") else 1)
+	# Decide integrality from decimal digits, before IEEE rounding can turn a
+	# fraction such as 9007199254740990.5 into an accepted integer.
+	var parts: PackedStringArray = token.to_lower().split("e")
+	var mantissa: String = parts[0].trim_prefix("-")
+	var dot: int = mantissa.find(".")
+	var scale: int = (mantissa.length() - dot - 1 if dot >= 0 else 0) - exponent
+	var digits: String = mantissa.replace(".", "")
+	while digits.begins_with("0") and digits.length() > 1: digits = digits.substr(1)
+	while scale > 0 and digits.ends_with("0"):
+		digits = digits.left(-1)
+		scale -= 1
+	if digits.is_empty() or digits == "0": return 0
+	if scale <= 0:
+		if digits.length() - scale > 16:
+			error = "integer outside exact Native range"
+			return null
+		digits += "0".repeat(-scale)
+		var integer: int = digits.to_int() * (-1 if token.begins_with("-") else 1)
+		if absi(integer) > 9007199254740991: error = "integer outside exact Native range"
+		return integer
 	var value: float = token.to_float()
 	if not is_finite(value) or absf(value) > 9007199254740991.0:
 		error = "number outside exact Native range"
-	return int(value) if floor(value) == value else value
+	elif floor(value) == value: error = "fraction would round to an integer"
+	return value
 
 func _hex4() -> int:
 	if _at + 4 > _text.length():

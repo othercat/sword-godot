@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: MIT
 extends RefCounted
+const Condition = preload("res://src/native_condition.gd")
 signal changed
 const Package = preload("res://src/native_package.gd")
 const Schema = preload("res://src/native_schema.gd")
@@ -149,8 +150,15 @@ func _advance(first: String) -> bool:
 				candidate.committed_effect_ids.append(effect_id)
 				next = node.next
 			"branch":
-				var scope: String = package.index.variables[node.variable].scope
-				next = node.then if Schema.equal(candidate.scopes[scope][node.variable], node.equals) else node["else"]
+				if node.has("condition"):
+					var decision: Dictionary = Condition.evaluate(node.condition, package.index.variables, candidate.scopes)
+					if decision.has("error"):
+						error = decision.error
+						return false
+					next = node.then if decision.value else node["else"]
+				else:
+					var scope: String = package.index.variables[node.variable].scope
+					next = node.then if Schema.equal(candidate.scopes[scope][node.variable], node.equals) else node["else"]
 		if candidate.committed_effect_ids.size() > 100000:
 			error = "effect history limit; state retained"
 			return false
