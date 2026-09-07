@@ -191,6 +191,7 @@ func _fit_world() -> void:
 var _camera_map: String = ""
 var _camera_bounds: Rect2
 var _terrain_camera: bool = false
+var _presentation_key: String = ""
 
 func _follow_world() -> void:
 	if not _terrain_camera or session.state.is_empty() or not world_view.actors.has(session.state.active_party[0]): return
@@ -202,6 +203,12 @@ func _follow_world() -> void:
 
 func _refresh() -> void:
 	if not is_instance_valid(roster) or session.state.is_empty(): return
+	var key: String = world_view._history_key(session)
+	if key != _presentation_key:
+		_presentation_key = key
+		walk_input.clear()
+		world_view.bind(session)
+		_fit_world()
 	for child in roster.get_children():
 		roster.remove_child(child)
 		child.queue_free()
@@ -226,6 +233,9 @@ func _refresh() -> void:
 		for option in node.options: _button(options, option.text, _continue.bind(option.id))
 	else:
 		dialogue_text.text = "整装待发。靠近伙伴后按空格交谈。"
+		for portal in session.package.index.scenes[session.state.cursor.scene_id].get("portals", []):
+			if portal.position == session.entity(session.state.active_party[0]).position:
+				dialogue_text.text = portal.display_name + " · 按空格进入"
 	save_button.disabled = not session.can_save()
 	pause_button.text = "继续" if session.paused else "暂停"
 

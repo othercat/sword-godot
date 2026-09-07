@@ -3,6 +3,7 @@ extends Node2D
 const ActorVisual = preload("res://src/native_actor_visual.gd")
 const MapProjection = preload("res://src/native_map_projection.gd")
 const Terrain = preload("res://src/native_terrain.gd")
+const SceneTravel = preload("res://src/native_scene_travel.gd")
 ## TileMapLayer + separate actor nodes. The authoritative world uses tile units.
 var session
 var tiles: TileMapLayer
@@ -13,6 +14,7 @@ var _history: String = ""
 var terrain_layers: Array = []
 var depth_tiles: Array = []
 var _map: Dictionary = {}
+var portal_markers: Array = []
 
 func bind(model) -> void:
 	session = model
@@ -23,6 +25,7 @@ func bind(model) -> void:
 	visuals = {}
 	terrain_layers = []
 	depth_tiles = []
+	portal_markers = []
 	_history = _history_key()
 	var scene: Dictionary = session.package.index.scenes[session.state.cursor.scene_id]
 	var map_data: Dictionary = session.package.index.maps[scene.map_id]
@@ -82,6 +85,20 @@ func bind(model) -> void:
 				var drawn = Terrain.make_flat(map_data, layer, session.package.textures, atlas_cache)
 				add_child(drawn)
 				terrain_layers.append(drawn)
+	for portal in scene.get("portals", []):
+		var marker = Polygon2D.new()
+		marker.polygon = PackedVector2Array([Vector2(0, -6), Vector2(9, 0), Vector2(0, 6), Vector2(-9, 0)])
+		marker.color = Color("bfa766")
+		marker.position = MapProjection.project(Vector2(portal.position.x, portal.position.y), _map.coordinates)
+		add_child(marker)
+		var label = Label.new()
+		label.text = portal.display_name
+		label.position = Vector2(-50, 8)
+		label.size.x = 100
+		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		label.add_theme_font_size_override("font_size", 12)
+		marker.add_child(label)
+		portal_markers.append(marker)
 	for item in session.state.entities:
 		if item.scene_id != session.state.cursor.scene_id: continue
 		var definition: Dictionary = session.package.index.actor_definitions[item.definition_id]
@@ -120,5 +137,6 @@ func _process(delta: float) -> void:
 		if running: actors[item.instance_id].position = actors[item.instance_id].position.lerp(target, 1.0 - exp(-24.0 * delta))
 		visuals[item.instance_id].present(item, int(session.state.clock.logic_tick), delta, running, item.instance_id == session.state.active_party[0])
 
-func _history_key() -> String:
-	return "%s/%s/%s/%s" % [session.state.session_id, session.state.timeline_epoch, session.state.cursor.scene_id, session.state.content_lock]
+func _history_key(model = null) -> String:
+	var value: Dictionary = session.state if model == null else model.state
+	return "%s/%s/%s/%s/%s" % [value.session_id, value.timeline_epoch, value.cursor.scene_id, value.content_lock, SceneTravel.revision(value)]

@@ -1,5 +1,17 @@
 # PAL Wanxiang Native preview
 
+Optional `world.scene-travel.v1` now supports named party entrances, explicit
+interaction portals with reciprocal checks, and atomic `scene_transfer` nodes.
+The same actor instances move to authored, adjacent arrival slots after checking
+capacity, map validity, non-party occupancy and sprite/movement compatibility.
+Arrival dialogue/end safe points, saved arrival revisions, render/input resets
+and 3/4/5-member round trips are exercised by `tests/test_scene_travel.gd` using
+three actual Studio packages. Run it with the 4-, 3-, 5-member ZIP paths and an
+isolated output directory. The test includes window input and synthetic failure
+cases; it does not certify battle, full playthrough, human input, general region
+triggers, persistent follower trails or other platforms. This module is independent
+MIT code, as described in SOURCE_BOUNDARY.md.
+
 This is the Native runtime in the existing sword-godot repository. It is an
 independently implemented MIT source boundary; see [SOURCE_BOUNDARY.md](SOURCE_BOUNDARY.md).
 It is **an implementation preview, not a finished RPG/platform release**.

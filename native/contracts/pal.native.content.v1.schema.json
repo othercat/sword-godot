@@ -539,6 +539,99 @@
             "minLength": 1,
             "maxLength": 128,
             "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+          },
+          "entrances": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "display_name",
+                "positions",
+                "facing",
+                "provenance"
+              ],
+              "properties": {
+                "id": {
+                  "$ref": "#/definitions/id"
+                },
+                "display_name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "positions": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/definitions/point"
+                  },
+                  "minItems": 1,
+                  "maxItems": 32,
+                  "uniqueItems": true
+                },
+                "facing": {
+                  "type": "string",
+                  "enum": [
+                    "up",
+                    "down",
+                    "left",
+                    "right"
+                  ]
+                },
+                "provenance": {
+                  "$ref": "#/definitions/provenance"
+                }
+              },
+              "additionalProperties": false
+            },
+            "minItems": 0,
+            "maxItems": 128,
+            "description": "Optional scene-local entrances. Ordered, distinct, adjacent logical positions reserve party slots; first position is the leader."
+          },
+          "portals": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "display_name",
+                "position",
+                "transfer_node",
+                "reverse_portal",
+                "provenance"
+              ],
+              "properties": {
+                "id": {
+                  "$ref": "#/definitions/id"
+                },
+                "display_name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "position": {
+                  "$ref": "#/definitions/point"
+                },
+                "transfer_node": {
+                  "$ref": "#/definitions/id"
+                },
+                "reverse_portal": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "provenance": {
+                  "$ref": "#/definitions/provenance"
+                }
+              },
+              "additionalProperties": false
+            },
+            "minItems": 0,
+            "maxItems": 128,
+            "description": "Optional explicit interaction on the portal cell. Null reverse_portal declares one-way; otherwise validate a reciprocal pair in the transfer destination scene."
           }
         },
         "additionalProperties": false
@@ -811,6 +904,38 @@
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "provenance",
+              "op",
+              "scene_id",
+              "entrance_id",
+              "next"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/definitions/id"
+              },
+              "provenance": {
+                "$ref": "#/definitions/provenance"
+              },
+              "op": {
+                "const": "scene_transfer"
+              },
+              "scene_id": {
+                "$ref": "#/definitions/id"
+              },
+              "entrance_id": {
+                "$ref": "#/definitions/id"
+              },
+              "next": {
+                "$ref": "#/definitions/id"
               }
             },
             "additionalProperties": false

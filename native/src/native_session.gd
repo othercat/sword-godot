@@ -3,6 +3,7 @@ extends RefCounted
 signal changed
 const Package = preload("res://src/native_package.gd")
 const Schema = preload("res://src/native_schema.gd")
+const SceneTravel = preload("res://src/native_scene_travel.gd")
 const TIMING_RULES = "practice.v1;rta=monotonic-including-pause;active=focused-unpaused;load=ineligible;tick=60"
 var package
 var state: Dictionary = {}
@@ -52,7 +53,10 @@ func current_node() -> Dictionary:
 	return {} if state.is_empty() else package.index.nodes[state.cursor.node_id]
 
 func entity(id: String) -> Dictionary:
-	for item in state.entities:
+	return _candidate_entity(state, id)
+
+static func _candidate_entity(candidate: Dictionary, id: String) -> Dictionary:
+	for item in candidate.entities:
 		if item.instance_id == id: return item
 	return {}
 
@@ -73,20 +77,26 @@ func advance_dialogue(choice_id: String = "") -> bool:
 func interact() -> bool:
 	if state.is_empty() or paused or modal or not focused: return false
 	if dialogue_open: return advance_dialogue()
+	error = ""
 	var leader: Dictionary = entity(state.active_party[0])
+	for portal in package.index.scenes[state.cursor.scene_id].get("portals", []):
+		if portal.position == leader.position: return _interact_node(portal.transfer_node)
 	for source in package.world.entities:
 		var target: Dictionary = entity(source.instance_id)
 		if source.interaction_node == null or target.scene_id != leader.scene_id: continue
 		if abs(target.position.x - leader.position.x) + abs(target.position.y - leader.position.y) <= 1:
-			var old = state.duplicate(true)
-			state.extensions["pal.native.executor"] = {"activation": unique("activation"), "step": 0}
-			if not _advance(source.interaction_node):
-				state = old
-				return false
-			dialogue_open = current_node().op != "end"
-			changed.emit()
-			return true
+			return _interact_node(source.interaction_node)
 	return false
+
+func _interact_node(node_id: String) -> bool:
+	var old = state.duplicate(true)
+	state.extensions["pal.native.executor"] = {"activation": unique("activation"), "step": 0}
+	if not _advance(node_id):
+		state = old
+		return false
+	dialogue_open = current_node().op != "end"
+	changed.emit()
+	return true
 
 func _advance(first: String) -> bool:
 	var candidate: Dictionary = state.duplicate(true)
@@ -101,7 +111,9 @@ func _advance(first: String) -> bool:
 				break
 		if node.op in ["dialogue", "choice", "end"]:
 			candidate.state_revision += 1
+			var transferred: bool = SceneTravel.revision(candidate) != SceneTravel.revision(state)
 			state = candidate
+			if transferred: _move_tick = int(state.clock.logic_tick) - movement_ticks()
 			error = ""
 			return true
 		var executor: Dictionary = candidate.extensions["pal.native.executor"]
@@ -115,11 +127,16 @@ func _advance(first: String) -> bool:
 				next = node.next
 			"party":
 				for member in node.members:
-					var actor: Dictionary = entity(member)
+					var actor: Dictionary = _candidate_entity(candidate, member)
 					if actor.scene_id != candidate.cursor.scene_id:
 						error = "party member is outside current scene; state retained"
 						return false
 				candidate.active_party = node.members.duplicate()
+				candidate.committed_effect_ids.append(effect_id)
+				next = node.next
+			"scene_transfer":
+				error = SceneTravel.prepare(package, candidate, node)
+				if not error.is_empty(): return false
 				candidate.committed_effect_ids.append(effect_id)
 				next = node.next
 			"branch":
@@ -204,6 +221,8 @@ func can_save() -> bool:
 
 func validate_saved(candidate: Dictionary) -> String:
 	var issue: String = package.schema.validate("pal.native.state.v1", candidate)
+	if not issue.is_empty(): return issue
+	issue = SceneTravel.validate_state(package, candidate)
 	if not issue.is_empty(): return issue
 	if candidate.cursor.safe_point_id == null: return "live cursor is not a save boundary"
 	for key in ["runtime_id", "package_id", "profile_id", "content_lock", "ruleset_id", "ruleset_hash"]:
