@@ -72,7 +72,7 @@ static func validate(package) -> String:
 			if visits > 1024: return "region event graph budget"
 			if not package.index.nodes.has(frame[1]): return "unresolved region event route"
 			var node: Dictionary = package.index.nodes[frame[1]]
-			if node.op in ["dialogue", "choice", "end"]:
+			if node.op in ["dialogue", "choice", "end", "battle"]:
 				if not safe.has(key): return "region event wait lacks scene safe point"
 				done[key] = true
 				continue
@@ -182,5 +182,5 @@ static func validate_state(package, state: Dictionary) -> String:
 		prior_trigger = row.trigger
 
 		if absi(event.from.x - event.to.x) + absi(event.from.y - event.to.y) != 1 or not crosses(row.trigger, event.from, event.to): return "invalid region crossing"
-	if not ext.pending.is_empty() and package.index.nodes.get(state.cursor.node_id, {}).get("op") not in ["dialogue", "choice"]: return "pending regions lack waiting owner"
+	if not ext.pending.is_empty() and package.index.nodes.get(state.cursor.node_id, {}).get("op") not in ["dialogue", "choice", "battle"]: return "pending regions lack waiting owner"
 	return ""

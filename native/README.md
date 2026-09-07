@@ -193,6 +193,10 @@ the real zero-input application loop/TileMap window. Package/model tests are
 synthetic; the separate parameterized source/terrain suites provide real-art/map
 evidence. This is not a complete battle, 32-member performance or device acceptance.
 
+The [battle turn core](docs/BATTLE_TURN_CORE.md) adds ordered 3/4/5-member command
+testing, attack/guard/escape, three story outcomes and command-wait save/restore.
+Its geometric presentation is a foundation, not full skills/items or hero art.
+
 Shared contract snapshots are refreshed only with:
 
 ```text

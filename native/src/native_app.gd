@@ -6,6 +6,9 @@ const Save = preload("res://src/native_save.gd")
 const World = preload("res://src/native_world.gd")
 const WalkInput = preload("res://src/native_walk_input.gd")
 const MapProjection = preload("res://src/native_map_projection.gd")
+const Battle = preload("res://src/native_battle.gd")
+const BattleView = preload("res://src/native_battle_view.gd")
+var battle_view
 var session = Session.new()
 var saves = Save.new()
 var world_view
@@ -14,6 +17,7 @@ var message: Label
 var roster: VBoxContainer
 var dialogue: VBoxContainer
 var dialogue_text: Label
+var instructions: Label
 var options: VBoxContainer
 var save_button: Button
 var pause_button: Button
@@ -81,7 +85,7 @@ func _ready() -> void:
 	roster.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	roster.add_theme_constant_override("separation", 12)
 	scroll.add_child(roster)
-	var instructions = Label.new()
+	instructions = Label.new()
 	instructions.text = "方向键 / WASD 行走\n空格 / Enter 交谈\nEsc 暂停\nF5 保存 · F9 读档"
 	instructions.add_theme_font_size_override("font_size", 16)
 	instructions.add_theme_color_override("font_color", Color("9aa9a8"))
@@ -138,6 +142,7 @@ func _ready() -> void:
 	picker.visibility_changed.connect(_modal_changed)
 	save_picker.visibility_changed.connect(_modal_changed)
 	session.changed.connect(_refresh)
+	battle_view = BattleView.new(); battle_view.display_font = font; battle_view.visible = false; viewport.add_child(battle_view)
 	get_window().focus_entered.connect(func(): session.set_focus(true))
 	get_window().focus_exited.connect(func(): walk_input.clear(); session.set_focus(false))
 	save_button.disabled = true
@@ -203,8 +208,11 @@ func _follow_world() -> void:
 
 func _refresh() -> void:
 	if not is_instance_valid(roster) or session.state.is_empty(): return
-	if session.dialogue_open: walk_input.clear()
-	var key: String = world_view._history_key(session)
+	if session.dialogue_open or session.battle_open(): walk_input.clear()
+	var key: String = world_view._history_key(session) + ":battle=" + str(session.battle_open())
+	world_view.visible = not session.battle_open()
+	instructions.text = ("选择下方命令行动\n轮到的伙伴以金框标出\nEsc 暂停\nF5 保存 · F9 读档" if session.battle_open() else "方向键 / WASD 行走\n空格 / Enter 交谈\nEsc 暂停\nF5 保存 · F9 读档")
+	battle_view.visible = session.battle_open(); battle_view.bind(session)
 	if key != _presentation_key:
 		_presentation_key = key
 		walk_input.clear()
@@ -224,7 +232,16 @@ func _refresh() -> void:
 		options.remove_child(child)
 		child.queue_free()
 	var node: Dictionary = session.current_node()
-	if node.op == "dialogue" and session.dialogue_open:
+	if session.battle_open():
+		var battle: Dictionary = session.state.extensions[Battle.KEY]
+		var actor: Dictionary = session.entity(battle.party[battle.turn])
+		dialogue_text.text = "%s · 第 %d 回合 · %s 行动" % [Battle.encounter(session.package.world, battle.encounter_id).display_name, battle.round, session.package.index.actor_definitions[actor.definition_id].display_name]
+		for enemy in battle.enemies:
+			var target_button = _button(options, "攻击 " + session.package.index.actor_definitions[enemy.definition_id].display_name, _battle_action.bind("attack", enemy.instance_id))
+			target_button.disabled = enemy.hp == 0
+		_button(options, "防御", _battle_action.bind("guard", ""))
+		_button(options, "撤离", _battle_action.bind("escape", "")).disabled = not Battle.encounter(session.package.world, battle.encounter_id).allow_escape
+	elif node.op == "dialogue" and session.dialogue_open:
 		var speaker: String = ""
 		if node.speaker != null: speaker = session.package.index.actor_definitions[session.entity(node.speaker).definition_id].display_name + "\n"
 		dialogue_text.text = speaker + node.text
@@ -240,6 +257,10 @@ func _refresh() -> void:
 				dialogue_text.text = portal.display_name + (" · 按空格进入" if status.allowed else " · " + status.text)
 	save_button.disabled = not session.can_save()
 	pause_button.text = "继续" if session.paused else "暂停"
+
+func _battle_action(action: String, target: String) -> void:
+	if session.battle_command(action, target): message.text = ""
+	else: message.text = session.error
 
 func _continue(choice_id: String = "") -> void:
 	if not session.advance_dialogue(choice_id) and not session.error.is_empty():

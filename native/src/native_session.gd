@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: MIT
 extends RefCounted
+const Battle = preload("res://src/native_battle.gd")
 const Regions = preload("res://src/native_regions.gd")
 const Condition = preload("res://src/native_condition.gd")
 signal changed
@@ -50,8 +51,33 @@ func activate(candidate, now_usec: int = -1) -> bool:
 	if movement_rule() == "pal.walk.v1": state.extensions["pal.native.walk"] = {"next_tick": 0}
 	paused = false
 	modal = false
-	dialogue_open = current_node().op != "end"
+	dialogue_open = current_node().op in ["dialogue", "choice"]
 	changed.emit()
+	return true
+
+func battle_open() -> bool:
+	return not state.is_empty() and state.extensions.has(Battle.KEY)
+
+func battle_command(action: String, target: String = "") -> bool:
+	if not battle_open() or paused or modal or not focused: return false
+	var candidate: Dictionary = state.duplicate(true)
+	var result: Dictionary = Battle.command(package, candidate, action, target)
+	if result.has("error"):
+		error = result.error
+		return false
+	if result.has("outcome"):
+		var battle: Dictionary = candidate.extensions[Battle.KEY]
+		var node: Dictionary = package.index.nodes[battle.node_id]
+		if candidate.committed_effect_ids.size() >= 100000:
+			error = "effect history limit; state retained"
+			return false
+		candidate.committed_effect_ids.append(battle.execution_id)
+		candidate.extensions.erase(Battle.KEY)
+		candidate.cursor.phase = "before_node"
+		var budget: Dictionary = {"remaining": 1024, "planning": {"remaining": PartyTrail.MAX_VISITS}}
+		if not _execute(candidate, node["on_" + result.outcome], budget) or not _drain_regions(candidate, budget): return false
+	candidate.state_revision += 1
+	_publish(candidate); changed.emit()
 	return true
 
 func current_node() -> Dictionary:
@@ -75,12 +101,13 @@ func advance_dialogue(choice_id: String = "") -> bool:
 			if choice.id == choice_id: target = choice.next
 	if target.is_empty(): return false
 	if not _advance(target): return false
-	dialogue_open = current_node().op != "end"
+	dialogue_open = current_node().op in ["dialogue", "choice"]
 	changed.emit()
 	return true
 
 func interact() -> bool:
 	if state.is_empty() or paused or modal or not focused: return false
+	if battle_open(): return false
 	if dialogue_open: return advance_dialogue()
 	error = ""
 	var leader: Dictionary = entity(state.active_party[0])
@@ -110,7 +137,7 @@ func _interact_node(node_id: String) -> bool:
 	if not _advance(node_id):
 		state = old
 		return false
-	dialogue_open = current_node().op != "end"
+	dialogue_open = current_node().op in ["dialogue", "choice"]
 	changed.emit()
 	return true
 
@@ -126,7 +153,7 @@ func _publish(candidate: Dictionary) -> void:
 	var transferred: bool = SceneTravel.revision(candidate) != SceneTravel.revision(state)
 	state = candidate
 	if transferred: _move_tick = int(state.clock.logic_tick) - movement_ticks()
-	dialogue_open = current_node().op != "end"
+	dialogue_open = current_node().op in ["dialogue", "choice"]
 	error = ""
 
 func _drain_regions(candidate: Dictionary, budget: Dictionary) -> bool:
@@ -148,6 +175,7 @@ func _execute(candidate: Dictionary, first: String, budget: Dictionary) -> bool:
 			error = "unresolved story target; state retained"
 			return false
 		var node: Dictionary = package.index.nodes[next]
+		candidate.cursor.phase = "before_node"
 		candidate.cursor.node_id = next
 		candidate.cursor.safe_point_id = null
 		for point in package.world.safe_points:
@@ -160,6 +188,9 @@ func _execute(candidate: Dictionary, first: String, budget: Dictionary) -> bool:
 		var effect_id: String = "effect." + Schema.digest(JSON.stringify([candidate.run_id, executor.activation, executor.step, next]).to_utf8_buffer())
 		executor.step += 1
 		match node.op:
+			"battle":
+				error = Battle.begin(package, candidate, node, effect_id)
+				return error.is_empty()
 			"set":
 				var scope: String = package.index.variables[node.variable].scope
 				candidate.scopes[scope][node.variable] = node.value
@@ -237,7 +268,7 @@ func set_modal(value: bool, now_usec: int = -1) -> void:
 	changed.emit()
 
 func move(direction: Vector2i) -> bool:
-	if state.is_empty() or paused or modal or not focused or dialogue_open or absi(direction.x) + absi(direction.y) > 1: return false
+	if state.is_empty() or paused or modal or not focused or battle_open() or dialogue_open or absi(direction.x) + absi(direction.y) > 1: return false
 	var before: Dictionary = state
 	var before_tick: int = _move_tick
 	state = before.duplicate(true)
@@ -321,7 +352,7 @@ func validate_saved(candidate: Dictionary) -> String:
 	if candidate.clock.ticks_per_second != 60 or candidate.clock.timing_ruleset_hash != state.clock.timing_ruleset_hash or candidate.rng != state.rng: return "unsupported save clock/RNG"
 	var safe = package.index.safe_points.get(candidate.cursor.safe_point_id)
 	if safe == null or safe.scene_id != candidate.cursor.scene_id or safe.node_id != candidate.cursor.node_id: return "save cursor/safe-point mismatch"
-	if package.index.nodes[candidate.cursor.node_id].op not in ["dialogue", "choice", "end"]: return "save cursor is not a waiting boundary"
+	if package.index.nodes[candidate.cursor.node_id].op not in ["dialogue", "choice", "end", "battle"]: return "save cursor is not a waiting boundary"
 	var ids: Dictionary = {}
 	for item in candidate.entities:
 		if ids.has(item.instance_id) or not package.index.entities.has(item.instance_id): return "invalid saved entity identity"
@@ -350,6 +381,8 @@ func validate_saved(candidate: Dictionary) -> String:
 			if item.instance_id == id and item.scene_id != candidate.cursor.scene_id: return "active party must share the current scene"
 	for variable in package.world.variables:
 		if not Schema.is_type(candidate.scopes[variable.scope].get(variable.id), variable.type): return "saved variable type mismatch"
+	var battle_issue: String = Battle.validate_state(package, candidate)
+	if not battle_issue.is_empty(): return battle_issue
 	var executor = candidate.extensions.get("pal.native.executor")
 	if not executor is Dictionary or not executor.get("activation") is String or not Schema.is_type(executor.get("step"), "integer") or executor.step < 0: return "missing executor resume state"
 	return ""
@@ -370,7 +403,7 @@ func restore(candidate: Dictionary, now_usec: int = -1) -> bool:
 	_move_tick = int(state.clock.logic_tick) - movement_ticks()
 	for item in state.entities:
 		_move_tick = maxi(_move_tick, int(item.components["pal.native.pose"].get("moving_until_tick", 0)) - movement_ticks())
-	dialogue_open = current_node().op != "end"
+	dialogue_open = current_node().op in ["dialogue", "choice"]
 	account_time(_last_usec)
 	changed.emit()
 	return true
@@ -382,7 +415,7 @@ func movement_ticks() -> int:
 	return 6 if movement_rule() == "pal.walk.v1" else 8
 
 func sample_movement(input) -> bool:
-	if state.is_empty() or paused or modal or not focused or dialogue_open: return false
+	if state.is_empty() or paused or modal or not focused or battle_open() or dialogue_open: return false
 	if movement_rule() == "pal.walk.v1":
 		var walk: Dictionary = state.extensions["pal.native.walk"]
 		if state.clock.logic_tick < walk.next_tick: return false

@@ -373,7 +373,11 @@
           "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
         },
         "phase": {
-          "const": "before_node"
+          "enum": [
+            "before_node",
+            "battle_command"
+          ],
+          "type": "string"
         }
       },
       "additionalProperties": false
@@ -522,26 +526,70 @@
         },
         "pal.native.party-trail": {
           "type": "object",
-          "required": ["revision", "scene_id", "next_tick", "followers"],
+          "required": [
+            "revision",
+            "scene_id",
+            "next_tick",
+            "followers"
+          ],
           "properties": {
-            "revision": {"type": "integer", "minimum": 1, "maximum": 2147483647},
-            "scene_id": {"type": "string", "minLength": 1, "maxLength": 128},
-            "next_tick": {"type": "integer", "minimum": 0},
+            "revision": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483647
+            },
+            "scene_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "next_tick": {
+              "type": "integer",
+              "minimum": 0
+            },
             "followers": {
-              "type": "array", "minItems": 0, "maxItems": 31,
+              "type": "array",
+              "minItems": 0,
+              "maxItems": 31,
               "items": {
                 "type": "object",
-                "required": ["instance_id", "predecessor_id", "steps"],
+                "required": [
+                  "instance_id",
+                  "predecessor_id",
+                  "steps"
+                ],
                 "properties": {
-                  "instance_id": {"type": "string", "minLength": 1, "maxLength": 128},
-                  "predecessor_id": {"type": "string", "minLength": 1, "maxLength": 128},
+                  "instance_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  },
+                  "predecessor_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  },
                   "steps": {
-                    "type": "array", "minItems": 0, "maxItems": 4096,
+                    "type": "array",
+                    "minItems": 0,
+                    "maxItems": 4096,
                     "items": {
-                      "type": "object", "required": ["x", "y"],
+                      "type": "object",
+                      "required": [
+                        "x",
+                        "y"
+                      ],
                       "properties": {
-                        "x": {"type": "integer", "minimum": -1000000, "maximum": 1000000},
-                        "y": {"type": "integer", "minimum": -1000000, "maximum": 1000000}
+                        "x": {
+                          "type": "integer",
+                          "minimum": -1000000,
+                          "maximum": 1000000
+                        },
+                        "y": {
+                          "type": "integer",
+                          "minimum": -1000000,
+                          "maximum": 1000000
+                        }
                       },
                       "additionalProperties": false
                     }
@@ -565,6 +613,165 @@
             }
           },
           "additionalProperties": true
+        },
+        "pal.native.battle": {
+          "type": "object",
+          "required": [
+            "version",
+            "node_id",
+            "encounter_id",
+            "execution_id",
+            "round",
+            "step",
+            "turn",
+            "party",
+            "enemies",
+            "guarding",
+            "events"
+          ],
+          "properties": {
+            "version": {
+              "const": 1
+            },
+            "node_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+            },
+            "encounter_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+            },
+            "execution_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "round": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10000
+            },
+            "step": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100000
+            },
+            "turn": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 31
+            },
+            "party": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+              },
+              "minItems": 1,
+              "maxItems": 32,
+              "uniqueItems": true
+            },
+            "enemies": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "instance_id",
+                  "definition_id",
+                  "hp",
+                  "mp"
+                ],
+                "properties": {
+                  "instance_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+                  },
+                  "definition_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+                  },
+                  "hp": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1000000
+                  },
+                  "mp": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1000000
+                  }
+                },
+                "additionalProperties": false
+              },
+              "minItems": 1,
+              "maxItems": 32
+            },
+            "guarding": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+              },
+              "minItems": 0,
+              "maxItems": 32,
+              "uniqueItems": true
+            },
+            "events": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "source",
+                  "target",
+                  "amount"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "attack",
+                      "guard",
+                      "escape"
+                    ]
+                  },
+                  "source": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+                  },
+                  "target": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+                  },
+                  "amount": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1000000
+                  }
+                },
+                "additionalProperties": false
+              },
+              "minItems": 0,
+              "maxItems": 33
+            }
+          },
+          "additionalProperties": false
         }
       }
     }

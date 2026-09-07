@@ -126,6 +126,26 @@
               "null"
             ],
             "description": "Optional map animation set; omitted/null retains sprite_asset or synthetic silhouette."
+          },
+          "combat": {
+            "type": "object",
+            "required": [
+              "attack",
+              "defense"
+            ],
+            "properties": {
+              "attack": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000000
+              },
+              "defense": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000
+              }
+            },
+            "additionalProperties": false
           }
         },
         "additionalProperties": false
@@ -1123,6 +1143,57 @@
               }
             },
             "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "op",
+              "encounter_id",
+              "on_win",
+              "on_loss",
+              "on_escape",
+              "provenance"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+              },
+              "op": {
+                "const": "battle"
+              },
+              "encounter_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+              },
+              "on_win": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+              },
+              "on_loss": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+              },
+              "on_escape": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+              },
+              "provenance": {
+                "$ref": "#/definitions/provenance"
+              }
+            },
+            "additionalProperties": false
           }
         ]
       },
@@ -1474,6 +1545,68 @@
         "additionalProperties": false
       },
       "description": "Optional draft map animations. Requires graphics.map-animation.v1. One frame is one PNG; no atlas, depth mask or battle actions in this capability."
+    },
+    "encounters": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "display_name",
+          "allow_escape",
+          "enemies",
+          "provenance"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+          },
+          "display_name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "allow_escape": {
+            "type": "boolean"
+          },
+          "enemies": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "instance_id",
+                "definition_id"
+              ],
+              "properties": {
+                "instance_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128,
+                  "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+                },
+                "definition_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128,
+                  "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+                }
+              },
+              "additionalProperties": false
+            },
+            "minItems": 1,
+            "maxItems": 32
+          },
+          "provenance": {
+            "$ref": "#/definitions/provenance"
+          }
+        },
+        "additionalProperties": false
+      },
+      "minItems": 0,
+      "maxItems": 1024
     }
   },
   "additionalProperties": false,
