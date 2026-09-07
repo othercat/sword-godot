@@ -4,7 +4,7 @@ const Zip = preload("res://src/native_zip.gd")
 const Reader = preload("res://src/native_json.gd")
 const Schema = preload("res://src/native_schema.gd")
 const MapAnimation = preload("res://src/native_map_animation.gd")
-const CAPABILITIES = ["world.orthogonal.v1", "party.roster.v1", "story.dialogue.v1", "story.choice.v1", "story.variables.v1", MapAnimation.CAPABILITY]
+const CAPABILITIES = ["world.isometric.v1", "movement.pal-walk.v1", "world.orthogonal.v1", "party.roster.v1", "story.dialogue.v1", "story.choice.v1", "story.variables.v1", MapAnimation.CAPABILITY]
 const RULES = {"schema": "pal.native.ruleset.v1", "id": "pal.native.story-core.v1", "version": "0.1.0", "operations": ["dialogue", "choice", "set", "branch", "party", "end"], "variable_assignment": "declared_type_and_scope", "save_phase": "before_node"}
 var error: String = ""
 var manifest: Dictionary = {}
@@ -45,7 +45,6 @@ func load_package(path: String) -> bool:
 		payloads[name] = data
 	if not payloads.has("content/world.json") or not payloads.has("content/rules.json"): return _fail("missing Native world/rules")
 	if manifest.ruleset_id != RULES.id or Schema.digest(payloads["content/rules.json"]) != manifest.ruleset_hash: return _fail("rules identity mismatch")
-	if _json(payloads["content/rules.json"]) != RULES: return _fail("unsupported rules definition")
 	world = _json(payloads["content/world.json"])
 	if not error.is_empty(): return _fail(error)
 	issue = schema.validate("pal.native.content.v1", world)
@@ -53,6 +52,7 @@ func load_package(path: String) -> bool:
 	for key in ["package_id", "entry_scene", "entry_node"]:
 		if manifest[key] != world[key]: return _fail("manifest/world mismatch: " + key)
 	if not _references(): return _fail(error)
+	if _json(payloads["content/rules.json"]) != expected_rules(world): return _fail("unsupported rules definition")
 	if not index.sprite_sets.is_empty() and MapAnimation.CAPABILITY not in manifest.required_capabilities: return _fail("missing map animation capability")
 	var declared: Dictionary = {"content/world.json": "content", "content/rules.json": "content"}
 	textures = {}
@@ -124,6 +124,10 @@ func _references() -> bool:
 	for scene in world.scenes:
 		if not index.maps.has(scene.map_id): return _fail("unresolved scene map")
 	for map_data in world.maps:
+		if "world." + map_data.coordinates.kind + ".v1" not in manifest.required_capabilities: return _fail("missing world projection capability")
+		if map_data.coordinates.kind == "isometric" and (map_data.coordinates.tile_width < 2 or map_data.coordinates.tile_height < 2): return _fail("isometric tile edge budget")
+		if map_data.get("movement_rule") == "pal.walk.v1":
+			if map_data.coordinates.kind != "isometric" or "movement.pal-walk.v1" not in manifest.required_capabilities: return _fail("PAL walking requires isometric capability")
 		if map_data.width * map_data.height > 65536: return _fail("map cell budget exceeded")
 		if not _texture_ref(map_data.background_asset): return _fail("invalid map texture")
 		var blocked: Dictionary = {}
@@ -134,10 +138,17 @@ func _references() -> bool:
 	for actor in world.actor_definitions:
 		if not _texture_ref(actor.sprite_asset): return _fail("invalid actor texture")
 		if actor.get("map_sprite_set") != null and not index.sprite_sets.has(actor.map_sprite_set): return _fail("unresolved map sprite set")
+	for sprite in index.sprite_sets.values():
+		if sprite.get("playback", "time") == "pal.walk-phase.v1":
+			if "movement.pal-walk.v1" not in manifest.required_capabilities or sprite.missing_action != "error": return _fail("PAL phase capability/directions missing")
+			for clip in sprite.clips:
+				if clip.action == "walk" and (clip.frames.size() != 3 or not clip.loop): return _fail("PAL phase walk needs three looping frames")
 	for entity in world.entities:
 		if not index.actor_definitions.has(entity.definition_id) or not index.scenes.has(entity.scene_id): return _fail("unresolved entity reference")
 		if entity.interaction_node != null and not index.nodes.has(entity.interaction_node): return _fail("unresolved interaction")
 		if not can_stand(entity.scene_id, entity.position): return _fail("invalid entity spawn")
+		var sprite_id = index.actor_definitions[entity.definition_id].get("map_sprite_set")
+		if sprite_id != null and index.sprite_sets[sprite_id].get("playback") == "pal.walk-phase.v1" and movement_rule(entity.scene_id) != "pal.walk.v1": return _fail("PAL phase entity requires PAL walking map")
 	var entry_safe: bool = false
 	for point in world.safe_points:
 		if not index.scenes.has(point.scene_id) or not index.nodes.has(point.node_id): return _fail("invalid safe point")
@@ -175,3 +186,20 @@ func can_stand(scene_id: String, point: Dictionary) -> bool:
 	if not index.scenes.has(scene_id): return false
 	var map_data: Dictionary = index.maps[index.scenes[scene_id].map_id]
 	return within(point, map_data) and point not in map_data.blocked
+
+func movement_rule(scene_id: String) -> String:
+	return index.maps[index.scenes[scene_id].map_id].get("movement_rule", "native.grid.v1")
+
+static func expected_rules(content: Dictionary) -> Dictionary:
+	var result: Dictionary = RULES.duplicate(true)
+	var explicit: bool = false
+	var profiles: Array = []
+	for map_data in content.maps:
+		explicit = explicit or map_data.has("movement_rule") or map_data.coordinates.kind == "isometric"
+		var id: String = map_data.get("movement_rule", "native.grid.v1")
+		if id not in profiles: profiles.append(id)
+	if explicit:
+		profiles.sort()
+		result.version = "0.2.0"
+		result.movement_profiles = profiles
+	return result

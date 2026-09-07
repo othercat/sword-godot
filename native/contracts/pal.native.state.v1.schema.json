@@ -261,6 +261,12 @@
                     "type": "integer",
                     "minimum": 0,
                     "maximum": 9007199254740991
+                  },
+                  "step_phase": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 3,
+                    "description": "PAL walk phase cursor; presentation selects leader [0,1,0,2] or follower [0,2,0,1]. Only accepted movement advances it."
                   }
                 },
                 "additionalProperties": true
@@ -406,7 +412,22 @@
       "uniqueItems": true
     },
     "extensions": {
-      "type": "object"
+      "type": "object",
+      "properties": {
+        "pal.native.walk": {
+          "type": "object",
+          "required": [
+            "next_tick"
+          ],
+          "properties": {
+            "next_tick": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "additionalProperties": true
+        }
+      }
     }
   },
   "additionalProperties": false,

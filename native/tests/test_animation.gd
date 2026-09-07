@@ -103,7 +103,7 @@ func _run() -> void:
 	world._process(0.05)
 	visual = world.visuals[leader_id]
 	check(visual.elapsed_us == 0.0 and visual.selection == "walk/down", "load epoch resets visual history while retaining pose action and facing")
-	check(world.actors[leader_id].position == world.tiles.map_to_local(Vector2i(session.entity(leader_id).position.x, session.entity(leader_id).position.y)), "load snaps to restored foot position without old interpolation history")
+	check(world.actors[leader_id].position == world.tiles.position + world.tiles.map_to_local(Vector2i(session.entity(leader_id).position.x, session.entity(leader_id).position.y)), "load snaps to restored foot position without old interpolation history")
 	check(not session.move(Vector2i.DOWN), "load retains remaining logical movement cooldown")
 	var old_save = session.snapshot()
 	for item in old_save.entities: item.components["pal.native.pose"].erase("moving_until_tick")

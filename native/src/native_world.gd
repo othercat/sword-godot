@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 extends Node2D
 const ActorVisual = preload("res://src/native_actor_visual.gd")
+const MapProjection = preload("res://src/native_map_projection.gd")
 ## TileMapLayer + separate actor nodes. The authoritative world uses tile units.
 var session
 var tiles: TileMapLayer
@@ -22,10 +23,15 @@ func bind(model) -> void:
 	var width: int = map_data.coordinates.tile_width
 	var height: int = map_data.coordinates.tile_height
 	var atlas_image = Image.create(width * 2, height, false, Image.FORMAT_RGBA8)
-	atlas_image.fill(Color("293c39"))
-	atlas_image.fill_rect(Rect2i(1, 1, width - 2, height - 2), Color("304741"))
-	atlas_image.fill_rect(Rect2i(width, 0, width, height), Color("54423b"))
-	atlas_image.fill_rect(Rect2i(width + 5, 5, width - 10, height - 10), Color("6d5947"))
+	atlas_image.fill(Color.TRANSPARENT)
+	# Procedural diagnostic tiles only; still drawn by the formal TileMapLayer.
+	for cell in range(2):
+		for y in range(height):
+			for x in range(width):
+				var distance: float = absf((x + 0.5) / width - 0.5) * 2.0 + absf((y + 0.5) / height - 0.5) * 2.0
+				if map_data.coordinates.kind == "isometric" and distance > 1.0: continue
+				var edge: bool = distance > 0.92 if map_data.coordinates.kind == "isometric" else x == 0 or y == 0 or x == width - 1 or y == height - 1
+				atlas_image.set_pixel(x + cell * width, y, Color("293c39") if edge else (Color("304741") if cell == 0 else Color("6d5947")))
 	var source = TileSetAtlasSource.new()
 	source.texture = ImageTexture.create_from_image(atlas_image)
 	source.texture_region_size = Vector2i(width, height)
@@ -33,9 +39,15 @@ func bind(model) -> void:
 	source.create_tile(Vector2i(1, 0))
 	var tile_set = TileSet.new()
 	tile_set.tile_size = Vector2i(width, height)
+	if map_data.coordinates.kind == "isometric":
+		tile_set.tile_shape = TileSet.TILE_SHAPE_ISOMETRIC
+		tile_set.tile_layout = TileSet.TILE_LAYOUT_DIAMOND_DOWN
+
 	tile_set.add_source(source, 0)
 	tiles = TileMapLayer.new()
 	tiles.tile_set = tile_set
+	# Godot adds a half-tile center offset; the Native contract centers tile (0,0) at zero.
+	tiles.position = -Vector2(width, height) / 2.0
 	add_child(tiles)
 	for y in int(map_data.height):
 		for x in int(map_data.width):
@@ -45,8 +57,9 @@ func bind(model) -> void:
 		backdrop = Sprite2D.new()
 		backdrop.texture = session.package.textures[map_data.background_asset]
 		backdrop.centered = false
-		backdrop.position = Vector2(map_data.coordinates.origin.x * width - width / 2.0, map_data.coordinates.origin.y * height - height / 2.0)
-		backdrop.scale = Vector2(map_data.width * width, map_data.height * height) / backdrop.texture.get_size()
+		var rect: Rect2 = MapProjection.bounds(map_data)
+		backdrop.position = rect.position
+		backdrop.scale = rect.size / backdrop.texture.get_size()
 		add_child(backdrop)
 	var actor_layer = Node2D.new()
 	actor_layer.y_sort_enabled = true
@@ -60,7 +73,7 @@ func bind(model) -> void:
 		body.add_child(visual)
 		var color = Color("b4965c") if item.instance_id == session.state.active_party[0] else (Color("74658a") if item.instance_id in session.state.active_party else Color("667f91"))
 		visual.bind(definition, session.package, height, color)
-		visual.present(item, int(session.state.clock.logic_tick), 0.0, false)
+		visual.present(item, int(session.state.clock.logic_tick), 0.0, false, item.instance_id == session.state.active_party[0])
 		visuals[item.instance_id] = visual
 		var label = Label.new()
 		label.text = definition.display_name
@@ -73,7 +86,7 @@ func bind(model) -> void:
 		label.add_theme_constant_override("shadow_offset_y", 1)
 		body.add_child(label)
 		actors[item.instance_id] = body
-		body.position = tiles.map_to_local(Vector2i(item.position.x, item.position.y))
+		body.position = tiles.position + tiles.map_to_local(Vector2i(item.position.x, item.position.y))
 
 func _process(delta: float) -> void:
 	if session == null or session.state.is_empty(): return
@@ -83,10 +96,10 @@ func _process(delta: float) -> void:
 	var running: bool = not session.paused and not session.modal and session.focused
 	for item in session.state.entities:
 		if not actors.has(item.instance_id): continue
-		var target = tiles.map_to_local(Vector2i(item.position.x, item.position.y))
+		var target = tiles.position + tiles.map_to_local(Vector2i(item.position.x, item.position.y))
 		# Time-based presentation interpolation only; does not feed world state.
 		if running: actors[item.instance_id].position = actors[item.instance_id].position.lerp(target, 1.0 - exp(-24.0 * delta))
-		visuals[item.instance_id].present(item, int(session.state.clock.logic_tick), delta, running)
+		visuals[item.instance_id].present(item, int(session.state.clock.logic_tick), delta, running, item.instance_id == session.state.active_party[0])
 
 func _history_key() -> String:
 	return "%s/%s/%s/%s" % [session.state.session_id, session.state.timeline_epoch, session.state.cursor.scene_id, session.state.content_lock]

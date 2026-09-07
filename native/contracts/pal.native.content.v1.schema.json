@@ -245,7 +245,11 @@
             ],
             "properties": {
               "kind": {
-                "const": "orthogonal"
+                "type": "string",
+                "enum": [
+                  "orthogonal",
+                  "isometric"
+                ]
               },
               "unit": {
                 "const": "tile"
@@ -313,6 +317,14 @@
               "string",
               "null"
             ]
+          },
+          "movement_rule": {
+            "type": "string",
+            "enum": [
+              "native.grid.v1",
+              "pal.walk.v1"
+            ],
+            "description": "Optional; native.grid.v1 when omitted. pal.walk.v1 requires isometric coordinates and movement.pal-walk.v1 capability. See native-world-movement-v1.md."
           }
         },
         "additionalProperties": false
@@ -979,6 +991,14 @@
           },
           "provenance": {
             "$ref": "#/definitions/provenance"
+          },
+          "playback": {
+            "type": "string",
+            "enum": [
+              "time",
+              "pal.walk-phase.v1"
+            ],
+            "description": "Optional time default. PAL phase playback uses exactly three walk frames ordered neutral, stride A, stride B; idle remains authored time playback."
           }
         },
         "additionalProperties": false

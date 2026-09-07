@@ -31,7 +31,7 @@ func bind(actor: Dictionary, package, tile_height: int, color: Color) -> void:
 		fallback = shape
 	add_child(fallback)
 
-func present(item: Dictionary, logic_tick: int, delta: float, running: bool) -> void:
+func present(item: Dictionary, logic_tick: int, delta: float, running: bool, leader: bool = true) -> void:
 	var pose: Dictionary = item.components["pal.native.pose"]
 	var action: String = "walk" if int(pose.get("moving_until_tick", 0)) > logic_tick else "idle"
 	var key: String = action + "/" + pose.facing
@@ -42,6 +42,10 @@ func present(item: Dictionary, logic_tick: int, delta: float, running: bool) -> 
 		elapsed_us += maxf(0.0, delta) * 1000000.0
 	var clip: Dictionary = {} if sprite_set.is_empty() else MapAnimation.clip_for(sprite_set, action, pose.facing)
 	displayed_frame = MapAnimation.frame_at(clip, roundi(elapsed_us))
+	if action == "walk" and sprite_set.get("playback", "time") == "pal.walk-phase.v1" and not clip.is_empty():
+		var phase: int = int(pose.get("step_phase", 0))
+		var order: Array = [0, 1, 0, 2] if leader else [0, 2, 0, 1]
+		displayed_frame = clip.frames[order[phase]]
 	sprite.visible = not displayed_frame.is_empty()
 	fallback.visible = not sprite.visible
 	if not sprite.visible: return

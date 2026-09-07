@@ -39,10 +39,13 @@ High refresh display/hardware acceptance remains separate from synthetic tests.
 - Dialogue/choice/set/branch/party/end; declared types/scopes, transactional
   automatic-node budget, actor definitions/instances separate, roster distinct
   from active party and narrative cast. No three-slot or six-definition limit.
-- Authoritative tile movement and ordered followers, separate presentation lerp.
-  This eight-tick grid movement is still a technical sample. PAL-style isometric
-  motion will use PalWalkDemo/original-research behavior, with collision and
-  scalable party trails implemented separately; no GPL source is imported here.
+- Authoritative tile movement with named `native.grid.v1` (eight ticks) and
+  `pal.walk.v1` (six ticks / nominal 100 ms), separate presentation lerp.
+  Orthogonal and isometric TileMapLayer centers match the shared zero-centered
+  projection, including nonzero map origins. PAL input distinguishes new presses,
+  held multi-key cancellation and physical aliases; collision checks map and NPC
+  occupancy before committing. No GPL source is imported. This is a named Native
+  rule, not complete PAL parity; scalable party trails/joins/reorders remain open.
 - PNG texture decoding with an 8192-edge/32Mi-pixel aggregate budget; the 2048px
   synthetic texture test preserves its resolution. Map idle/walk clips now have
   explicit per-frame microsecond timing, PNG dimensions, foot anchors and scale,
@@ -73,6 +76,7 @@ transactions remain unfinished. Do not claim full save durability or tool suppor
 godot --headless --path . --script res://tests/test_runtime.gd -- <package> <scratch>
 godot --path . --script res://tests/test_ui.gd -- <package> <scratch>
 godot --path . --script res://tests/test_animation.gd -- <animation-fixture-package> <scratch>
+godot --path . --script res://tests/test_walk.gd -- <pal-walking-fixture-package> <scratch>
 ```
 
 The UI test injects engine mouse/keyboard input into the same application and
@@ -85,6 +89,15 @@ RGBA images; the product `run_animation_checks.py` reproduces it without reading
 game/art references. Thirty-two window checks cover variable-sized frame anchors,
 10ms timing without a logic tick, pause, per-instance facing, save cooldown/history
 reset and malformed package rejection. No formal Miaopang art is implied.
+
+The additional PAL walking fixture uses twelve geometric PNGs and the real Studio
+compiler. Fifty-six checks cover projection, direction edges/aliases, all four
+leader/follower phases, collision rejection, saved cadence, malformed save state,
+synthetic 30/60/100/144/240 display schedules and actual window keyboard input.
+Optional `pal.walk-phase.v1` playback uses three authored stride frames; time-based
+HD clips remain available. Save input cadence and pose phase are logic facts;
+render interpolation/GPU history are reset on load. No real assets or physical
+human acceptance are claimed. Shared schema snapshot: a89e9702bcc3e3f7182f53eecd80a611ffe4cfd4.
 
 Shared contract snapshots are refreshed only with:
 

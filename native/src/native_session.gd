@@ -33,14 +33,15 @@ func activate(candidate, now_usec: int = -1) -> bool:
 		"extensions": {"pal.native.executor": {"activation": unique("activation"), "step": 0}, "pal.native.timing": {"eligible": false, "reason": "preview-practice"}}}
 	for source in world.entities:
 		var definition: Dictionary = package.index.actor_definitions[source.definition_id]
-		state.entities.append({"entity_kind": "actor", "component_schema_version": 1, "instance_id": source.instance_id, "definition_id": source.definition_id, "scene_id": source.scene_id, "position": source.position.duplicate(), "hp": definition.max_hp, "mp": definition.max_mp, "components": {"pal.native.pose": {"facing": source.facing, "moving_until_tick": 0}}})
+		state.entities.append({"entity_kind": "actor", "component_schema_version": 1, "instance_id": source.instance_id, "definition_id": source.definition_id, "scene_id": source.scene_id, "position": source.position.duplicate(), "hp": definition.max_hp, "mp": definition.max_mp, "components": {"pal.native.pose": {"facing": source.facing, "moving_until_tick": 0, "step_phase": 0}}})
 	for variable in world.variables: state.scopes[variable.scope][variable.id] = variable.initial
 	if not _advance(world.entry_node):
 		package = previous_package
 		state = previous_state
 		return false
 	_last_usec = Time.get_ticks_usec() if now_usec < 0 else now_usec
-	_move_tick = -8
+	_move_tick = -movement_ticks()
+	if movement_rule() == "pal.walk.v1": state.extensions["pal.native.walk"] = {"next_tick": 0}
 	paused = false
 	modal = false
 	dialogue_open = current_node().op != "end"
@@ -166,7 +167,7 @@ func set_modal(value: bool, now_usec: int = -1) -> void:
 
 func move(direction: Vector2i) -> bool:
 	if state.is_empty() or paused or modal or not focused or dialogue_open or absi(direction.x) + absi(direction.y) != 1: return false
-	if state.clock.logic_tick - _move_tick < 8: return false
+	if state.clock.logic_tick - _move_tick < movement_ticks(): return false
 	var leader: Dictionary = entity(state.active_party[0])
 	var point: Dictionary = {"x": leader.position.x + direction.x, "y": leader.position.y + direction.y}
 	if not package.can_stand(leader.scene_id, point): return false
@@ -192,7 +193,8 @@ func _mark_motion(actor: Dictionary, delta: Vector2i) -> void:
 	if delta == Vector2i.ZERO: return
 	var pose: Dictionary = actor.components["pal.native.pose"]
 	pose.facing = ("right" if delta.x > 0 else "left") if absi(delta.x) > absi(delta.y) else ("down" if delta.y > 0 else "up")
-	pose.moving_until_tick = int(state.clock.logic_tick) + 8
+	pose.moving_until_tick = int(state.clock.logic_tick) + movement_ticks()
+	if movement_rule() == "pal.walk.v1": pose.step_phase = (int(pose.get("step_phase", 0)) + 1) % 4
 
 func snapshot() -> Dictionary:
 	return state.duplicate(true)
@@ -214,12 +216,19 @@ func validate_saved(candidate: Dictionary) -> String:
 	for item in candidate.entities:
 		if ids.has(item.instance_id) or not package.index.entities.has(item.instance_id): return "invalid saved entity identity"
 		ids[item.instance_id] = true
+		if not package.index.scenes.has(item.scene_id): return "saved scene missing"
 		if item.definition_id != package.index.entities[item.instance_id].definition_id: return "saved definition changed"
 		var definition: Dictionary = package.index.actor_definitions[item.definition_id]
+		var sprite_id = definition.get("map_sprite_set")
+		if sprite_id != null and package.index.sprite_sets[sprite_id].get("playback") == "pal.walk-phase.v1" and package.movement_rule(item.scene_id) != "pal.walk.v1": return "saved PAL phase entity requires PAL walking map"
 		if item.hp > definition.max_hp or item.mp > definition.max_mp or not package.can_stand(item.scene_id, item.position): return "saved stat/position range"
 		var pose = item.components.get("pal.native.pose")
 		if not pose is Dictionary or pose.get("facing") not in ["up", "down", "left", "right"]: return "missing pose component"
-		if int(pose.get("moving_until_tick", 0)) > int(candidate.clock.logic_tick) + 8: return "saved movement deadline outside supported window"
+		var period: int = 6 if package.movement_rule(item.scene_id) == "pal.walk.v1" else 8
+		if int(pose.get("moving_until_tick", 0)) > int(candidate.clock.logic_tick) + period: return "saved movement deadline outside supported window"
+	if package.movement_rule(candidate.cursor.scene_id) == "pal.walk.v1":
+		var walk = candidate.extensions.get("pal.native.walk")
+		if not walk is Dictionary or not Schema.is_type(walk.get("next_tick"), "integer") or walk.next_tick < 0 or walk.next_tick > int(candidate.clock.logic_tick) + 6: return "invalid saved walk cadence"
 	if ids.size() != package.world.entities.size(): return "save entity set mismatch"
 	if candidate.active_party.is_empty(): return "this runtime requires an active party leader"
 	for key in ["roster", "active_party", "narrative_cast"]:
@@ -248,10 +257,40 @@ func restore(candidate: Dictionary, now_usec: int = -1) -> bool:
 	state.clock.active_game_usec = maxi(old.clock.active_game_usec, state.clock.active_game_usec)
 	state.clock.continuity = "gap"
 	state.extensions["pal.native.timing"] = {"eligible": false, "reason": "save-load-practice"}
-	_move_tick = int(state.clock.logic_tick) - 8
+	_move_tick = int(state.clock.logic_tick) - movement_ticks()
 	for item in state.entities:
-		_move_tick = maxi(_move_tick, int(item.components["pal.native.pose"].get("moving_until_tick", 0)) - 8)
+		_move_tick = maxi(_move_tick, int(item.components["pal.native.pose"].get("moving_until_tick", 0)) - movement_ticks())
 	dialogue_open = current_node().op != "end"
 	account_time(_last_usec)
 	changed.emit()
 	return true
+
+func movement_rule() -> String:
+	return "native.grid.v1" if state.is_empty() else package.movement_rule(state.cursor.scene_id)
+
+func movement_ticks() -> int:
+	return 6 if movement_rule() == "pal.walk.v1" else 8
+
+func sample_movement(input) -> bool:
+	if state.is_empty() or paused or modal or not focused or dialogue_open: return false
+	if movement_rule() == "pal.walk.v1":
+		var walk: Dictionary = state.extensions["pal.native.walk"]
+		if state.clock.logic_tick < walk.next_tick: return false
+		walk.next_tick = int(state.clock.logic_tick) + 6
+		state.state_revision += 1
+	var direction: Vector2i = input.sample(movement_rule())
+	if move(direction): return true
+	if direction == Vector2i.ZERO or state.clock.logic_tick - _move_tick >= movement_ticks(): stop_walking()
+	return false
+
+func stop_walking() -> void:
+	if movement_rule() != "pal.walk.v1": return
+	var modified: bool = false
+	for id in state.active_party:
+		var pose: Dictionary = entity(id).components["pal.native.pose"]
+		modified = modified or int(pose.get("moving_until_tick", 0)) > int(state.clock.logic_tick) or int(pose.get("step_phase", 0)) % 2 != 0
+		pose.moving_until_tick = mini(int(pose.get("moving_until_tick", 0)), int(state.clock.logic_tick))
+		pose.step_phase = int(pose.get("step_phase", 0)) & 2
+	if modified:
+		state.state_revision += 1
+		changed.emit()

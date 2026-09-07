@@ -4,6 +4,8 @@ const Package = preload("res://src/native_package.gd")
 const Session = preload("res://src/native_session.gd")
 const Save = preload("res://src/native_save.gd")
 const World = preload("res://src/native_world.gd")
+const WalkInput = preload("res://src/native_walk_input.gd")
+const MapProjection = preload("res://src/native_map_projection.gd")
 var session = Session.new()
 var saves = Save.new()
 var world_view
@@ -20,7 +22,10 @@ var save_picker: AcceptDialog
 var save_list: VBoxContainer
 var viewport: SubViewport
 var fps_label: Label
-var _held: Dictionary = {}
+var walk_input = WalkInput.new()
+var _last_physics_usec: int = 0
+var _gap_frame: int = -1
+var _movement_frame: int = -1
 var _stats_elapsed: float = 0.0
 var _preview_stop_file: String = ""
 var _preview_elapsed: float = 0.0
@@ -134,7 +139,7 @@ func _ready() -> void:
 	save_picker.visibility_changed.connect(_modal_changed)
 	session.changed.connect(_refresh)
 	get_window().focus_entered.connect(func(): session.set_focus(true))
-	get_window().focus_exited.connect(func(): _held.clear(); session.set_focus(false))
+	get_window().focus_exited.connect(func(): walk_input.clear(); session.set_focus(false))
 	save_button.disabled = true
 	var args = OS.get_cmdline_user_args()
 	for i in range(args.size() - 1):
@@ -157,7 +162,7 @@ func open_package(path: String) -> bool:
 		message.text = "无法打开 MOD：" + (candidate.error if not candidate.error.is_empty() else session.error)
 		if not _preview_stop_file.is_empty(): printerr("[Native preview] " + message.text)
 		return false
-	_held.clear()
+	walk_input.clear()
 	saves.envelope_extensions = {}
 	saves.source_origin = "normal"
 	saves.migrations = []
@@ -172,10 +177,10 @@ func open_package(path: String) -> bool:
 func _fit_world() -> void:
 	if session.state.is_empty(): return
 	var map_data: Dictionary = session.package.index.maps[session.package.index.scenes[session.state.cursor.scene_id].map_id]
-	var pixels = Vector2(map_data.width * map_data.coordinates.tile_width, map_data.height * map_data.coordinates.tile_height)
-	var scale_value: float = minf((viewport.size.x - 32.0) / pixels.x, (viewport.size.y - 32.0) / pixels.y)
+	var bounds: Rect2 = MapProjection.bounds(map_data)
+	var scale_value: float = minf((viewport.size.x - 32.0) / bounds.size.x, (viewport.size.y - 32.0) / bounds.size.y)
 	world_view.scale = Vector2.ONE * scale_value
-	world_view.position = (Vector2(viewport.size) - pixels * scale_value) / 2.0 + Vector2(map_data.coordinates.tile_width, map_data.coordinates.tile_height) * scale_value / 2.0 - Vector2(map_data.coordinates.origin.x * map_data.coordinates.tile_width, map_data.coordinates.origin.y * map_data.coordinates.tile_height) * scale_value
+	world_view.position = (Vector2(viewport.size) - bounds.size * scale_value) / 2.0 - bounds.position * scale_value
 
 func _refresh() -> void:
 	if not is_instance_valid(roster) or session.state.is_empty(): return
@@ -212,15 +217,15 @@ func _continue(choice_id: String = "") -> void:
 		if not _preview_stop_file.is_empty(): printerr("[Native preview] node=" + session.state.cursor.node_id + " " + session.error)
 
 func _show_picker() -> void:
-	_held.clear()
+	walk_input.clear()
 	picker.popup_centered_ratio(0.8)
 
 func _modal_changed() -> void:
-	_held.clear()
+	walk_input.clear()
 	session.set_modal(picker.visible or save_picker.visible)
 
 func _pause() -> void:
-	_held.clear()
+	walk_input.clear()
 	session.set_pause(not session.paused)
 
 func _save() -> void:
@@ -230,7 +235,7 @@ func _save() -> void:
 
 func _show_saves() -> void:
 	if session.state.is_empty(): return
-	_held.clear()
+	walk_input.clear()
 	for child in save_list.get_children():
 		save_list.remove_child(child)
 		child.queue_free()
@@ -249,12 +254,15 @@ func _show_saves() -> void:
 			else: message.text = saves.error)
 	save_picker.popup_centered()
 
+func _input(event: InputEvent) -> void:
+	# A GUI may consume a release after focus changes; never leave movement held.
+	if event is InputEventKey and not event.pressed: walk_input.key_event(event.keycode, false)
+
 func _unhandled_key_input(event: InputEvent) -> void:
 	if not event is InputEventKey: return
 	if picker.visible or save_picker.visible: return
 	if event.keycode in [KEY_W, KEY_A, KEY_S, KEY_D, KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT]:
-		if event.pressed: _held[event.keycode] = true
-		else: _held.erase(event.keycode)
+		walk_input.key_event(event.keycode, event.pressed, event.echo)
 	if not event.pressed or event.echo: return
 	if event.keycode in [KEY_ENTER, KEY_SPACE]:
 		if not session.interact() and not session.error.is_empty(): message.text = session.error
@@ -265,12 +273,17 @@ func _unhandled_key_input(event: InputEvent) -> void:
 func _physics_process(_delta: float) -> void:
 	if picker.visible or save_picker.visible: return
 	session.tick()
-	var direction = Vector2i.ZERO
-	if _held.has(KEY_LEFT) or _held.has(KEY_A): direction = Vector2i.LEFT
-	elif _held.has(KEY_RIGHT) or _held.has(KEY_D): direction = Vector2i.RIGHT
-	elif _held.has(KEY_UP) or _held.has(KEY_W): direction = Vector2i.UP
-	elif _held.has(KEY_DOWN) or _held.has(KEY_S): direction = Vector2i.DOWN
-	if direction != Vector2i.ZERO: session.move(direction)
+	var now: int = Time.get_ticks_usec()
+	var render_frame: int = Engine.get_process_frames()
+	if movement_frame_allowed(now, render_frame) and session.sample_movement(walk_input): _movement_frame = render_frame
+
+func movement_frame_allowed(now: int, render_frame: int) -> bool:
+	# A stall does not replay keyboard movement through Godot's bounded catch-up.
+	if _last_physics_usec > 0 and now - _last_physics_usec > 250000:
+		_gap_frame = render_frame
+		session.stop_walking()
+	_last_physics_usec = now
+	return _gap_frame != render_frame and (session.movement_rule() != "pal.walk.v1" or _movement_frame != render_frame)
 
 func _process(delta: float) -> void:
 	# Explicit Studio preview only: an empty local marker asks this child to exit.
