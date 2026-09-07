@@ -1,5 +1,14 @@
 # PAL Wanxiang Native preview
 
+Optional `world.regions.v1` adds leader enter/exit rectangles, typed conditions,
+once/repeat/cooldown policies and persistent per-run mutex winners. Overlapping
+crossings run in priority/ID order in one candidate transaction; dialogue queues
+survive saves and transfers clear stale queues. Rules 0.6.0 declare
+`native.regions.v1`. `tests/test_regions.gd <actual Studio region ZIP> <isolated output>`
+covers the author package and explicitly labeled synthetic policy/failure cases.
+The owner contract `docs/native-regions-v1.md` documents draft migration, graph
+budgets and save checks. This does not implement every PRD event or Echo credit.
+
 Optional `story.conditions.v1` adds bounded typed condition trees to existing
 `branch` nodes. `native_condition.gd` evaluates declared scopes against the same
 candidate transaction as preceding `set` effects; errors roll back the activation.

@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: MIT
 extends RefCounted
+const Regions = preload("res://src/native_regions.gd")
 const Condition = preload("res://src/native_condition.gd")
 signal changed
 const Package = preload("res://src/native_package.gd")
@@ -38,6 +39,7 @@ func activate(candidate, now_usec: int = -1) -> bool:
 		var definition: Dictionary = package.index.actor_definitions[source.definition_id]
 		state.entities.append({"entity_kind": "actor", "component_schema_version": 1, "instance_id": source.instance_id, "definition_id": source.definition_id, "scene_id": source.scene_id, "position": source.position.duplicate(), "hp": definition.max_hp, "mp": definition.max_mp, "components": {"pal.native.pose": {"facing": source.facing, "moving_until_tick": 0, "step_phase": 0}}})
 	for variable in world.variables: state.scopes[variable.scope][variable.id] = variable.initial
+	Regions.initialize(world, state)
 	error = PartyTrail.reseed(package, state, world.active_party)
 	if not error.is_empty() or not _advance(world.entry_node):
 		package = previous_package
@@ -103,9 +105,37 @@ func _interact_node(node_id: String) -> bool:
 
 func _advance(first: String) -> bool:
 	var candidate: Dictionary = state.duplicate(true)
+	var budget: Dictionary = {"remaining": 1024, "planning": {"remaining": PartyTrail.MAX_VISITS}}
+	if not _execute(candidate, first, budget) or not _drain_regions(candidate, budget): return false
+	candidate.state_revision += 1
+	_publish(candidate)
+	return true
+
+func _publish(candidate: Dictionary) -> void:
+	var transferred: bool = SceneTravel.revision(candidate) != SceneTravel.revision(state)
+	state = candidate
+	if transferred: _move_tick = int(state.clock.logic_tick) - movement_ticks()
+	dialogue_open = current_node().op != "end"
+	error = ""
+
+func _drain_regions(candidate: Dictionary, budget: Dictionary) -> bool:
+	while package.index.nodes[candidate.cursor.node_id].op == "end":
+		var event: Dictionary = Regions.next_event(package, candidate)
+		if event.has("error"):
+			error = event.error
+			return false
+		if event.is_empty(): return true
+		if not _execute(candidate, event.node_id, budget): return false
+	return true
+
+func _execute(candidate: Dictionary, first: String, budget: Dictionary) -> bool:
 	var next: String = first
-	var planning_budget: Dictionary = {"remaining": PartyTrail.MAX_VISITS}
-	for _step in range(1024):
+	var planning_budget: Dictionary = budget.planning
+	while budget.remaining > 0:
+		budget.remaining -= 1
+		if not package.index.nodes.has(next):
+			error = "unresolved story target; state retained"
+			return false
 		var node: Dictionary = package.index.nodes[next]
 		candidate.cursor.node_id = next
 		candidate.cursor.safe_point_id = null
@@ -114,11 +144,6 @@ func _advance(first: String) -> bool:
 				candidate.cursor.safe_point_id = point.id
 				break
 		if node.op in ["dialogue", "choice", "end"]:
-			candidate.state_revision += 1
-			var transferred: bool = SceneTravel.revision(candidate) != SceneTravel.revision(state)
-			state = candidate
-			if transferred: _move_tick = int(state.clock.logic_tick) - movement_ticks()
-			error = ""
 			return true
 		var executor: Dictionary = candidate.extensions["pal.native.executor"]
 		var effect_id: String = "effect." + Schema.digest(JSON.stringify([candidate.run_id, executor.activation, executor.step, next]).to_utf8_buffer())
@@ -145,6 +170,7 @@ func _advance(first: String) -> bool:
 			"scene_transfer":
 				error = SceneTravel.prepare(package, candidate, node)
 				if not error.is_empty(): return false
+				Regions.clear_pending(candidate)
 				error = PartyTrail.reseed(package, candidate, candidate.active_party, true, planning_budget)
 				if not error.is_empty(): return false
 				candidate.committed_effect_ids.append(effect_id)
@@ -201,7 +227,25 @@ func set_modal(value: bool, now_usec: int = -1) -> void:
 
 func move(direction: Vector2i) -> bool:
 	if state.is_empty() or paused or modal or not focused or dialogue_open or absi(direction.x) + absi(direction.y) > 1: return false
-	if PartyTrail.used(package.world): return _move_trail(direction)
+	var before: Dictionary = state
+	var before_tick: int = _move_tick
+	state = before.duplicate(true)
+	var moved: bool = _move_trail(direction) if PartyTrail.used(package.world) else _move_legacy(direction)
+	var candidate: Dictionary = state
+	state = before
+	if not moved:
+		_move_tick = before_tick
+		return false
+	error = Regions.enqueue(package, before, candidate)
+	var budget: Dictionary = {"remaining": 1024, "planning": {"remaining": PartyTrail.MAX_VISITS}}
+	if not error.is_empty() or not _drain_regions(candidate, budget):
+		_move_tick = before_tick
+		return false
+	_publish(candidate)
+	changed.emit()
+	return true
+
+func _move_legacy(direction: Vector2i) -> bool:
 	if direction == Vector2i.ZERO: return false
 	if state.clock.logic_tick - _move_tick < movement_ticks(): return false
 	var leader: Dictionary = entity(state.active_party[0])
@@ -222,7 +266,6 @@ func move(direction: Vector2i) -> bool:
 		previous = old
 	_move_tick = state.clock.logic_tick
 	state.state_revision += 1
-	changed.emit()
 	return true
 
 func _move_trail(direction: Vector2i) -> bool:
@@ -237,7 +280,6 @@ func _move_trail(direction: Vector2i) -> bool:
 	state = candidate
 	_move_tick = int(state.clock.logic_tick)
 	error = ""
-	changed.emit()
 	return true
 
 func _mark_motion(actor: Dictionary, delta: Vector2i) -> void:
@@ -259,6 +301,8 @@ func validate_saved(candidate: Dictionary) -> String:
 	issue = SceneTravel.validate_state(package, candidate)
 	if not issue.is_empty(): return issue
 	issue = PartyTrail.validate_state(package, candidate)
+	if not issue.is_empty(): return issue
+	issue = Regions.validate_state(package, candidate)
 	if not issue.is_empty(): return issue
 	if candidate.cursor.safe_point_id == null: return "live cursor is not a save boundary"
 	for key in ["runtime_id", "package_id", "profile_id", "content_lock", "ruleset_id", "ruleset_hash"]:

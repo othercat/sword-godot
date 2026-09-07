@@ -414,6 +414,112 @@
     "extensions": {
       "type": "object",
       "properties": {
+        "pal.native.regions": {
+          "type": "object",
+          "required": [
+            "version",
+            "sequence",
+            "pending",
+            "fired",
+            "mutex"
+          ],
+          "properties": {
+            "version": {
+              "const": 1
+            },
+            "sequence": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "pending": {
+              "type": "array",
+              "minItems": 0,
+              "maxItems": 256,
+              "items": {
+                "type": "object",
+                "required": [
+                  "trigger_id",
+                  "scene_id",
+                  "sequence",
+                  "tick",
+                  "from",
+                  "to"
+                ],
+                "properties": {
+                  "trigger_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  },
+                  "scene_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  },
+                  "sequence": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  },
+                  "tick": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "from": {
+                    "type": "object",
+                    "required": [
+                      "x",
+                      "y"
+                    ],
+                    "properties": {
+                      "x": {
+                        "type": "integer",
+                        "minimum": -1000000,
+                        "maximum": 1000000
+                      },
+                      "y": {
+                        "type": "integer",
+                        "minimum": -1000000,
+                        "maximum": 1000000
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "to": {
+                    "type": "object",
+                    "required": [
+                      "x",
+                      "y"
+                    ],
+                    "properties": {
+                      "x": {
+                        "type": "integer",
+                        "minimum": -1000000,
+                        "maximum": 1000000
+                      },
+                      "y": {
+                        "type": "integer",
+                        "minimum": -1000000,
+                        "maximum": 1000000
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "fired": {
+              "type": "object"
+            },
+            "mutex": {
+              "type": "object"
+            }
+          },
+          "additionalProperties": false
+        },
         "pal.native.party-trail": {
           "type": "object",
           "required": ["revision", "scene_id", "next_tick", "followers"],

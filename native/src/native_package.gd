@@ -8,8 +8,9 @@ const Terrain = preload("res://src/native_terrain.gd")
 const TexturePolicy = preload("res://src/native_texture.gd")
 const SceneTravel = preload("res://src/native_scene_travel.gd")
 const Condition = preload("res://src/native_condition.gd")
+const Regions = preload("res://src/native_regions.gd")
 const PartyTrail = preload("res://src/native_party_trail.gd")
-const CAPABILITIES = [Condition.CAPABILITY, PartyTrail.CAPABILITY, SceneTravel.CAPABILITY, "package.local-preview.v1", "world.tile-layers.v1", "world.isometric.v1", "movement.pal-walk.v1", "world.orthogonal.v1", "party.roster.v1", "story.dialogue.v1", "story.choice.v1", "story.variables.v1", MapAnimation.CAPABILITY]
+const CAPABILITIES = [Regions.CAPABILITY, Condition.CAPABILITY, PartyTrail.CAPABILITY, SceneTravel.CAPABILITY, "package.local-preview.v1", "world.tile-layers.v1", "world.isometric.v1", "movement.pal-walk.v1", "world.orthogonal.v1", "party.roster.v1", "story.dialogue.v1", "story.choice.v1", "story.variables.v1", MapAnimation.CAPABILITY]
 const RULES = {"schema": "pal.native.ruleset.v1", "id": "pal.native.story-core.v1", "version": "0.1.0", "operations": ["dialogue", "choice", "set", "branch", "party", "end"], "variable_assignment": "declared_type_and_scope", "save_phase": "before_node"}
 var error: String = ""
 var manifest: Dictionary = {}
@@ -213,6 +214,9 @@ func _references() -> bool:
 			if index.entities[id].scene_id != world.entry_scene: return _fail("initial trail party must share entry scene")
 			for other in world.entities:
 				if other.instance_id not in world.active_party and other.scene_id == world.entry_scene and other.position == index.entities[id].position: return _fail("initial trail party overlaps inactive actor")
+	var region_issue: String = Regions.validate(self)
+	if not region_issue.is_empty(): return _fail(region_issue)
+	if Regions.used(world) and Regions.CAPABILITY not in manifest.required_capabilities: return _fail("missing region capability")
 	var travel_issue: String = SceneTravel.validate(self)
 	if not travel_issue.is_empty(): return _fail(travel_issue)
 	return true
@@ -255,4 +259,7 @@ static func expected_rules(content: Dictionary) -> Dictionary:
 	if Condition.used(content):
 		result.version = "0.5.0"
 		result.conditions = Condition.RULE
+	if Regions.used(content):
+		result.version = "0.6.0"
+		result.regions = "native.regions.v1"
 	return result

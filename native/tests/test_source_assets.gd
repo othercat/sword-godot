@@ -43,7 +43,7 @@ func _run() -> void:
 	await process_frame
 	app.set_physics_process(false)
 	check(app.open_package(args[0]), "production application activates the actual source package")
-	app.session.dialogue_open = false
+	app.session.advance_dialogue(); app.session.advance_dialogue(app.session.current_node().options[1].id)
 	app.session.set_focus(true)
 	var world = app.world_view
 	world.set_process(false)

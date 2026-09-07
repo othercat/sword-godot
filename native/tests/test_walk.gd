@@ -51,7 +51,8 @@ func _run() -> void:
 	input.clear()
 	check(input.sample("pal.walk.v1") == Vector2i.ZERO, "focus or pause reset clears pending input")
 	var session = Session.new(); session.activate(package, 1000000)
-	session.dialogue_open = false
+	if session.dialogue_open:
+		session.advance_dialogue(); session.advance_dialogue(session.current_node().options[1].id)
 	var leader_id: String = session.state.active_party[0]
 	var leader: Dictionary = session.entity(leader_id)
 	var before: Dictionary = leader.position.duplicate()
@@ -103,7 +104,8 @@ func _run() -> void:
 	for _tick in range(6): session.tick()
 	session.move(Vector2i.UP)
 	check(saves.load_into(session, saves.generations(session)[0].path), "actual save restores named movement state")
-	session.dialogue_open = false
+	if session.dialogue_open:
+		session.advance_dialogue(); session.advance_dialogue(session.current_node().options[1].id)
 	check(session.state.extensions["pal.native.walk"] == save_snapshot.extensions["pal.native.walk"], "save retains next input sample tick")
 	check(not session.move(Vector2i.DOWN), "load cannot bypass remaining movement cooldown")
 	for _tick in range(6): session.tick()
@@ -123,7 +125,7 @@ func _run() -> void:
 	bad = session.snapshot(); bad.entities[-1].scene_id = "scene.test.grid"
 	check(not session.restore(bad) and session.error.contains("PAL phase"), "saved phase actor cannot switch to unsupported grid rules")
 	for fps in [30, 60, 100, 144, 240]:
-		var replay = Session.new(); replay.activate(package, 0); replay.dialogue_open = false
+		var replay = Session.new(); replay.activate(package, 0); replay.advance_dialogue(); replay.advance_dialogue(replay.current_node().options[1].id)
 		var ticks: int = 0; var moves: int = 0
 		var held = WalkInput.new(); held.key_event(KEY_DOWN, true)
 		for frame in range(fps):
@@ -134,7 +136,7 @@ func _run() -> void:
 	world.queue_free(); await process_frame
 	var app = AppScene.instantiate(); root.add_child(app); await process_frame
 	app.set_physics_process(false); check(app.open_package(args[0]), "actual application accepts PAL-rule package")
-	app.session.dialogue_open = false; app.session.set_focus(true)
+	app.session.advance_dialogue(); app.session.advance_dialogue(app.session.current_node().options[1].id); app.session.set_focus(true)
 	app._last_physics_usec = 1000000
 	check(not app.movement_frame_allowed(1500000, 10) and not app.movement_frame_allowed(1500100, 10), "500 ms stall suppresses all catch-up movement in the same render frame")
 	check(app.movement_frame_allowed(1516667, 11), "next rendered frame can resume after scheduling gap")

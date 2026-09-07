@@ -31,7 +31,7 @@ func _run() -> void:
 	if app.session.state.is_empty():
 		quit(1)
 		return
-	app.session.dialogue_open = false; app.session.set_focus(true)
+	app.session.advance_dialogue(); app.session.advance_dialogue(app.session.current_node().options[1].id); app.session.set_focus(true)
 	var package = app.session.package
 	var map_data: Dictionary = package.index.maps[package.index.scenes[app.session.state.cursor.scene_id].map_id]
 	var world = app.world_view; world.set_process(false)

@@ -636,6 +636,109 @@
             "minItems": 0,
             "maxItems": 128,
             "description": "Optional explicit interaction on the portal cell. Null reverse_portal declares one-way; otherwise validate a reciprocal pair in the transfer destination scene."
+          },
+          "triggers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "display_name",
+                "event",
+                "region",
+                "node_id",
+                "condition",
+                "policy",
+                "cooldown_ticks",
+                "mutex_group",
+                "priority",
+                "provenance"
+              ],
+              "properties": {
+                "id": {
+                  "$ref": "#/definitions/id"
+                },
+                "display_name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "event": {
+                  "enum": [
+                    "enter",
+                    "exit"
+                  ]
+                },
+                "region": {
+                  "type": "object",
+                  "required": [
+                    "origin",
+                    "width",
+                    "height"
+                  ],
+                  "properties": {
+                    "origin": {
+                      "$ref": "#/definitions/point"
+                    },
+                    "width": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 256
+                    },
+                    "height": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 256
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "node_id": {
+                  "$ref": "#/definitions/id"
+                },
+                "condition": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/definitions/condition"
+                    }
+                  ]
+                },
+                "policy": {
+                  "enum": [
+                    "once",
+                    "repeat",
+                    "cooldown"
+                  ]
+                },
+                "cooldown_ticks": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 216000
+                },
+                "mutex_group": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "priority": {
+                  "type": "integer",
+                  "minimum": -1000,
+                  "maximum": 1000
+                },
+                "provenance": {
+                  "$ref": "#/definitions/provenance"
+                }
+              },
+              "additionalProperties": false
+            },
+            "minItems": 0,
+            "maxItems": 256
           }
         },
         "additionalProperties": false

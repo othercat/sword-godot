@@ -203,6 +203,7 @@ func _follow_world() -> void:
 
 func _refresh() -> void:
 	if not is_instance_valid(roster) or session.state.is_empty(): return
+	if session.dialogue_open: walk_input.clear()
 	var key: String = world_view._history_key(session)
 	if key != _presentation_key:
 		_presentation_key = key
