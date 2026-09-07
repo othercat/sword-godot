@@ -1,0 +1,257 @@
+# SPDX-License-Identifier: MIT
+extends RefCounted
+signal changed
+const Package = preload("res://src/native_package.gd")
+const Schema = preload("res://src/native_schema.gd")
+const TIMING_RULES = "practice.v1;rta=monotonic-including-pause;active=focused-unpaused;load=ineligible;tick=60"
+var package
+var state: Dictionary = {}
+var error: String = ""
+var dialogue_open: bool = true
+var paused: bool = false
+var focused: bool = true
+var modal: bool = false
+var _last_usec: int = 0
+var _move_tick: int = -8
+
+static func unique(prefix: String) -> String:
+	return prefix + "." + Crypto.new().generate_random_bytes(16).hex_encode()
+
+func activate(candidate, now_usec: int = -1) -> bool:
+	# Candidate validation/automatic execution completes before replacing live state.
+	if candidate == null or not candidate.error.is_empty() or candidate.world.is_empty():
+		error = "invalid package candidate"
+		return false
+	var previous_package = package
+	var previous_state = state
+	package = candidate
+	var world: Dictionary = package.world
+	state = {"schema": "pal.native.state.v1", "runtime_id": "pal.wanxiang", "runtime_version": "0.1.0", "build_id": "native.preview.1", "session_id": unique("session"), "timeline_epoch": 0, "state_revision": 0, "profile_id": "profile.local.preview", "run_id": unique("run"), "package_id": world.package_id, "content_lock": package.content_lock, "ruleset_id": package.manifest.ruleset_id, "ruleset_hash": package.manifest.ruleset_hash,
+		"clock": {"logic_tick": 0, "ticks_per_second": 60, "rta_usec": 0, "active_game_usec": 0, "continuity": "continuous", "timing_ruleset": "timing.native.practice.v1", "logic_paused": false, "timing_state": "running", "reason": "playing", "timing_ruleset_hash": Schema.digest(TIMING_RULES.to_utf8_buffer())},
+		"entities": [], "roster": world.roster.duplicate(), "active_party": world.active_party.duplicate(), "narrative_cast": world.narrative_cast.duplicate(), "scopes": {"profile": {}, "run": {}, "chapter": {}},
+		"cursor": {"scene_id": world.entry_scene, "node_id": world.entry_node, "safe_point_id": null, "phase": "before_node"}, "rng": {"algorithm": "pal.native.unused.v1", "state": "unused"}, "committed_effect_ids": [],
+		"extensions": {"pal.native.executor": {"activation": unique("activation"), "step": 0}, "pal.native.timing": {"eligible": false, "reason": "preview-practice"}}}
+	for source in world.entities:
+		var definition: Dictionary = package.index.actor_definitions[source.definition_id]
+		state.entities.append({"entity_kind": "actor", "component_schema_version": 1, "instance_id": source.instance_id, "definition_id": source.definition_id, "scene_id": source.scene_id, "position": source.position.duplicate(), "hp": definition.max_hp, "mp": definition.max_mp, "components": {"pal.native.pose": {"facing": source.facing, "moving_until_tick": 0}}})
+	for variable in world.variables: state.scopes[variable.scope][variable.id] = variable.initial
+	if not _advance(world.entry_node):
+		package = previous_package
+		state = previous_state
+		return false
+	_last_usec = Time.get_ticks_usec() if now_usec < 0 else now_usec
+	_move_tick = -8
+	paused = false
+	modal = false
+	dialogue_open = current_node().op != "end"
+	changed.emit()
+	return true
+
+func current_node() -> Dictionary:
+	return {} if state.is_empty() else package.index.nodes[state.cursor.node_id]
+
+func entity(id: String) -> Dictionary:
+	for item in state.entities:
+		if item.instance_id == id: return item
+	return {}
+
+func advance_dialogue(choice_id: String = "") -> bool:
+	if state.is_empty() or paused or modal or not focused or not dialogue_open: return false
+	var node: Dictionary = current_node()
+	var target: String = ""
+	if node.op == "dialogue": target = node.next
+	elif node.op == "choice":
+		for choice in node.options:
+			if choice.id == choice_id: target = choice.next
+	if target.is_empty(): return false
+	if not _advance(target): return false
+	dialogue_open = current_node().op != "end"
+	changed.emit()
+	return true
+
+func interact() -> bool:
+	if state.is_empty() or paused or modal or not focused: return false
+	if dialogue_open: return advance_dialogue()
+	var leader: Dictionary = entity(state.active_party[0])
+	for source in package.world.entities:
+		var target: Dictionary = entity(source.instance_id)
+		if source.interaction_node == null or target.scene_id != leader.scene_id: continue
+		if abs(target.position.x - leader.position.x) + abs(target.position.y - leader.position.y) <= 1:
+			var old = state.duplicate(true)
+			state.extensions["pal.native.executor"] = {"activation": unique("activation"), "step": 0}
+			if not _advance(source.interaction_node):
+				state = old
+				return false
+			dialogue_open = current_node().op != "end"
+			changed.emit()
+			return true
+	return false
+
+func _advance(first: String) -> bool:
+	var candidate: Dictionary = state.duplicate(true)
+	var next: String = first
+	for _step in range(1024):
+		var node: Dictionary = package.index.nodes[next]
+		candidate.cursor.node_id = next
+		candidate.cursor.safe_point_id = null
+		for point in package.world.safe_points:
+			if point.scene_id == candidate.cursor.scene_id and point.node_id == next:
+				candidate.cursor.safe_point_id = point.id
+				break
+		if node.op in ["dialogue", "choice", "end"]:
+			candidate.state_revision += 1
+			state = candidate
+			error = ""
+			return true
+		var executor: Dictionary = candidate.extensions["pal.native.executor"]
+		var effect_id: String = "effect." + Schema.digest(JSON.stringify([candidate.run_id, executor.activation, executor.step, next]).to_utf8_buffer())
+		executor.step += 1
+		match node.op:
+			"set":
+				var scope: String = package.index.variables[node.variable].scope
+				candidate.scopes[scope][node.variable] = node.value
+				candidate.committed_effect_ids.append(effect_id)
+				next = node.next
+			"party":
+				for member in node.members:
+					var actor: Dictionary = entity(member)
+					if actor.scene_id != candidate.cursor.scene_id:
+						error = "party member is outside current scene; state retained"
+						return false
+				candidate.active_party = node.members.duplicate()
+				candidate.committed_effect_ids.append(effect_id)
+				next = node.next
+			"branch":
+				var scope: String = package.index.variables[node.variable].scope
+				next = node.then if Schema.equal(candidate.scopes[scope][node.variable], node.equals) else node["else"]
+		if candidate.committed_effect_ids.size() > 100000:
+			error = "effect history limit; state retained"
+			return false
+	error = "automatic node budget exceeded; state retained"
+	return false
+
+func tick() -> void:
+	if state.is_empty() or paused or modal or not focused: return
+	state.clock.logic_tick += 1
+	state.state_revision += 1
+
+func account_time(now_usec: int) -> void:
+	if state.is_empty(): return
+	var elapsed: int = maxi(0, now_usec - _last_usec)
+	_last_usec = maxi(_last_usec, now_usec)
+	state.clock.rta_usec += elapsed
+	if not paused and not modal and focused: state.clock.active_game_usec += elapsed
+	if elapsed > 5000000: state.clock.continuity = "gap"
+	state.clock.logic_paused = paused or modal or not focused
+	state.clock.timing_state = "excluded" if paused or modal or not focused else "running"
+	state.clock.reason = "user_pause" if paused or modal else ("playing" if focused else "unfocused")
+
+func set_pause(value: bool, now_usec: int = -1) -> void:
+	account_time(Time.get_ticks_usec() if now_usec < 0 else now_usec)
+	paused = value
+	account_time(_last_usec)
+	changed.emit()
+
+func set_focus(value: bool, now_usec: int = -1) -> void:
+	account_time(Time.get_ticks_usec() if now_usec < 0 else now_usec)
+	focused = value
+	account_time(_last_usec)
+	changed.emit()
+
+func set_modal(value: bool, now_usec: int = -1) -> void:
+	account_time(Time.get_ticks_usec() if now_usec < 0 else now_usec)
+	modal = value
+	account_time(_last_usec)
+	changed.emit()
+
+func move(direction: Vector2i) -> bool:
+	if state.is_empty() or paused or modal or not focused or dialogue_open or absi(direction.x) + absi(direction.y) != 1: return false
+	if state.clock.logic_tick - _move_tick < 8: return false
+	var leader: Dictionary = entity(state.active_party[0])
+	var point: Dictionary = {"x": leader.position.x + direction.x, "y": leader.position.y + direction.y}
+	if not package.can_stand(leader.scene_id, point): return false
+	for other in state.entities:
+		if other.instance_id not in state.active_party and other.scene_id == leader.scene_id and other.position == point: return false
+	# Every active member follows the previous member's authoritative tile.
+	var previous = leader.position.duplicate()
+	leader.position = point
+	_mark_motion(leader, direction)
+	for i in range(1, state.active_party.size()):
+		var follower: Dictionary = entity(state.active_party[i])
+		var old = follower.position.duplicate()
+		follower.position = previous
+		follower.scene_id = leader.scene_id
+		_mark_motion(follower, Vector2i(previous.x - old.x, previous.y - old.y))
+		previous = old
+	_move_tick = state.clock.logic_tick
+	state.state_revision += 1
+	changed.emit()
+	return true
+
+func _mark_motion(actor: Dictionary, delta: Vector2i) -> void:
+	if delta == Vector2i.ZERO: return
+	var pose: Dictionary = actor.components["pal.native.pose"]
+	pose.facing = ("right" if delta.x > 0 else "left") if absi(delta.x) > absi(delta.y) else ("down" if delta.y > 0 else "up")
+	pose.moving_until_tick = int(state.clock.logic_tick) + 8
+
+func snapshot() -> Dictionary:
+	return state.duplicate(true)
+
+func can_save() -> bool:
+	return not state.is_empty() and state.cursor.safe_point_id != null
+
+func validate_saved(candidate: Dictionary) -> String:
+	var issue: String = package.schema.validate("pal.native.state.v1", candidate)
+	if not issue.is_empty(): return issue
+	if candidate.cursor.safe_point_id == null: return "live cursor is not a save boundary"
+	for key in ["runtime_id", "package_id", "profile_id", "content_lock", "ruleset_id", "ruleset_hash"]:
+		if candidate[key] != state[key]: return "save identity mismatch: " + key
+	if candidate.clock.ticks_per_second != 60 or candidate.clock.timing_ruleset_hash != state.clock.timing_ruleset_hash or candidate.rng != state.rng: return "unsupported save clock/RNG"
+	var safe = package.index.safe_points.get(candidate.cursor.safe_point_id)
+	if safe == null or safe.scene_id != candidate.cursor.scene_id or safe.node_id != candidate.cursor.node_id: return "save cursor/safe-point mismatch"
+	if package.index.nodes[candidate.cursor.node_id].op not in ["dialogue", "choice", "end"]: return "save cursor is not a waiting boundary"
+	var ids: Dictionary = {}
+	for item in candidate.entities:
+		if ids.has(item.instance_id) or not package.index.entities.has(item.instance_id): return "invalid saved entity identity"
+		ids[item.instance_id] = true
+		if item.definition_id != package.index.entities[item.instance_id].definition_id: return "saved definition changed"
+		var definition: Dictionary = package.index.actor_definitions[item.definition_id]
+		if item.hp > definition.max_hp or item.mp > definition.max_mp or not package.can_stand(item.scene_id, item.position): return "saved stat/position range"
+		var pose = item.components.get("pal.native.pose")
+		if not pose is Dictionary or pose.get("facing") not in ["up", "down", "left", "right"]: return "missing pose component"
+		if int(pose.get("moving_until_tick", 0)) > int(candidate.clock.logic_tick) + 8: return "saved movement deadline outside supported window"
+	if ids.size() != package.world.entities.size(): return "save entity set mismatch"
+	if candidate.active_party.is_empty(): return "this runtime requires an active party leader"
+	for key in ["roster", "active_party", "narrative_cast"]:
+		for id in candidate[key]:
+			if not ids.has(id): return "unresolved saved " + key
+	for id in candidate.active_party:
+		if id not in candidate.roster: return "saved party outside roster"
+		for item in candidate.entities:
+			if item.instance_id == id and item.scene_id != candidate.cursor.scene_id: return "active party must share the current scene"
+	for variable in package.world.variables:
+		if not Schema.is_type(candidate.scopes[variable.scope].get(variable.id), variable.type): return "saved variable type mismatch"
+	var executor = candidate.extensions.get("pal.native.executor")
+	if not executor is Dictionary or not executor.get("activation") is String or not Schema.is_type(executor.get("step"), "integer") or executor.step < 0: return "missing executor resume state"
+	return ""
+
+func restore(candidate: Dictionary, now_usec: int = -1) -> bool:
+	error = validate_saved(candidate)
+	if not error.is_empty(): return false
+	account_time(Time.get_ticks_usec() if now_usec < 0 else now_usec)
+	var old = state
+	state = candidate.duplicate(true)
+	state.session_id = old.session_id
+	state.timeline_epoch = old.timeline_epoch + 1
+	state.state_revision = old.state_revision + 1
+	state.clock.rta_usec = maxi(old.clock.rta_usec, state.clock.rta_usec)
+	state.clock.active_game_usec = maxi(old.clock.active_game_usec, state.clock.active_game_usec)
+	state.clock.continuity = "gap"
+	state.extensions["pal.native.timing"] = {"eligible": false, "reason": "save-load-practice"}
+	_move_tick = int(state.clock.logic_tick) - 8
+	for item in state.entities:
+		_move_tick = maxi(_move_tick, int(item.components["pal.native.pose"].get("moving_until_tick", 0)) - 8)
+	dialogue_open = current_node().op != "end"
+	account_time(_last_usec)
+	changed.emit()
+	return true

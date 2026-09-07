@@ -1,0 +1,23 @@
+; Independent Native project. No parent autoloads, assets, plugins or scripts.
+config_version=5
+
+[application]
+native_api="pal.native.runtime.v1"
+config/name="仙剑·万相"
+run/main_scene="res://scenes/main.tscn"
+config/features=PackedStringArray("4.7", "GL Compatibility")
+config/use_custom_user_dir=true
+config/custom_user_dir_name="PALWanxiang/NativePreview"
+
+[display]
+window/size/viewport_width=1280
+window/size/viewport_height=800
+window/stretch/mode="canvas_items"
+
+[rendering]
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+environment/defaults/default_clear_color=Color(0.055, 0.073, 0.085, 1)
+
+[physics]
+common/physics_ticks_per_second=60

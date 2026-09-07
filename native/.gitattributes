@@ -1,0 +1,2 @@
+# Exact schema bytes participate in content locks on every host.
+contracts/* text eol=lf

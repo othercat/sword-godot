@@ -1,0 +1,498 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://othercat.github.io/pal98-runtime-contracts/schemas/pal.native.state.v1.schema.json",
+  "title": "pal.native.state.v1",
+  "description": "Draft for PAL Wanxiang. Independent of PAL98 Legacy ABI. Unsupported versions and required capabilities must be rejected.",
+  "x-status": "draft",
+  "type": "object",
+  "required": [
+    "schema",
+    "runtime_id",
+    "runtime_version",
+    "build_id",
+    "session_id",
+    "timeline_epoch",
+    "state_revision",
+    "profile_id",
+    "run_id",
+    "package_id",
+    "content_lock",
+    "ruleset_id",
+    "ruleset_hash",
+    "clock",
+    "entities",
+    "roster",
+    "active_party",
+    "narrative_cast",
+    "scopes",
+    "cursor",
+    "rng",
+    "committed_effect_ids",
+    "extensions"
+  ],
+  "properties": {
+    "schema": {
+      "const": "pal.native.state.v1"
+    },
+    "runtime_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+    },
+    "runtime_version": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "build_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "session_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+    },
+    "timeline_epoch": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "state_revision": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "profile_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+    },
+    "package_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+    },
+    "content_lock": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "ruleset_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+    },
+    "ruleset_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "clock": {
+      "type": "object",
+      "required": [
+        "logic_tick",
+        "ticks_per_second",
+        "rta_usec",
+        "active_game_usec",
+        "continuity",
+        "timing_ruleset",
+        "logic_paused",
+        "timing_state",
+        "reason",
+        "timing_ruleset_hash"
+      ],
+      "properties": {
+        "logic_tick": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "ticks_per_second": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000
+        },
+        "rta_usec": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "active_game_usec": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "continuity": {
+          "type": "string",
+          "enum": [
+            "continuous",
+            "gap",
+            "unknown"
+          ]
+        },
+        "timing_ruleset": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+        },
+        "logic_paused": {
+          "type": "boolean"
+        },
+        "timing_state": {
+          "type": "string",
+          "enum": [
+            "running",
+            "excluded",
+            "unknown"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "playing",
+            "user_pause",
+            "unfocused",
+            "loading",
+            "suspended",
+            "unknown"
+          ]
+        },
+        "timing_ruleset_hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "entities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "instance_id",
+          "definition_id",
+          "scene_id",
+          "position",
+          "hp",
+          "mp",
+          "components",
+          "entity_kind",
+          "component_schema_version"
+        ],
+        "properties": {
+          "instance_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+          },
+          "definition_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+          },
+          "scene_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+          },
+          "position": {
+            "type": "object",
+            "required": [
+              "x",
+              "y"
+            ],
+            "properties": {
+              "x": {
+                "type": "integer",
+                "minimum": -1000000,
+                "maximum": 1000000
+              },
+              "y": {
+                "type": "integer",
+                "minimum": -1000000,
+                "maximum": 1000000
+              }
+            },
+            "additionalProperties": false
+          },
+          "hp": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000
+          },
+          "mp": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000
+          },
+          "components": {
+            "type": "object",
+            "properties": {
+              "pal.native.pose": {
+                "type": "object",
+                "required": [
+                  "facing"
+                ],
+                "properties": {
+                  "facing": {
+                    "enum": [
+                      "up",
+                      "down",
+                      "left",
+                      "right"
+                    ]
+                  },
+                  "moving_until_tick": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "additionalProperties": true
+              }
+            }
+          },
+          "entity_kind": {
+            "const": "actor"
+          },
+          "component_schema_version": {
+            "const": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "minItems": 0,
+      "maxItems": 10000
+    },
+    "roster": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128,
+        "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+      },
+      "minItems": 0,
+      "maxItems": 10000,
+      "uniqueItems": true
+    },
+    "active_party": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128,
+        "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+      },
+      "minItems": 0,
+      "maxItems": 32,
+      "uniqueItems": true
+    },
+    "narrative_cast": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128,
+        "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+      },
+      "minItems": 0,
+      "maxItems": 10000,
+      "uniqueItems": true
+    },
+    "scopes": {
+      "type": "object",
+      "required": [
+        "profile",
+        "run",
+        "chapter"
+      ],
+      "properties": {
+        "profile": {
+          "type": "object"
+        },
+        "run": {
+          "type": "object"
+        },
+        "chapter": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
+    "cursor": {
+      "type": "object",
+      "required": [
+        "scene_id",
+        "node_id",
+        "safe_point_id",
+        "phase"
+      ],
+      "properties": {
+        "scene_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+        },
+        "node_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+        },
+        "safe_point_id": {
+          "description": "Null for a live cursor outside a declared save boundary. A persisted save payload must name a matching registered safe point.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+        },
+        "phase": {
+          "const": "before_node"
+        }
+      },
+      "additionalProperties": false
+    },
+    "rng": {
+      "type": "object",
+      "required": [
+        "algorithm",
+        "state"
+      ],
+      "properties": {
+        "algorithm": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+        },
+        "state": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        }
+      },
+      "additionalProperties": false
+    },
+    "committed_effect_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128,
+        "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+      },
+      "minItems": 0,
+      "maxItems": 100000,
+      "uniqueItems": true
+    },
+    "extensions": {
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+    },
+    "hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "point": {
+      "type": "object",
+      "required": [
+        "x",
+        "y"
+      ],
+      "properties": {
+        "x": {
+          "type": "integer",
+          "minimum": -1000000,
+          "maximum": 1000000
+        },
+        "y": {
+          "type": "integer",
+          "minimum": -1000000,
+          "maximum": 1000000
+        }
+      },
+      "additionalProperties": false
+    },
+    "provenance": {
+      "type": "object",
+      "required": [
+        "source_id",
+        "status",
+        "source_beat_ids"
+      ],
+      "properties": {
+        "source_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "synthetic",
+            "author-choice",
+            "draft-adaptation",
+            "approved"
+          ]
+        },
+        "source_beat_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+          },
+          "minItems": 0,
+          "maxItems": 100,
+          "uniqueItems": true
+        },
+        "source_revision": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 128
+        }
+      },
+      "additionalProperties": false
+    },
+    "extensions": {
+      "type": "object"
+    },
+    "value": {
+      "type": [
+        "boolean",
+        "integer",
+        "string"
+      ]
+    }
+  }
+}
