@@ -50,8 +50,20 @@ High refresh display/hardware acceptance remains separate from synthetic tests.
   synthetic texture test preserves its resolution. Map idle/walk clips now have
   explicit per-frame microsecond timing, PNG dimensions, foot anchors and scale,
   directional fallback, and the required `graphics.map-animation.v1` capability.
-  Corrupt declared assets reject the package. Audio/font payloads, battle clips,
-  multi-layer/depth masks and DOS/Win legacy codecs are not implemented yet.
+  Corrupt declared assets reject the package. RGB/RGBA uses truecolor textures,
+  without a 256-color quantizer. Transparent-edge preparation changes only
+  invisible RGB: all nonzero-alpha source pixels are restored after the engine's
+  edge fix, preserving low-alpha effects. Original PNG bytes/hashes are unchanged.
+  Audio/font payloads, battle clips, depth masks and DOS/Win legacy codecs are not
+  implemented yet.
+- Optional `world.tile-layers.v1` terrain: explicit available cells, PNG tiles,
+  image dimensions/anchors/scales, flat layers and actor-shared Y-sorted layers.
+  Spawn, movement and saved positions reject rectangle gaps. Flat layers share
+  one padded TileSet when their scale permits the atlas path; other scales use
+  CanvasItem texture drawing without downsampling. A sort offset changes depth,
+  not raster placement. Real maps use a clamped following camera at a current
+  fixed 2x view; absent terrain retains the diagnostic map. The imported Legacy
+  height policy is a declared approximation, not original-game occlusion parity.
 - Save envelope + state payload hash validation, write/verify/publish of a new
   immutable ZIP generation, incomplete generations ignored, failure retains old
   state, epoch rebinding and RTA never rewinds. Unknown extension data and modified
@@ -83,6 +95,7 @@ godot --path . --script res://tests/test_ui.gd -- <package> <scratch>
 godot --path . --script res://tests/test_animation.gd -- <animation-fixture-package> <scratch>
 godot --path . --script res://tests/test_walk.gd -- <pal-walking-fixture-package> <scratch>
 godot --path . --script res://tests/test_source_assets.gd -- <local-source-preview-package> <scratch>
+godot --path . --script res://tests/test_terrain.gd -- <local-terrain-preview-package> <scratch> <independent-flat-map-reference.png>
 ```
 
 The UI test injects engine mouse/keyboard input into the same application and
@@ -92,9 +105,12 @@ real-resource, battle, high-refresh-device, Windows ARM64/macOS/Linux acceptance
 
 The animation fixture is built by the actual Studio from eight generated geometric
 RGBA images; the product `run_animation_checks.py` reproduces it without reading
-game/art references. Thirty-two window checks cover variable-sized frame anchors,
+game/art references. Thirty-nine window checks cover variable-sized frame anchors,
 10ms timing without a logic tick, pause, per-instance facing, save cooldown/history
-reset and malformed package rejection. No formal Miaopang art is implied.
+reset and malformed package rejection. They also preserve 4,099 opaque RGB colors
+per frame and all 256 alpha levels through the package and runtime textures, with
+GPU readback and a raw-versus-prepared linear-filter edge comparison. No formal
+Miaopang art, HDR/color-management or cross-device acceptance is implied.
 
 The additional PAL walking fixture uses twelve geometric PNGs and the real Studio
 compiler. Fifty-six checks cover projection, direction edges/aliases, all four
@@ -104,7 +120,8 @@ Optional `pal.walk-phase.v1` playback uses three authored stride frames; time-ba
 HD clips remain available. Save input cadence and pose phase are logic facts;
 render interpolation/GPU history are reset on load. No real assets or physical
 human acceptance are claimed for that synthetic suite. Shared snapshot receipt:
-0bc555a8ad3678d7b58d0ddd6e248b63b8f27279 (schema bytes unchanged by the preview extension).
+40ca20946668c7af6f97914a3797c66db6e1cd47. Terrain changes the exact draft schema
+hash; older source can be rebuilt, while old package/save identities are retained.
 
 The parameterized source suite separately exercises two imported 12-frame groups
 through the production application: 119 checks cover all directions and stride
@@ -112,6 +129,13 @@ phases, texture-foot anchors, collision, save/load history, distribution-marker
 rejection and retained sessions. The test accepts a locally supplied Studio package;
 no original images are stored here. Its map/story remain synthetic; no HD artwork,
 full map occlusion, original resource-set lineage or complete playthrough is certified.
+
+The terrain suite accepts local resources without storing them in this repository.
+It covers actual tile/collision counts, shared flat atlases, unavailable cells,
+four-member movement/save/load and following view, plus full flat-map GPU comparison
+against a supplied exporter image. Synthetic cases separately cover HD scale and
+front/back/equal-depth ordering. Neither those cases nor the flat image comparison
+establish Legacy actor occlusion or a complete playthrough.
 
 Shared contract snapshots are refreshed only with:
 

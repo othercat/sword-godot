@@ -81,9 +81,11 @@ func _run() -> void:
 	for _tick in range(6): app.session.tick()
 	var blocked: Dictionary = {"x": leader.position.x, "y": leader.position.y + 1}
 	map_data.blocked.append(blocked)
+	app.session.package.map_blocked[map_data.id][Vector2i(blocked.x, blocked.y)] = true
 	var retained: Dictionary = app.session.snapshot()
 	check(not app.session.move(Vector2i.DOWN) and app.session.snapshot() == retained, "real images do not bypass logical collision or mutate rejected state")
 	map_data.blocked.erase(blocked)
+	app.session.package.map_blocked[map_data.id].erase(Vector2i(blocked.x, blocked.y))
 	check(app.session.move(Vector2i.DOWN), "unblocked source movement resumes")
 	var storage = Save.new(output.path_join("saves"))
 	var before_save: Dictionary = app.session.snapshot()

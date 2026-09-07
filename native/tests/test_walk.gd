@@ -59,8 +59,9 @@ func _run() -> void:
 	world.position = Vector2(800, -30); world.scale = Vector2.ONE * 1.1
 	root.size = Vector2i(1280, 800)
 	var map_data: Dictionary = package.index.maps[package.index.scenes[session.state.cursor.scene_id].map_id]
+	var map_origin = Vector2i(map_data.coordinates.origin.x, map_data.coordinates.origin.y)
 	for cell in [Vector2i.ZERO, Vector2i(1, 0), Vector2i(0, 1), Vector2i(-3, 5)]:
-		check((world.tiles.position + world.tiles.map_to_local(cell)).is_equal_approx(MapProjection.project(cell, map_data.coordinates)), "TileMap centers agree with contract " + str(cell))
+		check((world.tiles.position + world.tiles.map_to_local(cell - map_origin)).is_equal_approx(MapProjection.project(cell, map_data.coordinates)), "local TileMap cells plus nonzero origin agree with contract " + str(cell))
 	var foot: Vector2 = MapProjection.project(Vector2(leader.position.x, leader.position.y), map_data.coordinates)
 	check(world.actors[leader_id].position.is_equal_approx(foot), "actor foot uses same zero-centered projection")
 	var origins: Dictionary = {}
@@ -81,9 +82,11 @@ func _run() -> void:
 	check(world.visuals[leader_id].selection.begins_with("idle/"), "stop selects declared idle and normalizes phase")
 	var blocked = {"x": leader.position.x, "y": leader.position.y + 1}
 	map_data.blocked.append(blocked)
+	package.map_blocked[map_data.id][Vector2i(blocked.x, blocked.y)] = true
 	var rejected = session.snapshot()
 	check(not session.move(Vector2i.DOWN) and session.snapshot() == rejected, "blocked candidate preserves whole party and stride")
 	map_data.blocked.erase(blocked)
+	package.map_blocked[map_data.id].erase(Vector2i(blocked.x, blocked.y))
 	var npc = session.entity(package.world.entities[-1].instance_id)
 	var npc_previous: Dictionary = npc.position.duplicate(); npc.position = blocked
 	check(not session.move(Vector2i.DOWN), "nonparty occupancy blocks movement")
@@ -112,6 +115,7 @@ func _run() -> void:
 	# Insert a synthetic second map/safe point only to challenge saved-state validation.
 	var other_map: Dictionary = map_data.duplicate(true); other_map.id = "map.test.grid"; other_map.movement_rule = "native.grid.v1"; other_map.coordinates.kind = "orthogonal"
 	package.index.maps[other_map.id] = other_map
+	package.map_blocked[other_map.id] = package.map_blocked[map_data.id].duplicate()
 	package.index.scenes["scene.test.grid"] = {"id": "scene.test.grid", "map_id": other_map.id}
 	bad = session.snapshot(); bad.entities[0].scene_id = "scene.test.grid"
 	check(not session.restore(bad) and session.error.contains("PAL phase"), "saved phase actor cannot switch to unsupported grid rules")

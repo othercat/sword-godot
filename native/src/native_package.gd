@@ -4,7 +4,9 @@ const Zip = preload("res://src/native_zip.gd")
 const Reader = preload("res://src/native_json.gd")
 const Schema = preload("res://src/native_schema.gd")
 const MapAnimation = preload("res://src/native_map_animation.gd")
-const CAPABILITIES = ["package.local-preview.v1", "world.isometric.v1", "movement.pal-walk.v1", "world.orthogonal.v1", "party.roster.v1", "story.dialogue.v1", "story.choice.v1", "story.variables.v1", MapAnimation.CAPABILITY]
+const Terrain = preload("res://src/native_terrain.gd")
+const TexturePolicy = preload("res://src/native_texture.gd")
+const CAPABILITIES = ["package.local-preview.v1", "world.tile-layers.v1", "world.isometric.v1", "movement.pal-walk.v1", "world.orthogonal.v1", "party.roster.v1", "story.dialogue.v1", "story.choice.v1", "story.variables.v1", MapAnimation.CAPABILITY]
 const RULES = {"schema": "pal.native.ruleset.v1", "id": "pal.native.story-core.v1", "version": "0.1.0", "operations": ["dialogue", "choice", "set", "branch", "party", "end"], "variable_assignment": "declared_type_and_scope", "save_phase": "before_node"}
 var error: String = ""
 var manifest: Dictionary = {}
@@ -14,6 +16,8 @@ var index: Dictionary = {}
 var textures: Dictionary = {}
 var schema = Schema.new()
 var _zip = Zip.new()
+var map_cells: Dictionary = {}
+var map_blocked: Dictionary = {}
 
 func load_package(path: String) -> bool:
 	error = ""
@@ -77,6 +81,9 @@ func load_package(path: String) -> bool:
 		if width < 1 or height < 1 or width > 8192 or height > 8192 or pixels > 33554432: return _fail("decoded texture budget exceeded")
 		var decoded = Image.new()
 		if decoded.load_png_from_buffer(png) != OK or decoded.get_width() != width or decoded.get_height() != height: return _fail("PNG decode failed")
+		# Preserve packaged bytes/hash and all visible RGBA; sanitize only the
+		# invisible RGB used by texture filtering, never quantize to a palette.
+		TexturePolicy.fix_transparent_edges(decoded)
 		textures[asset.id] = ImageTexture.create_from_image(decoded)
 	for sprite in index.sprite_sets.values():
 		for clip in sprite.clips:
@@ -84,6 +91,10 @@ func load_package(path: String) -> bool:
 				var texture: Texture2D = textures[frame.asset_id]
 				if texture.get_width() != frame.width or texture.get_height() != frame.height: return _fail("animation PNG dimensions mismatch")
 	if declared.size() != files.size(): return _fail("unsupported extra payload")
+	for map_data in world.maps:
+		for tile in map_data.get("terrain", {}).get("tiles", []):
+			var texture: Texture2D = textures[tile.asset_id]
+			if texture.get_width() != tile.width or texture.get_height() != tile.height: return _fail("tile PNG dimensions mismatch")
 	for path_name in files:
 		if declared.get(path_name) != files[path_name].kind: return _fail("file kind mismatch")
 	_zip.close()
@@ -107,6 +118,8 @@ func _fail(message: String) -> bool:
 
 func _references() -> bool:
 	index = {}
+	map_cells = {}
+	map_blocked = {}
 	for table in ["actor_definitions", "entities", "maps", "scenes", "nodes", "variables", "assets", "safe_points"]:
 		index[table] = {}
 		var key: String = "instance_id" if table == "entities" else "id"
@@ -129,6 +142,12 @@ func _references() -> bool:
 	for scene in world.scenes:
 		if not index.maps.has(scene.map_id): return _fail("unresolved scene map")
 	for map_data in world.maps:
+		if map_data.has("terrain"):
+			if "world.tile-layers.v1" not in manifest.required_capabilities: return _fail("missing tile layer capability")
+			var issue: String = Terrain.validate(map_data, index.assets)
+			if not issue.is_empty(): return _fail(issue)
+			map_cells[map_data.id] = {}
+			for point in map_data.terrain.cells: map_cells[map_data.id][Vector2i(point.x, point.y)] = true
 		if "world." + map_data.coordinates.kind + ".v1" not in manifest.required_capabilities: return _fail("missing world projection capability")
 		if map_data.coordinates.kind == "isometric" and (map_data.coordinates.tile_width < 2 or map_data.coordinates.tile_height < 2): return _fail("isometric tile edge budget")
 		if map_data.get("movement_rule") == "pal.walk.v1":
@@ -138,8 +157,9 @@ func _references() -> bool:
 		var blocked: Dictionary = {}
 		for point in map_data.blocked:
 			var cell = Vector2i(point.x, point.y)
-			if not within(point, map_data) or blocked.has(cell): return _fail("invalid blocked cell")
+			if not within(point, map_data) or blocked.has(cell) or (map_cells.has(map_data.id) and not map_cells[map_data.id].has(cell)): return _fail("invalid blocked cell")
 			blocked[cell] = true
+		map_blocked[map_data.id] = blocked
 	for actor in world.actor_definitions:
 		if not _texture_ref(actor.sprite_asset): return _fail("invalid actor texture")
 		if actor.get("map_sprite_set") != null and not index.sprite_sets.has(actor.map_sprite_set): return _fail("unresolved map sprite set")
@@ -190,7 +210,8 @@ static func within(point: Dictionary, map_data: Dictionary) -> bool:
 func can_stand(scene_id: String, point: Dictionary) -> bool:
 	if not index.scenes.has(scene_id): return false
 	var map_data: Dictionary = index.maps[index.scenes[scene_id].map_id]
-	return within(point, map_data) and point not in map_data.blocked
+	var cell = Vector2i(point.x, point.y)
+	return within(point, map_data) and not map_blocked[map_data.id].has(cell) and (not map_cells.has(map_data.id) or map_cells[map_data.id].has(cell))
 
 func movement_rule(scene_id: String) -> String:
 	return index.maps[index.scenes[scene_id].map_id].get("movement_rule", "native.grid.v1")

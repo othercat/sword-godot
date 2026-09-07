@@ -325,6 +325,187 @@
               "pal.walk.v1"
             ],
             "description": "Optional; native.grid.v1 when omitted. pal.walk.v1 requires isometric coordinates and movement.pal-walk.v1 capability. See native-world-movement-v1.md."
+          },
+          "terrain": {
+            "type": "object",
+            "required": [
+              "tiles",
+              "cells",
+              "layers"
+            ],
+            "properties": {
+              "tiles": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "asset_id",
+                    "width",
+                    "height",
+                    "anchor",
+                    "scale_milli"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128,
+                      "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+                    },
+                    "asset_id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128,
+                      "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+                    },
+                    "width": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 8192
+                    },
+                    "height": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 8192
+                    },
+                    "anchor": {
+                      "type": "object",
+                      "required": [
+                        "x",
+                        "y"
+                      ],
+                      "properties": {
+                        "x": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 8192
+                        },
+                        "y": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 8192
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "scale_milli": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 16000
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "minItems": 1,
+                "maxItems": 4096
+              },
+              "cells": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "x",
+                    "y"
+                  ],
+                  "properties": {
+                    "x": {
+                      "type": "integer",
+                      "minimum": -1000000,
+                      "maximum": 1000000
+                    },
+                    "y": {
+                      "type": "integer",
+                      "minimum": -1000000,
+                      "maximum": 1000000
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "minItems": 1,
+                "maxItems": 65536
+              },
+              "layers": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "draw_order",
+                    "depth_sort",
+                    "placements"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128,
+                      "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+                    },
+                    "draw_order": {
+                      "type": "integer",
+                      "minimum": -32,
+                      "maximum": 32
+                    },
+                    "depth_sort": {
+                      "type": "boolean"
+                    },
+                    "placements": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "position",
+                          "tile_id",
+                          "sort_offset_y"
+                        ],
+                        "properties": {
+                          "position": {
+                            "type": "object",
+                            "required": [
+                              "x",
+                              "y"
+                            ],
+                            "properties": {
+                              "x": {
+                                "type": "integer",
+                                "minimum": -1000000,
+                                "maximum": 1000000
+                              },
+                              "y": {
+                                "type": "integer",
+                                "minimum": -1000000,
+                                "maximum": 1000000
+                              }
+                            },
+                            "additionalProperties": false
+                          },
+                          "tile_id": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 128,
+                            "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+                          },
+                          "sort_offset_y": {
+                            "type": "integer",
+                            "minimum": -65536,
+                            "maximum": 65536
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      "minItems": 0,
+                      "maxItems": 65536
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "minItems": 1,
+                "maxItems": 16
+              }
+            },
+            "additionalProperties": false,
+            "description": "Optional data-only tile layers. cells define available terrain; missing cells reject movement/spawn/save. Requires world.tile-layers.v1. sort_offset_y changes depth ordering, not image placement or logic."
           }
         },
         "additionalProperties": false

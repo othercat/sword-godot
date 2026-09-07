@@ -180,8 +180,25 @@ func _fit_world() -> void:
 	var map_data: Dictionary = session.package.index.maps[session.package.index.scenes[session.state.cursor.scene_id].map_id]
 	var bounds: Rect2 = MapProjection.bounds(map_data)
 	var scale_value: float = minf((viewport.size.x - 32.0) / bounds.size.x, (viewport.size.y - 32.0) / bounds.size.y)
+	_camera_map = session.state.cursor.scene_id
+	_camera_bounds = bounds
+	_terrain_camera = map_data.has("terrain")
+	if _terrain_camera: scale_value = 2.0
 	world_view.scale = Vector2.ONE * scale_value
 	world_view.position = (Vector2(viewport.size) - bounds.size * scale_value) / 2.0 - bounds.position * scale_value
+	_follow_world()
+
+var _camera_map: String = ""
+var _camera_bounds: Rect2
+var _terrain_camera: bool = false
+
+func _follow_world() -> void:
+	if not _terrain_camera or session.state.is_empty() or not world_view.actors.has(session.state.active_party[0]): return
+	var center: Vector2 = world_view.actors[session.state.active_party[0]].position
+	var half_view = Vector2(viewport.size) / world_view.scale / 2.0
+	for axis in range(2):
+		center[axis] = _camera_bounds.get_center()[axis] if _camera_bounds.size[axis] <= half_view[axis] * 2.0 else clampf(center[axis], _camera_bounds.position[axis] + half_view[axis], _camera_bounds.end[axis] - half_view[axis])
+	world_view.position = Vector2(viewport.size) / 2.0 - center * world_view.scale
 
 func _refresh() -> void:
 	if not is_instance_valid(roster) or session.state.is_empty(): return
@@ -287,6 +304,9 @@ func movement_frame_allowed(now: int, render_frame: int) -> bool:
 	return _gap_frame != render_frame and (session.movement_rule() != "pal.walk.v1" or _movement_frame != render_frame)
 
 func _process(delta: float) -> void:
+	if not session.state.is_empty():
+		if _camera_map != session.state.cursor.scene_id: _fit_world()
+		else: _follow_world()
 	# Explicit Studio preview only: an empty local marker asks this child to exit.
 	# No IP transport, arbitrary commands, or normal player-mode polling.
 	if not _preview_stop_file.is_empty():
