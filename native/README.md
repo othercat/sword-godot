@@ -6,6 +6,9 @@ crossings run in priority/ID order in one candidate transaction; dialogue queues
 survive saves and transfers clear stale queues. Rules 0.6.0 declare
 `native.regions.v1`. `tests/test_regions.gd <actual Studio region ZIP> <isolated output>`
 covers the author package and explicitly labeled synthetic policy/failure cases.
+`tests/test_region_ui.gd` uses the same region ZIP and an isolated output directory
+to exercise actual application keyboard/mouse events: crossing, dialogue input
+reset, queued save/load and once behavior. Injected input is not human acceptance.
 The owner contract `docs/native-regions-v1.md` documents draft migration, graph
 budgets and save checks. This does not implement every PRD event or Echo credit.
 
