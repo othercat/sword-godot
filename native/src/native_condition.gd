@@ -6,7 +6,7 @@ const RULE = "native.conditions.v1"
 const LIMIT = 9007199254740991
 
 static func used(content: Dictionary) -> bool:
-	return content.nodes.any(func(node): return node.has("condition")) or content.scenes.any(func(scene): return scene.get("triggers", []).any(func(trigger): return trigger.condition != null))
+	return content.nodes.any(func(node): return node.has("condition")) or content.scenes.any(func(scene): return scene.get("portals", []).any(func(portal): return portal.has("gate"))) or content.scenes.any(func(scene): return scene.get("triggers", []).any(func(trigger): return trigger.condition != null))
 
 static func matches(value: Variant, kind: String, literal: bool = true) -> bool:
 	if not Schema.is_type(value, kind): return false

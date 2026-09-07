@@ -236,7 +236,8 @@ func _refresh() -> void:
 		dialogue_text.text = "整装待发。靠近伙伴后按空格交谈。"
 		for portal in session.package.index.scenes[session.state.cursor.scene_id].get("portals", []):
 			if portal.position == session.entity(session.state.active_party[0]).position:
-				dialogue_text.text = portal.display_name + " · 按空格进入"
+				var status: Dictionary = session.portal_status(portal)
+				dialogue_text.text = portal.display_name + (" · 按空格进入" if status.allowed else " · " + status.text)
 	save_button.disabled = not session.can_save()
 	pause_button.text = "继续" if session.paused else "暂停"
 
@@ -294,7 +295,8 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		walk_input.key_event(event.keycode, event.pressed, event.echo)
 	if not event.pressed or event.echo: return
 	if event.keycode in [KEY_ENTER, KEY_SPACE]:
-		if not session.interact() and not session.error.is_empty(): message.text = session.error
+		if session.interact(): message.text = ""
+		elif not session.error.is_empty(): message.text = session.error
 	elif event.keycode == KEY_ESCAPE: _pause()
 	elif event.keycode == KEY_F5: _save()
 	elif event.keycode == KEY_F9: _show_saves()

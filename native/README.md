@@ -1,5 +1,13 @@
 # PAL Wanxiang Native preview
 
+Optional `world.portal-gates.v1` evaluates the existing condition AST on portal
+interaction before changing any gameplay state. Each direction is independent;
+players see only authored blocked text. Successful entry clears earlier refusal
+messages. Loading re-evaluates restored scopes; direct story transfers stay
+independent. Rules 0.7.0 include `native.portal-gates.v1`. The parameterized
+`tests/test_portal_gates.gd` exercises the actual window with injected input,
+story unlocking and saved-state restoration; it is not human playthrough proof.
+
 Optional `world.regions.v1` adds leader enter/exit rectangles, typed conditions,
 once/repeat/cooldown policies and persistent per-run mutex winners. Overlapping
 crossings run in priority/ID order in one candidate transaction; dialogue queues

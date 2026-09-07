@@ -10,7 +10,7 @@ const SceneTravel = preload("res://src/native_scene_travel.gd")
 const Condition = preload("res://src/native_condition.gd")
 const Regions = preload("res://src/native_regions.gd")
 const PartyTrail = preload("res://src/native_party_trail.gd")
-const CAPABILITIES = [Regions.CAPABILITY, Condition.CAPABILITY, PartyTrail.CAPABILITY, SceneTravel.CAPABILITY, "package.local-preview.v1", "world.tile-layers.v1", "world.isometric.v1", "movement.pal-walk.v1", "world.orthogonal.v1", "party.roster.v1", "story.dialogue.v1", "story.choice.v1", "story.variables.v1", MapAnimation.CAPABILITY]
+const CAPABILITIES = [SceneTravel.GATE_CAPABILITY, Regions.CAPABILITY, Condition.CAPABILITY, PartyTrail.CAPABILITY, SceneTravel.CAPABILITY, "package.local-preview.v1", "world.tile-layers.v1", "world.isometric.v1", "movement.pal-walk.v1", "world.orthogonal.v1", "party.roster.v1", "story.dialogue.v1", "story.choice.v1", "story.variables.v1", MapAnimation.CAPABILITY]
 const RULES = {"schema": "pal.native.ruleset.v1", "id": "pal.native.story-core.v1", "version": "0.1.0", "operations": ["dialogue", "choice", "set", "branch", "party", "end"], "variable_assignment": "declared_type_and_scope", "save_phase": "before_node"}
 var error: String = ""
 var manifest: Dictionary = {}
@@ -216,6 +216,7 @@ func _references() -> bool:
 				if other.instance_id not in world.active_party and other.scene_id == world.entry_scene and other.position == index.entities[id].position: return _fail("initial trail party overlaps inactive actor")
 	var region_issue: String = Regions.validate(self)
 	if not region_issue.is_empty(): return _fail(region_issue)
+	if SceneTravel.gates_used(world) and SceneTravel.GATE_CAPABILITY not in manifest.required_capabilities: return _fail("missing portal gate capability")
 	if Regions.used(world) and Regions.CAPABILITY not in manifest.required_capabilities: return _fail("missing region capability")
 	var travel_issue: String = SceneTravel.validate(self)
 	if not travel_issue.is_empty(): return _fail(travel_issue)
@@ -262,4 +263,7 @@ static func expected_rules(content: Dictionary) -> Dictionary:
 	if Regions.used(content):
 		result.version = "0.6.0"
 		result.regions = "native.regions.v1"
+	if SceneTravel.gates_used(content):
+		result.version = "0.7.0"
+		result.portal_gates = "native.portal-gates.v1"
 	return result

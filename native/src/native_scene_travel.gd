@@ -2,6 +2,12 @@
 extends RefCounted
 const Schema = preload("res://src/native_schema.gd")
 const CAPABILITY = "world.scene-travel.v1"
+const GATE_CAPABILITY = "world.portal-gates.v1"
+const Condition = preload("res://src/native_condition.gd")
+
+static func gates_used(content: Dictionary) -> bool:
+	return content.scenes.any(func(scene): return scene.get("portals", []).any(func(row): return row.has("gate")))
+
 const EXTENSION = "pal.native.scene-travel"
 
 static func used(content: Dictionary) -> bool:
@@ -38,6 +44,10 @@ static func validate(package) -> String:
 		ids = {}
 		var cells: Dictionary = {}
 		for row in scene.get("portals", []):
+			if row.has("gate"):
+				var issue: String = Condition.validate(row.gate.condition, package.index.variables)
+				if not issue.is_empty(): return issue
+				if row.gate.blocked_text.strip_edges().is_empty(): return "blocked text must not be blank"
 			var cell = Vector2i(row.position.x, row.position.y)
 			if ids.has(row.id) or cells.has(cell) or not package.can_stand(scene.id, row.position): return "duplicate or unwalkable portal"
 			ids[row.id] = true

@@ -85,13 +85,24 @@ func interact() -> bool:
 	error = ""
 	var leader: Dictionary = entity(state.active_party[0])
 	for portal in package.index.scenes[state.cursor.scene_id].get("portals", []):
-		if portal.position == leader.position: return _interact_node(portal.transfer_node)
+		if portal.position == leader.position:
+			var status: Dictionary = portal_status(portal)
+			if not status.allowed:
+				error = status.text
+				return false
+			return _interact_node(portal.transfer_node)
 	for source in package.world.entities:
 		var target: Dictionary = entity(source.instance_id)
 		if source.interaction_node == null or target.scene_id != leader.scene_id: continue
 		if abs(target.position.x - leader.position.x) + abs(target.position.y - leader.position.y) <= 1:
 			return _interact_node(source.interaction_node)
 	return false
+
+func portal_status(portal: Dictionary) -> Dictionary:
+	if not portal.has("gate"): return {"allowed": true, "text": ""}
+	var decision: Dictionary = Condition.evaluate(portal.gate.condition, package.index.variables, state.scopes)
+	if decision.has("error"): return {"allowed": false, "text": "通行条件暂时无法检查。", "error": decision.error}
+	return {"allowed": decision.get("error", "").is_empty() and decision.get("value", false), "text": portal.gate.blocked_text}
 
 func _interact_node(node_id: String) -> bool:
 	var old = state.duplicate(true)

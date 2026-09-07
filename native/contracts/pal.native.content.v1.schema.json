@@ -629,6 +629,25 @@
                 },
                 "provenance": {
                   "$ref": "#/definitions/provenance"
+                },
+                "gate": {
+                  "type": "object",
+                  "required": [
+                    "condition",
+                    "blocked_text"
+                  ],
+                  "properties": {
+                    "condition": {
+                      "$ref": "#/definitions/condition"
+                    },
+                    "blocked_text": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 512
+                    }
+                  },
+                  "additionalProperties": false,
+                  "description": "Draft directional portal interaction gate. Omitted means open. Failure never changes authoritative state; blocked_text is player-facing, condition diagnostics are author-only."
                 }
               },
               "additionalProperties": false
