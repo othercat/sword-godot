@@ -303,7 +303,9 @@ func _physics_process(_delta: float) -> void:
 	session.tick()
 	var now: int = Time.get_ticks_usec()
 	var render_frame: int = Engine.get_process_frames()
-	if movement_frame_allowed(now, render_frame) and session.sample_movement(walk_input): _movement_frame = render_frame
+	if movement_frame_allowed(now, render_frame):
+		if session.sample_movement(walk_input): _movement_frame = render_frame
+		elif not session.error.is_empty(): message.text = session.error
 
 func movement_frame_allowed(now: int, render_frame: int) -> bool:
 	# A stall does not replay keyboard movement through Godot's bounded catch-up.

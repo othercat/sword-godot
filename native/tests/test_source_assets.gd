@@ -56,8 +56,10 @@ func _run() -> void:
 	for facing in directions:
 		for step in range(4):
 			for _tick in range(6): app.session.tick()
+			leader = app.session.entity(leader_id)
 			var before: Dictionary = leader.position.duplicate()
 			check(app.session.move(directions[facing]), "accepted source movement " + facing + "/" + str(step))
+			leader = app.session.entity(leader_id)
 			world._process(0.1)
 			check(Vector2i(leader.position.x - before.x, leader.position.y - before.y) == directions[facing], "PNG size does not change logical step " + facing + "/" + str(step))
 			for party_index in range(2):

@@ -125,14 +125,14 @@ GPU readback and a raw-versus-prepared linear-filter edge comparison. No formal
 Miaopang art, HDR/color-management or cross-device acceptance is implied.
 
 The additional PAL walking fixture uses twelve geometric PNGs and the real Studio
-compiler. Fifty-six checks cover projection, direction edges/aliases, all four
+compiler. Fifty-seven checks cover projection, direction edges/aliases, all four
 leader/follower phases, collision rejection, saved cadence, malformed save state,
 synthetic 30/60/100/144/240 display schedules and actual window keyboard input.
 Optional `pal.walk-phase.v1` playback uses three authored stride frames; time-based
 HD clips remain available. Save input cadence and pose phase are logic facts;
 render interpolation/GPU history are reset on load. No real assets or physical
 human acceptance are claimed for that synthetic suite. Shared snapshot receipt:
-40ca20946668c7af6f97914a3797c66db6e1cd47. Terrain changes the exact draft schema
+c1a1685cab8645bea9060b778fa1fc9e0686511d. Optional party trails change the exact draft schema
 hash; older source can be rebuilt, while old package/save identities are retained.
 
 The parameterized source suite separately exercises two imported 12-frame groups
@@ -148,6 +148,19 @@ four-member movement/save/load and following view, plus full flat-map GPU compar
 against a supplied exporter image. Synthetic cases separately cover HD scale and
 front/back/equal-depth ordering. Neither those cases nor the flat image comparison
 establish Legacy actor occlusion or a complete playthrough.
+
+The optional `native.party-trail.v1` rule plans bounded, cardinal rendezvous paths
+and retains pending footsteps through turns, idle catchup, joins, leader reordering,
+scene travel and save/load. Its capability is `movement.party-trail.v1`; the Studio
+sample now opts in. Active members can overlap during reversal or rendezvous;
+inactive actors block movement. Planning never teleports actors and is shared only
+by this runtime. Whole-story budget/obstruction failures retain preceding state.
+`tests/test_party_trail.gd` accepts three locally compiled 3/4/5-member packages
+whose second choice reaches a Studio-authored party node, plus an output directory.
+Its 326 checks cover pending-path continuation, invalid saves, atomic changes and
+the real zero-input application loop/TileMap window. Package/model tests are
+synthetic; the separate parameterized source/terrain suites provide real-art/map
+evidence. This is not a complete battle, 32-member performance or device acceptance.
 
 Shared contract snapshots are refreshed only with:
 

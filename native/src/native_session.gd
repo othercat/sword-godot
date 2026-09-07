@@ -4,6 +4,7 @@ signal changed
 const Package = preload("res://src/native_package.gd")
 const Schema = preload("res://src/native_schema.gd")
 const SceneTravel = preload("res://src/native_scene_travel.gd")
+const PartyTrail = preload("res://src/native_party_trail.gd")
 const TIMING_RULES = "practice.v1;rta=monotonic-including-pause;active=focused-unpaused;load=ineligible;tick=60"
 var package
 var state: Dictionary = {}
@@ -36,7 +37,8 @@ func activate(candidate, now_usec: int = -1) -> bool:
 		var definition: Dictionary = package.index.actor_definitions[source.definition_id]
 		state.entities.append({"entity_kind": "actor", "component_schema_version": 1, "instance_id": source.instance_id, "definition_id": source.definition_id, "scene_id": source.scene_id, "position": source.position.duplicate(), "hp": definition.max_hp, "mp": definition.max_mp, "components": {"pal.native.pose": {"facing": source.facing, "moving_until_tick": 0, "step_phase": 0}}})
 	for variable in world.variables: state.scopes[variable.scope][variable.id] = variable.initial
-	if not _advance(world.entry_node):
+	error = PartyTrail.reseed(package, state, world.active_party)
+	if not error.is_empty() or not _advance(world.entry_node):
 		package = previous_package
 		state = previous_state
 		return false
@@ -101,6 +103,7 @@ func _interact_node(node_id: String) -> bool:
 func _advance(first: String) -> bool:
 	var candidate: Dictionary = state.duplicate(true)
 	var next: String = first
+	var planning_budget: Dictionary = {"remaining": PartyTrail.MAX_VISITS}
 	for _step in range(1024):
 		var node: Dictionary = package.index.nodes[next]
 		candidate.cursor.node_id = next
@@ -126,16 +129,22 @@ func _advance(first: String) -> bool:
 				candidate.committed_effect_ids.append(effect_id)
 				next = node.next
 			"party":
-				for member in node.members:
-					var actor: Dictionary = _candidate_entity(candidate, member)
-					if actor.scene_id != candidate.cursor.scene_id:
-						error = "party member is outside current scene; state retained"
-						return false
+				if PartyTrail.used(package.world):
+					error = PartyTrail.reseed(package, candidate, node.members, false, planning_budget)
+					if not error.is_empty(): return false
+				else:
+					for member in node.members:
+						var actor: Dictionary = _candidate_entity(candidate, member)
+						if actor.scene_id != candidate.cursor.scene_id:
+							error = "party member is outside current scene; state retained"
+							return false
 				candidate.active_party = node.members.duplicate()
 				candidate.committed_effect_ids.append(effect_id)
 				next = node.next
 			"scene_transfer":
 				error = SceneTravel.prepare(package, candidate, node)
+				if not error.is_empty(): return false
+				error = PartyTrail.reseed(package, candidate, candidate.active_party, true, planning_budget)
 				if not error.is_empty(): return false
 				candidate.committed_effect_ids.append(effect_id)
 				next = node.next
@@ -183,7 +192,9 @@ func set_modal(value: bool, now_usec: int = -1) -> void:
 	changed.emit()
 
 func move(direction: Vector2i) -> bool:
-	if state.is_empty() or paused or modal or not focused or dialogue_open or absi(direction.x) + absi(direction.y) != 1: return false
+	if state.is_empty() or paused or modal or not focused or dialogue_open or absi(direction.x) + absi(direction.y) > 1: return false
+	if PartyTrail.used(package.world): return _move_trail(direction)
+	if direction == Vector2i.ZERO: return false
 	if state.clock.logic_tick - _move_tick < movement_ticks(): return false
 	var leader: Dictionary = entity(state.active_party[0])
 	var point: Dictionary = {"x": leader.position.x + direction.x, "y": leader.position.y + direction.y}
@@ -206,6 +217,21 @@ func move(direction: Vector2i) -> bool:
 	changed.emit()
 	return true
 
+func _move_trail(direction: Vector2i) -> bool:
+	var candidate: Dictionary = state.duplicate(true)
+	var result: Dictionary = PartyTrail.step(package, candidate, direction)
+	if result.has("error"):
+		error = result.error
+		return false
+	if result.moved.is_empty(): return false
+	for row in result.moved: _mark_motion(_candidate_entity(candidate, row.instance_id), row.delta)
+	candidate.state_revision += 1
+	state = candidate
+	_move_tick = int(state.clock.logic_tick)
+	error = ""
+	changed.emit()
+	return true
+
 func _mark_motion(actor: Dictionary, delta: Vector2i) -> void:
 	if delta == Vector2i.ZERO: return
 	var pose: Dictionary = actor.components["pal.native.pose"]
@@ -223,6 +249,8 @@ func validate_saved(candidate: Dictionary) -> String:
 	var issue: String = package.schema.validate("pal.native.state.v1", candidate)
 	if not issue.is_empty(): return issue
 	issue = SceneTravel.validate_state(package, candidate)
+	if not issue.is_empty(): return issue
+	issue = PartyTrail.validate_state(package, candidate)
 	if not issue.is_empty(): return issue
 	if candidate.cursor.safe_point_id == null: return "live cursor is not a save boundary"
 	for key in ["runtime_id", "package_id", "profile_id", "content_lock", "ruleset_id", "ruleset_hash"]:

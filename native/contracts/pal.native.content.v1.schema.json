@@ -24,6 +24,10 @@
     "safe_points"
   ],
   "properties": {
+    "party_movement_rule": {
+      "const": "native.party-trail.v1",
+      "description": "Optional continuous follower footsteps with bounded rendezvous planning; requires movement.party-trail.v1. Absence retains the earlier movement behavior."
+    },
     "schema": {
       "const": "pal.native.content.v1"
     },

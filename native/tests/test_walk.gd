@@ -80,6 +80,7 @@ func _run() -> void:
 	check(session.entity(leader_id).position.y == before.y + 4, "four steps advance four logical cells, independent of pixels")
 	session.stop_walking(); world._process(0.0)
 	check(world.visuals[leader_id].selection.begins_with("idle/"), "stop selects declared idle and normalizes phase")
+	leader = session.entity(leader_id)
 	var blocked = {"x": leader.position.x, "y": leader.position.y + 1}
 	map_data.blocked.append(blocked)
 	package.map_blocked[map_data.id][Vector2i(blocked.x, blocked.y)] = true
@@ -118,6 +119,8 @@ func _run() -> void:
 	package.map_blocked[other_map.id] = package.map_blocked[map_data.id].duplicate()
 	package.index.scenes["scene.test.grid"] = {"id": "scene.test.grid", "map_id": other_map.id}
 	bad = session.snapshot(); bad.entities[0].scene_id = "scene.test.grid"
+	check(not session.restore(bad), "active phase actor cannot leave the party scene in a save")
+	bad = session.snapshot(); bad.entities[-1].scene_id = "scene.test.grid"
 	check(not session.restore(bad) and session.error.contains("PAL phase"), "saved phase actor cannot switch to unsupported grid rules")
 	for fps in [30, 60, 100, 144, 240]:
 		var replay = Session.new(); replay.activate(package, 0); replay.dialogue_open = false

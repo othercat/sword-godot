@@ -414,6 +414,39 @@
     "extensions": {
       "type": "object",
       "properties": {
+        "pal.native.party-trail": {
+          "type": "object",
+          "required": ["revision", "scene_id", "next_tick", "followers"],
+          "properties": {
+            "revision": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+            "scene_id": {"type": "string", "minLength": 1, "maxLength": 128},
+            "next_tick": {"type": "integer", "minimum": 0},
+            "followers": {
+              "type": "array", "minItems": 0, "maxItems": 31,
+              "items": {
+                "type": "object",
+                "required": ["instance_id", "predecessor_id", "steps"],
+                "properties": {
+                  "instance_id": {"type": "string", "minLength": 1, "maxLength": 128},
+                  "predecessor_id": {"type": "string", "minLength": 1, "maxLength": 128},
+                  "steps": {
+                    "type": "array", "minItems": 0, "maxItems": 4096,
+                    "items": {
+                      "type": "object", "required": ["x", "y"],
+                      "properties": {
+                        "x": {"type": "integer", "minimum": -1000000, "maximum": 1000000},
+                        "y": {"type": "integer", "minimum": -1000000, "maximum": 1000000}
+                      },
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          },
+          "additionalProperties": false
+        },
         "pal.native.walk": {
           "type": "object",
           "required": [

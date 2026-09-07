@@ -7,7 +7,8 @@ const MapAnimation = preload("res://src/native_map_animation.gd")
 const Terrain = preload("res://src/native_terrain.gd")
 const TexturePolicy = preload("res://src/native_texture.gd")
 const SceneTravel = preload("res://src/native_scene_travel.gd")
-const CAPABILITIES = [SceneTravel.CAPABILITY, "package.local-preview.v1", "world.tile-layers.v1", "world.isometric.v1", "movement.pal-walk.v1", "world.orthogonal.v1", "party.roster.v1", "story.dialogue.v1", "story.choice.v1", "story.variables.v1", MapAnimation.CAPABILITY]
+const PartyTrail = preload("res://src/native_party_trail.gd")
+const CAPABILITIES = [PartyTrail.CAPABILITY, SceneTravel.CAPABILITY, "package.local-preview.v1", "world.tile-layers.v1", "world.isometric.v1", "movement.pal-walk.v1", "world.orthogonal.v1", "party.roster.v1", "story.dialogue.v1", "story.choice.v1", "story.variables.v1", MapAnimation.CAPABILITY]
 const RULES = {"schema": "pal.native.ruleset.v1", "id": "pal.native.story-core.v1", "version": "0.1.0", "operations": ["dialogue", "choice", "set", "branch", "party", "end"], "variable_assignment": "declared_type_and_scope", "save_phase": "before_node"}
 var error: String = ""
 var manifest: Dictionary = {}
@@ -200,6 +201,12 @@ func _references() -> bool:
 				for member in node.members:
 					if member not in world.roster: return _fail("party node member outside roster")
 	if SceneTravel.used(world) and SceneTravel.CAPABILITY not in manifest.required_capabilities: return _fail("missing scene travel capability")
+	if PartyTrail.used(world):
+		if PartyTrail.CAPABILITY not in manifest.required_capabilities: return _fail("missing party trail capability")
+		for id in world.active_party:
+			if index.entities[id].scene_id != world.entry_scene: return _fail("initial trail party must share entry scene")
+			for other in world.entities:
+				if other.instance_id not in world.active_party and other.scene_id == world.entry_scene and other.position == index.entities[id].position: return _fail("initial trail party overlaps inactive actor")
 	var travel_issue: String = SceneTravel.validate(self)
 	if not travel_issue.is_empty(): return _fail(travel_issue)
 	return true
@@ -236,4 +243,7 @@ static func expected_rules(content: Dictionary) -> Dictionary:
 		result.version = "0.3.0"
 		result.operations.append("scene_transfer")
 		result.scene_travel = "explicit-party-slots-interact-portal.v1"
+	if PartyTrail.used(content):
+		result.version = "0.4.0"
+		result.party_movement = PartyTrail.RULE
 	return result
