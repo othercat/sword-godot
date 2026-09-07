@@ -56,6 +56,11 @@ High refresh display/hardware acceptance remains separate from synthetic tests.
   immutable ZIP generation, incomplete generations ignored, failure retains old
   state, epoch rebinding and RTA never rewinds. Unknown extension data and modified
   origin survive ordinary load/save. Timing is explicitly practice/ineligible.
+- Explicit local source previews accept false asset distribution registrations
+  only with the paired `package.local-preview.v1` capability and exact
+  `pal.native.distribution: {"scope":"local-preview"}` extension. Null/malformed
+  markers reject. The title identifies this scope; all data/hash/budget checks
+  stay enabled. Studio's ordinary export still requires distribution registrations.
 
 Runtime caps are currently 16MiB per ZIP entry and 272MiB total, 4096 entries and
 65536 map cells. Compiler schema maxima can exceed these operational budgets;
@@ -77,6 +82,7 @@ godot --headless --path . --script res://tests/test_runtime.gd -- <package> <scr
 godot --path . --script res://tests/test_ui.gd -- <package> <scratch>
 godot --path . --script res://tests/test_animation.gd -- <animation-fixture-package> <scratch>
 godot --path . --script res://tests/test_walk.gd -- <pal-walking-fixture-package> <scratch>
+godot --path . --script res://tests/test_source_assets.gd -- <local-source-preview-package> <scratch>
 ```
 
 The UI test injects engine mouse/keyboard input into the same application and
@@ -97,7 +103,15 @@ synthetic 30/60/100/144/240 display schedules and actual window keyboard input.
 Optional `pal.walk-phase.v1` playback uses three authored stride frames; time-based
 HD clips remain available. Save input cadence and pose phase are logic facts;
 render interpolation/GPU history are reset on load. No real assets or physical
-human acceptance are claimed. Shared schema snapshot: a89e9702bcc3e3f7182f53eecd80a611ffe4cfd4.
+human acceptance are claimed for that synthetic suite. Shared snapshot receipt:
+0bc555a8ad3678d7b58d0ddd6e248b63b8f27279 (schema bytes unchanged by the preview extension).
+
+The parameterized source suite separately exercises two imported 12-frame groups
+through the production application: 119 checks cover all directions and stride
+phases, texture-foot anchors, collision, save/load history, distribution-marker
+rejection and retained sessions. The test accepts a locally supplied Studio package;
+no original images are stored here. Its map/story remain synthetic; no HD artwork,
+full map occlusion, original resource-set lineage or complete playthrough is certified.
 
 Shared contract snapshots are refreshed only with:
 

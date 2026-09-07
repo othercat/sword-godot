@@ -4,7 +4,7 @@ const Zip = preload("res://src/native_zip.gd")
 const Reader = preload("res://src/native_json.gd")
 const Schema = preload("res://src/native_schema.gd")
 const MapAnimation = preload("res://src/native_map_animation.gd")
-const CAPABILITIES = ["world.isometric.v1", "movement.pal-walk.v1", "world.orthogonal.v1", "party.roster.v1", "story.dialogue.v1", "story.choice.v1", "story.variables.v1", MapAnimation.CAPABILITY]
+const CAPABILITIES = ["package.local-preview.v1", "world.isometric.v1", "movement.pal-walk.v1", "world.orthogonal.v1", "party.roster.v1", "story.dialogue.v1", "story.choice.v1", "story.variables.v1", MapAnimation.CAPABILITY]
 const RULES = {"schema": "pal.native.ruleset.v1", "id": "pal.native.story-core.v1", "version": "0.1.0", "operations": ["dialogue", "choice", "set", "branch", "party", "end"], "variable_assignment": "declared_type_and_scope", "save_phase": "before_node"}
 var error: String = ""
 var manifest: Dictionary = {}
@@ -55,12 +55,17 @@ func load_package(path: String) -> bool:
 	if _json(payloads["content/rules.json"]) != expected_rules(world): return _fail("unsupported rules definition")
 	if not index.sprite_sets.is_empty() and MapAnimation.CAPABILITY not in manifest.required_capabilities: return _fail("missing map animation capability")
 	var declared: Dictionary = {"content/world.json": "content", "content/rules.json": "content"}
+	var distribution = manifest.extensions.get("pal.native.distribution")
+	var local_preview: bool = manifest.extensions.has("pal.native.distribution")
+	if local_preview and distribution != {"scope": "local-preview"}: return _fail("invalid local-preview distribution metadata")
+	if local_preview != ("package.local-preview.v1" in manifest.required_capabilities): return _fail("local-preview capability/metadata mismatch")
 	textures = {}
 	var pixels: int = 0
 	for asset in world.assets:
 		if declared.has(asset.path) or not files.has(asset.path): return _fail("duplicate/missing asset path")
 		declared[asset.path] = asset.kind
-		if files[asset.path].sha256 != asset.sha256 or files[asset.path].size_bytes != asset.size_bytes or not asset.redistributable: return _fail("asset identity/rights mismatch")
+		if files[asset.path].sha256 != asset.sha256 or files[asset.path].size_bytes != asset.size_bytes: return _fail("asset identity mismatch")
+		if not asset.redistributable and not local_preview: return _fail("asset has no distribution approval")
 		# Current runtime supports PNG textures. Audio/font contracts are reserved,
 		# and rejected explicitly until their bounded media paths are implemented.
 		if asset.kind != "texture": return _fail("asset type not implemented: " + asset.kind)
