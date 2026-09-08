@@ -1,5 +1,13 @@
 # PAL Wanxiang Native preview
 
+Studio's `samples/miaopang-camp-native-practice` now connects the existing runtime
+features into a named opening slice: optional five-person camp drill, solo audience,
+one supply package, reunion and three-person departure. The new
+`tests/test_miaopang_practice.gd` uses ordinary session commands and injected window
+input over the same compiled content, including defeat, escape and save resumption.
+No runtime rules or contract bytes change in this round. This is not a full chapter,
+an exported player application, an art approval or high-refresh acceptance.
+
 Optional `actors.equipment.v1` adds per-instance worn item references and an in-game
 equipment menu. Studio authors slot identities, signed attribute modifiers and
 definition eligibility; initial loadouts debit existing shared inventory once.
