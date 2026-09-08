@@ -207,3 +207,11 @@ python -B tools/sync_contracts.py --contracts-root <existing contracts repo> --c
 Godot is still needed to run this preview; self-contained player exports/templates,
 engine/third-party notices and portable licensed CJK fonts are the next packaging
 work. Existing system font fallback was observed only on this Windows host.
+
+## 物品与库存（2026-09-08）
+
+`inventory.items.v1` / `native.inventory-items.v1` 接入可选稳定物品定义、初始库存、剧情增减和完整保存。`native_inventory.gd` 维护有界排序库存，`native_battle_effects.gd` 是技能/物品共用的目标与效果结算；`native_skills.gd` 仍负责技能归属和MP，物品独立负责数量。`native_session.gd` 将数量/效果/胜败回调纳入同一候选事务，失败全部保留。`native_skill_menu.gd` 的独立技能/物品实例共用分页与目标选择，epoch/执行/步数/角色变化清理待确认状态。
+
+合法物品使用只在消耗标记打开时扣一件；全体仍扣一次，不扣MP。非消耗品也需持有，零收益合法治疗仍消耗行动和物品。故事发放节点提交稳定执行ID；读取等待保存不重放。保存校验包含使用后余额、技能扣费后MP上界及完整有序结果，不能当作反作弊历史重建。
+
+工坊通过物品页及物品变化节点生成同一包；`tests/test_items.gd` 接收三个3/4/5人作者包和隔离结果目录，验证真实引擎窗口输入、使用/复活/奖励及12份保存。正常基础规则、MP技能、地图和RGBA路径分别保留。测试内容为合成训练属性，非物理输入、正式美术或完整游玩；战外背包/商店/装备/随机掉落/状态/库存条件继续后续工作。

@@ -21,6 +21,7 @@ var instructions: Label
 var options: GridContainer
 var target_pages: HBoxContainer
 var skill_menu = preload("res://src/native_skill_menu.gd").new()
+var item_menu = preload("res://src/native_skill_menu.gd").new(true)
 var save_button: Button
 var pause_button: Button
 var picker: FileDialog
@@ -257,7 +258,9 @@ func _refresh() -> void:
 			target_button.disabled = enemy.hp == 0
 		_button(options, "防御", _battle_action.bind("guard", ""))
 		_button(options, "撤离", _battle_action.bind("escape", "")).disabled = not Battle.encounter(session.package.world, battle.encounter_id).allow_escape
-		skill_menu.render(self, battle, actor)
+		skill_menu.sync_context(self, battle, actor); item_menu.sync_context(self, battle, actor)
+		if item_menu.mode == "closed": skill_menu.render(self, battle, actor)
+		if skill_menu.mode == "closed": item_menu.render(self, battle, actor)
 	elif node.op == "dialogue" and session.dialogue_open:
 		var speaker: String = ""
 		if node.speaker != null: speaker = session.package.index.actor_definitions[session.entity(node.speaker).definition_id].display_name + "\n"
@@ -342,6 +345,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		elif not session.error.is_empty(): message.text = session.error
 	elif event.keycode == KEY_ESCAPE:
 		if session.battle_open() and skill_menu.mode != "closed": skill_menu.cancel(self)
+		elif session.battle_open() and item_menu.mode != "closed": item_menu.cancel(self)
 		else: _pause()
 	elif event.keycode == KEY_F5: _save()
 	elif event.keycode == KEY_F9: _show_saves()

@@ -2,44 +2,54 @@
 extends RefCounted
 ## Disposable selection state. Choosing/canceling does not mutate the session.
 const Skills = preload("res://src/native_skills.gd")
+const Inventory = preload("res://src/native_inventory.gd")
+const Effects = preload("res://src/native_battle_effects.gd")
 const PAGE_SIZE = 8
 var mode: String = "closed"
 var selected_id: String = ""
 var context: String = ""
 var page: int = 0
 var page_count: int = 1
+var item_mode: bool = false
+
+func _init(for_items: bool = false) -> void:
+	item_mode = for_items
 
 func cancel(app) -> void:
 	mode = "closed"; selected_id = ""; page = 0; app._refresh()
 
-func render(app, battle: Dictionary, actor: Dictionary) -> void:
+func sync_context(app, battle: Dictionary, actor: Dictionary) -> void:
 	var key: String = str(app.session.state.timeline_epoch) + ":" + battle.execution_id + ":" + str(battle.step) + ":" + actor.instance_id
 	if key != context:
 		context = key; mode = "closed"; selected_id = ""; page = 0
-	var ids: Array = app.session.package.index.actor_definitions[actor.definition_id].get("skill_ids", [])
+
+func render(app, battle: Dictionary, actor: Dictionary) -> void:
+	sync_context(app, battle, actor)
+	var ids: Array = app.session.package.world.get("item_definitions", []).map(func(i): return i.id) if item_mode else app.session.package.index.actor_definitions[actor.definition_id].get("skill_ids", [])
 	if mode == "closed":
-		if not ids.is_empty(): app._button(app.options, "技能", _open.bind(app))
+		if not ids.is_empty(): app._button(app.options, "物品" if item_mode else "技能", _open.bind(app))
 		return
 	_clear(app.options); _clear(app.target_pages); app.target_pages.visible = false
 	app.options.columns = 2
-	if mode == "skills":
-		app.dialogue_text.text = "选择技能 · 真气 %d" % actor.mp
+	if mode in ["skills", "items"]:
+		app.dialogue_text.text = "选择物品 · 数量在确认后扣除" if item_mode else "选择技能 · 真气 %d" % actor.mp
 		_pages(app, ids.size())
 		for i in range(page * PAGE_SIZE, mini((page + 1) * PAGE_SIZE, ids.size())):
-			var skill: Dictionary = Skills.definition(app.session.package, ids[i])
-			var button = app._button(app.options, "%s · 真气%d" % [skill.display_name, skill.mp_cost], _select.bind(app, ids[i]))
+			var skill: Dictionary = _definition(app, ids[i]); var use = _use(skill)
+			var label: String = "%s · 数量%d" % [skill.display_name, Inventory.count(app.session.state, skill.id)] if item_mode else "%s · 真气%d" % [skill.display_name, skill.mp_cost]
+			var button = app._button(app.options, label, _select.bind(app, ids[i]))
 			button.tooltip_text = description(skill)
-			button.disabled = actor.mp < skill.mp_cost or Skills.eligible(app.session.state, skill).is_empty()
+			button.disabled = use == null or (Inventory.count(app.session.state, skill.id) < 1 if item_mode else actor.mp < skill.mp_cost) or (use != null and Effects.eligible(app.session.state, use).is_empty())
 	else:
-		var skill: Dictionary = Skills.definition(app.session.package, selected_id)
-		var eligible: Array = Skills.eligible(app.session.state, skill)
+		var skill: Dictionary = _definition(app, selected_id); var use: Dictionary = _use(skill)
+		var eligible: Array = Effects.eligible(app.session.state, use)
 		app.dialogue_text.text = skill.display_name + " · " + description(skill)
-		if skill.target_mode == "all":
-			app._button(app.options, "施放于全部符合条件的目标（%d）" % eligible.size(), commit.bind(app, selected_id, "", context)).disabled = eligible.is_empty()
+		if use.target_mode == "all":
+			app._button(app.options, ("用于全部符合条件的目标（%d）" if item_mode else "施放于全部符合条件的目标（%d）") % eligible.size(), commit.bind(app, selected_id, "", context)).disabled = eligible.is_empty()
 		else:
-			var rows: Array = battle.enemies if skill.target_side == "enemy" else battle.party.map(func(id): return app.session.entity(id))
+			var rows: Array = battle.enemies if use.target_side == "enemy" else battle.party.map(func(id): return app.session.entity(id))
 			_pages(app, rows.size())
-			if skill.target_side == "enemy": app.battle_view.enemy_page = page; app.battle_view.queue_redraw()
+			if use.target_side == "enemy": app.battle_view.enemy_page = page; app.battle_view.queue_redraw()
 			for i in range(page * PAGE_SIZE, mini((page + 1) * PAGE_SIZE, rows.size())):
 				var target: Dictionary = rows[i]; var definition: Dictionary = app.session.package.index.actor_definitions[target.definition_id]
 				var button = app._button(app.options, "%d · %s · 气血%d" % [i + 1, definition.display_name, target.hp], commit.bind(app, selected_id, target.instance_id, context))
@@ -47,14 +57,18 @@ func render(app, battle: Dictionary, actor: Dictionary) -> void:
 	app._button(app.options, "取消", cancel.bind(app))
 
 func _open(app) -> void:
-	mode = "skills"; page = 0; app._refresh()
+	mode = "items" if item_mode else "skills"; page = 0; app._refresh()
 
 func _select(app, id: String) -> void:
 	mode = "targets"; selected_id = id; page = 0; app._refresh()
 
 func commit(app, id: String, target: String, expected_context: String) -> void:
+	if not app.session.battle_open(): return
+	var battle: Dictionary = app.session.state.extensions[Effects.KEY]
+	sync_context(app, battle, app.session.entity(battle.party[battle.turn]))
 	if mode != "targets" or expected_context != context or id != selected_id: return
-	if app.session.battle_command("skill", target, id): app.message.text = ""
+	var ok: bool = app.session.battle_command("item", target, "", id) if item_mode else app.session.battle_command("skill", target, id)
+	if ok: app.message.text = ""
 	else: app.message.text = app.session.error
 
 func _pages(app, count: int) -> void:
@@ -68,11 +82,20 @@ func _pages(app, count: int) -> void:
 func _page(app, delta: int) -> void:
 	page = clampi(page + delta, 0, page_count - 1); app._refresh()
 
-static func description(skill: Dictionary) -> String:
-	var side: String = "敌方" if skill.target_side == "enemy" else "我方"
-	var scope: String = "单体" if skill.target_mode == "single" else "全体"
-	var life: String = "存活" if skill.target_life == "living" else "死亡"
-	return "%s%s%s目标 · 消耗真气%d" % [side, life, scope, skill.mp_cost]
+func _definition(app, id: String) -> Dictionary:
+	return Inventory.definition(app.session.package, id) if item_mode else Skills.definition(app.session.package, id)
+
+func _use(definition: Dictionary) -> Variant:
+	return definition.battle_use if item_mode else definition
+
+func description(definition: Dictionary) -> String:
+	var use = _use(definition)
+	if use == null: return "不能在战斗中使用"
+	var side: String = "敌方" if use.target_side == "enemy" else "我方"
+	var scope: String = "单体" if use.target_mode == "single" else "全体"
+	var life: String = "存活" if use.target_life == "living" else "死亡"
+	var cost: String = ("消耗一件" if definition.consumable else "使用后保留") if item_mode else "消耗真气%d" % definition.mp_cost
+	return "%s%s%s目标 · %s" % [side, life, scope, cost]
 
 static func _clear(control) -> void:
 	for child in control.get_children(): control.remove_child(child); child.queue_free()

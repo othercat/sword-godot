@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 extends RefCounted
 const Battle = preload("res://src/native_battle.gd")
+const Inventory = preload("res://src/native_inventory.gd")
 const Regions = preload("res://src/native_regions.gd")
 const Condition = preload("res://src/native_condition.gd")
 signal changed
@@ -40,6 +41,7 @@ func activate(candidate, now_usec: int = -1) -> bool:
 		var definition: Dictionary = package.index.actor_definitions[source.definition_id]
 		state.entities.append({"entity_kind": "actor", "component_schema_version": 1, "instance_id": source.instance_id, "definition_id": source.definition_id, "scene_id": source.scene_id, "position": source.position.duplicate(), "hp": definition.max_hp, "mp": definition.max_mp, "components": {"pal.native.pose": {"facing": source.facing, "moving_until_tick": 0, "step_phase": 0}}})
 	for variable in world.variables: state.scopes[variable.scope][variable.id] = variable.initial
+	Inventory.initialize(world, state)
 	Regions.initialize(world, state)
 	error = PartyTrail.reseed(package, state, world.active_party)
 	if not error.is_empty() or not _advance(world.entry_node):
@@ -58,10 +60,10 @@ func activate(candidate, now_usec: int = -1) -> bool:
 func battle_open() -> bool:
 	return not state.is_empty() and state.extensions.has(Battle.KEY)
 
-func battle_command(action: String, target: String = "", skill_id: String = "") -> bool:
+func battle_command(action: String, target: String = "", skill_id: String = "", item_id: String = "") -> bool:
 	if not battle_open() or paused or modal or not focused: return false
 	var candidate: Dictionary = state.duplicate(true)
-	var result: Dictionary = Battle.command(package, candidate, action, target, skill_id)
+	var result: Dictionary = Battle.command(package, candidate, action, target, skill_id, item_id)
 	if result.has("error"):
 		error = result.error
 		return false
@@ -191,6 +193,11 @@ func _execute(candidate: Dictionary, first: String, budget: Dictionary) -> bool:
 			"battle":
 				error = Battle.begin(package, candidate, node, effect_id)
 				return error.is_empty()
+			"inventory":
+				error = Inventory.change(package, candidate, node.changes)
+				if not error.is_empty(): return false
+				candidate.committed_effect_ids.append(effect_id)
+				next = node.next
 			"set":
 				var scope: String = package.index.variables[node.variable].scope
 				candidate.scopes[scope][node.variable] = node.value
@@ -381,6 +388,8 @@ func validate_saved(candidate: Dictionary) -> String:
 			if item.instance_id == id and item.scene_id != candidate.cursor.scene_id: return "active party must share the current scene"
 	for variable in package.world.variables:
 		if not Schema.is_type(candidate.scopes[variable.scope].get(variable.id), variable.type): return "saved variable type mismatch"
+	issue = Inventory.validate_state(package, candidate)
+	if not issue.is_empty(): return issue
 	var battle_issue: String = Battle.validate_state(package, candidate)
 	if not battle_issue.is_empty(): return battle_issue
 	var executor = candidate.extensions.get("pal.native.executor")

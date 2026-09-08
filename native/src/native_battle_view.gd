@@ -49,7 +49,7 @@ func _draw() -> void:
 			if row.hp == 0: color = color.darkened(0.6)
 			if _elapsed < 0.35:
 				for event in battle.events:
-					if event.kind in ["attack", "cast"] and event.source == row.instance_id: pos.x += (1 if side == 0 else -1) * sin(_elapsed / 0.35 * PI) * 18
+					if event.kind in ["attack", "cast", "item_use"] and event.source == row.instance_id: pos.x += (1 if side == 0 else -1) * sin(_elapsed / 0.35 * PI) * 18
 					if event.kind in ["attack", "damage"] and event.target == row.instance_id: color = color.lerp(Color.WHITE, 0.5)
 					if event.kind in ["heal", "revive"] and event.target == row.instance_id: color = color.lerp(Color("80d8a1"), 0.7)
 			draw_rect(Rect2(pos, Vector2(26, maxf(10, gap - 20))), color)

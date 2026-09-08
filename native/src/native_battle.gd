@@ -6,6 +6,7 @@ const RULE = "native.battle-turn-core.v1"
 const KEY = "pal.native.battle"
 const Schema = preload("res://src/native_schema.gd")
 const Skills = preload("res://src/native_skills.gd")
+const Inventory = preload("res://src/native_inventory.gd")
 
 static func used(content: Dictionary) -> bool:
 	return not content.get("encounters", []).is_empty() or content.nodes.any(func(n): return n.op == "battle")
@@ -85,9 +86,10 @@ static func validate_state(package, state: Dictionary) -> String:
 	if not executor is Dictionary or not executor.get("activation") is String or not Schema.is_type(executor.get("step"), "integer") or executor.step < 1: return "missing battle executor resume state"
 	var expected: String = "effect." + Schema.digest(JSON.stringify([state.run_id, executor.activation, int(executor.step) - 1, ext.node_id]).to_utf8_buffer())
 	if ext.execution_id != expected or expected in state.committed_effect_ids: return "invalid or already committed battle execution"
-	return Skills.validate_events(package, state)
+	var issue: String = Skills.validate_events(package, state)
+	return Inventory.validate_state(package, state) if issue.is_empty() else issue
 
-static func command(package, state: Dictionary, action: String, target: String = "", skill_id: String = "") -> Dictionary:
+static func command(package, state: Dictionary, action: String, target: String = "", skill_id: String = "", item_id: String = "") -> Dictionary:
 	var issue: String = validate_state(package, state)
 	if not issue.is_empty(): return {"error": issue}
 	if not state.extensions.has(KEY): return {"error": "no active battle"}
@@ -97,8 +99,12 @@ static func command(package, state: Dictionary, action: String, target: String =
 	var enemy: Dictionary = {}
 	var prepared: Dictionary = {}
 	if action != "skill" and not skill_id.is_empty(): return {"error": "skill identity supplied to another action"}
+	if action != "item" and not item_id.is_empty(): return {"error": "item identity supplied to another action"}
 	if action == "skill":
 		prepared = Skills.plan(package, state, source, skill_id, target)
+		if prepared.has("error"): return prepared
+	elif action == "item":
+		prepared = Inventory.plan(package, state, item_id, target)
 		if prepared.has("error"): return prepared
 	elif action == "attack":
 		for row in battle.enemies:
@@ -115,6 +121,9 @@ static func command(package, state: Dictionary, action: String, target: String =
 		battle.guarding.append(source.instance_id)
 		battle.events.append({"kind": "guard", "source": source.instance_id, "target": source.instance_id, "amount": 0})
 	elif action == "skill": Skills.apply(package, state, source, prepared)
+	elif action == "item":
+		issue = Inventory.apply(package, state, source, prepared)
+		if not issue.is_empty(): return {"error": issue}
 	else: _hit(package, source, enemy, false, battle.events)
 	if _living_turn(state, battle.party, 0) < 0: return {"outcome": "loss"}
 	if battle.enemies.all(func(row): return row.hp == 0): return {"outcome": "win"}
