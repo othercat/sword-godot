@@ -1,0 +1,56 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "pal.native.battle-layout.v1",
+  "title": "Native battle presentation and portrait bindings",
+  "x-status": "draft",
+  "type": "object",
+  "required": ["schema", "kind", "layouts", "encounters", "portraits"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "pal.native.battle-layout.v1"},
+    "kind": {"const": "content"},
+    "layouts": {
+      "type": "array", "minItems": 0, "maxItems": 128,
+      "items": {
+        "type": "object", "required": ["id", "preset", "sprite_scale_milli", "provenance"], "additionalProperties": false,
+        "properties": {
+          "id": {"$ref": "#/definitions/id"},
+          "preset": {"const": "pal.classic-oblique.v1"},
+          "sprite_scale_milli": {"type": "integer", "minimum": 1, "maximum": 4000, "description": "Authored frame units to the preset reference canvas, in thousandths; applies equally to both sides."},
+          "provenance": {"$ref": "#/definitions/provenance"}
+        }
+      }
+    },
+    "encounters": {
+      "type": "array", "minItems": 0, "maxItems": 10000,
+      "items": {
+        "type": "object", "required": ["encounter_id", "layout_id"], "additionalProperties": false,
+        "properties": {"encounter_id": {"$ref": "#/definitions/id"}, "layout_id": {"$ref": "#/definitions/id"}}
+      }
+    },
+    "portraits": {
+      "type": "array", "minItems": 0, "maxItems": 10000,
+      "items": {
+        "type": "object", "required": ["definition_id", "asset_id", "width", "height", "provenance"], "additionalProperties": false,
+        "properties": {
+          "definition_id": {"$ref": "#/definitions/id"}, "asset_id": {"$ref": "#/definitions/id"},
+          "width": {"type": "integer", "minimum": 1, "maximum": 8192},
+          "height": {"type": "integer", "minimum": 1, "maximum": 8192},
+          "provenance": {"$ref": "#/definitions/provenance"}
+        }
+      }
+    }
+  },
+  "definitions": {
+    "id": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"},
+    "provenance": {
+      "type": "object", "required": ["status"], "additionalProperties": false,
+      "properties": {
+        "status": {"enum": ["synthetic", "author-choice", "draft-adaptation", "approved"]},
+        "source_id": {"$ref": "#/definitions/id"},
+        "source_revision": {"type": "string", "maxLength": 128},
+        "source_beat_ids": {"type": "array", "maxItems": 100, "uniqueItems": true, "items": {"$ref": "#/definitions/id"}}
+      }
+    }
+  }
+}

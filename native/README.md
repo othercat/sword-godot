@@ -341,3 +341,30 @@ diagnostic; the author-facing menu still offers 60/100/120/144/240/unlimited.
 The current 1280x800 canvas uses a 982x481 world viewport, including when scaled
 into a larger window. These short single-host measurements do not certify native
 1080p, physical high-refresh output, long-duration frame pacing or other platforms.
+
+## Optional classic battle presentation
+
+Packages may opt an encounter into `pal.native.battle-layout.v1` with the paired
+`graphics.battle-layout.v1` capability and exact component contract hash. Studio
+authors this component and portrait bindings through the existing battle editor.
+The classic preset contains the entire 320x200 reference stage and background,
+projects explicit 1–5 party foot arrangements, uses authored frame proportions,
+and displays per-instance HP/MP and optional matching portraits along the bottom.
+The reference canvas is independent of texture resolution and RGBA color depth.
+Enemy placement currently remains the Native generic formation. The original
+DATA.MKF enemy placement and traditional command icon skin are not implemented.
+
+`native_classic_battle.gd` owns presentation configuration; `native_battle_hud.gd`
+consumes the same disposable actor snapshot as the battlefield. Root Attack opens
+the target menu, Escape cancels it, and focused commands scroll into view. Skipping,
+pausing, loading and final party retirement keep gameplay settlement independent.
+No camera/HUD fields enter save authority, no gameplay rules version changes, and
+old packages without the component retain their prior presentation. Content locks
+still change with presentation edits; this does not implement save migration.
+
+`tests/test_classic_battle.gd` accepts three camp packages (5/4/3), an unchanged
+camp package, a directory of deliberately malformed package fixtures, and a fresh
+output directory. The product runner builds the private variants through Studio,
+drives real author controls and runtime window input, and inspects emitted saves
+through the contract owner. This is not physical user acceptance or cross-platform
+proof. No original portraits or game assets are included in this repository.

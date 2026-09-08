@@ -4,8 +4,10 @@ extends Control
 const Frames = preload("res://src/native_map_animation.gd")
 const Presentation = preload("res://src/native_battle_presentation.gd")
 const Layout = preload("res://src/native_battle_layout.gd")
+const Classic = preload("res://src/native_classic_battle.gd")
 const Progression = preload("res://src/native_progression.gd")
 signal playback_finished
+signal display_changed
 var presentation = Presentation.new()
 var idle_elapsed: float = 0.0
 var displayed_frames: Dictionary = {}
@@ -17,6 +19,7 @@ var _frame_extents: Dictionary = {}
 var _extent_package
 var background_asset: String = ""
 var background_rect: Rect2
+var classic_stage: Rect2
 const Battle = preload("res://src/native_battle.gd")
 const Statuses = preload("res://src/native_statuses.gd")
 const PAGE_SIZE = 8 # Presentation page size, never a battle capacity limit.
@@ -56,9 +59,13 @@ func action_caption() -> String:
 	return (session.package.index.actor_definitions[actor.definition_id].display_name + " · " + skills[0].display_name).replace("\n", " ").replace("\r", " ")
 func display_battle() -> Dictionary:
 	return presentation.battle if playing() else (session.state.extensions.get(Battle.KEY, {}) if session != null else {})
+func classic_layout() -> Dictionary:
+	var battle: Dictionary = display_battle()
+	return {} if battle.is_empty() else Classic.for_encounter(session.package.world,battle.encounter_id)
 func present_committed(before: Dictionary, result: Dictionary, outcome: String) -> void:
 	target_ids.clear()
 	presentation.begin(session.package, before, result, outcome)
+	display_changed.emit()
 	queue_redraw()
 func skip() -> void:
 	target_ids.clear(); presentation.clear(); playback_finished.emit(); queue_redraw()
@@ -76,7 +83,9 @@ func _process(delta: float) -> void:
 	if not visible or session == null: return
 	var running: bool = not session.paused and not session.modal and session.focused
 	if running: idle_elapsed += delta; _elapsed += delta
+	var previous_phase: int = presentation.phase_index
 	if presentation.advance(delta, running): playback_finished.emit()
+	if previous_phase != presentation.phase_index: display_changed.emit()
 	queue_redraw()
 func _draw() -> void:
 	_status_regions.clear(); displayed_frames.clear(); displayed_bodies.clear()
@@ -100,6 +109,10 @@ func _draw_background(battle: Dictionary, bounds: Vector2) -> void:
 	background_asset = encounter.background_asset
 	var texture: Texture2D = session.package.textures[background_asset]
 	background_rect = cover_rect(texture.get_size(), bounds)
+	if not classic_layout().is_empty():
+		var stage: Rect2 = Classic.stage_rect(bounds)
+		var rendered: Vector2 = texture.get_size() * minf(stage.size.x/texture.get_width(),stage.size.y/texture.get_height())
+		background_rect = Rect2(stage.get_center()-rendered/2.0,rendered)
 	draw_texture_rect(texture, background_rect, false)
 
 static func party_anchor(index: int, count: int, bounds: Vector2) -> Vector2:
@@ -121,6 +134,8 @@ func _extent(definition: Dictionary, side: int) -> Rect2:
 
 func _draw_battle(battle: Dictionary, bounds: Vector2) -> void:
 	_draw_background(battle, bounds)
+	var classic: Dictionary = classic_layout()
+	var reference_bounds: Vector2 = Classic.SIZE if not classic.is_empty() else bounds
 	var phase: Dictionary = presentation.current()
 	var static_feedback: bool = Frames.BATTLE_CAPABILITY not in session.package.manifest.required_capabilities and _elapsed < .35
 	if not phase.is_empty():
@@ -133,12 +148,18 @@ func _draw_battle(battle: Dictionary, bounds: Vector2) -> void:
 			var row: Dictionary = rows[i]
 			var definition: Dictionary = session.package.index.actor_definitions[row.definition_id]
 			var count: int = mini(PAGE_SIZE, rows.size() - (i / PAGE_SIZE) * PAGE_SIZE)
-			var pos: Vector2 = Layout.enemy_anchor(i % PAGE_SIZE,count,bounds) if side == 0 else Layout.party_anchor(i,rows.size(),bounds)
+			var pos: Vector2 = Layout.enemy_anchor(i % PAGE_SIZE,count,reference_bounds) if side == 0 else (Classic.party_anchor(i,rows.size()) if not classic.is_empty() else Layout.party_anchor(i,rows.size(),bounds))
 			bodies.append({"row":row,"position":pos,"side":side,"index":i,"page":i/PAGE_SIZE if side == 0 else -1,"extent":_extent(definition,side)})
-	layout_spacing = Layout.spacing(bodies)
-	for body in bodies: body.position *= layout_spacing
-	projection = Layout.fit(bodies,bounds)
-	var scale_value: float = projection.x.x
+	classic_stage = Rect2()
+	if classic.is_empty():
+		layout_spacing = Layout.spacing(bodies)
+		for body in bodies: body.position *= layout_spacing
+		projection = Layout.fit(bodies,bounds)
+	else:
+		layout_spacing = 1.0; classic_stage = Classic.stage_rect(bounds)
+		var zoom: float = classic_stage.size.x / Classic.SIZE.x
+		projection = Transform2D(Vector2(zoom,0),Vector2(0,zoom),classic_stage.position)
+	var scale_value: float = projection.x.x * (float(classic.sprite_scale_milli)/1000.0 if not classic.is_empty() else 1.0)
 	bodies.sort_custom(func(a,b): return a.position.y < b.position.y)
 	for body in bodies:
 		if body.side == 0 and body.index / PAGE_SIZE != enemy_page: continue
@@ -166,7 +187,8 @@ func _draw_battle(battle: Dictionary, bounds: Vector2) -> void:
 		var clip: Dictionary = {} if set_id == null else Frames.clip_for(session.package.index.battle_sprite_sets[set_id],action,"upper_left" if body.side == 1 else "lower_right")
 		var frame: Dictionary = Frames.frame_at(clip,elapsed)
 		var local_rect: Rect2 = Rect2(-12,-40,24,40) if frame.is_empty() else Layout.frame_rect(frame)
-		var rect = Rect2(pos + local_rect.position * scale_value,local_rect.size * scale_value)
+		var body_scale: float = projection.x.x if frame.is_empty() and not classic.is_empty() else scale_value
+		var rect = Rect2(pos + local_rect.position * body_scale,local_rect.size * body_scale)
 		draw_circle(pos,maxf(6,15*scale_value),Color(0.05,0.07,0.08,0.55))
 		if not frame.is_empty():
 			draw_texture_rect(session.package.textures[frame.asset_id],rect,false)

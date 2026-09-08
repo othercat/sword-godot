@@ -10,6 +10,15 @@ const Battle = preload("res://src/native_battle.gd")
 const Statuses = preload("res://src/native_statuses.gd")
 const BattleView = preload("res://src/native_battle_view.gd")
 var battle_view
+var classic_hud = preload("res://src/native_battle_hud.gd").new()
+var sidebar: VBoxContainer
+var center: VBoxContainer
+var stage: Control
+var classic_commands: PanelContainer
+var classic_scroll: ScrollContainer
+var classic_mode: bool = false
+var classic_attack: bool = false
+var _classic_context: String = ""
 var session = Session.new()
 var saves = Save.new()
 var world_view
@@ -81,7 +90,7 @@ func _ready() -> void:
 	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	body.add_theme_constant_override("separation", 20)
 	layout.add_child(body)
-	var sidebar = VBoxContainer.new()
+	sidebar = VBoxContainer.new()
 	sidebar.custom_minimum_size.x = 230
 	body.add_child(sidebar)
 	var party_title = Label.new()
@@ -101,15 +110,18 @@ func _ready() -> void:
 	instructions.add_theme_font_size_override("font_size", 16)
 	instructions.add_theme_color_override("font_color", Color("9aa9a8"))
 	sidebar.add_child(instructions)
-	var center = VBoxContainer.new()
+	center = VBoxContainer.new()
 	center.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	body.add_child(center)
+	stage = Control.new(); stage.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	stage.size_flags_horizontal = Control.SIZE_EXPAND_FILL; center.add_child(stage)
 	var frame = SubViewportContainer.new()
+	frame.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	frame.stretch = true
 	frame.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	frame.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	center.add_child(frame)
+	stage.add_child(frame)
 	viewport = SubViewport.new()
 	viewport.size = Vector2i(960, 580)
 	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
@@ -117,6 +129,12 @@ func _ready() -> void:
 	world_view = World.new()
 	viewport.add_child(world_view)
 	frame.resized.connect(_fit_world)
+	classic_commands = PanelContainer.new(); classic_commands.visible = false; stage.add_child(classic_commands)
+	classic_scroll = ScrollContainer.new(); classic_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	classic_scroll.follow_focus = true
+	classic_commands.add_child(classic_scroll)
+	stage.resized.connect(_fit_classic_controls)
+	classic_hud.visible = false; classic_hud.custom_minimum_size.y = 90; center.add_child(classic_hud)
 	dialogue = VBoxContainer.new()
 	dialogue.custom_minimum_size.y = 170
 	center.add_child(dialogue)
@@ -162,6 +180,7 @@ func _ready() -> void:
 	get_window().focus_exited.connect(func(): walk_input.clear(); session.set_focus(false))
 	session.battle_committed.connect(battle_view.present_committed)
 	battle_view.playback_finished.connect(_refresh)
+	battle_view.display_changed.connect(_refresh_classic_hud)
 	save_button.disabled = true
 	var args = OS.get_cmdline_user_args()
 	for i in range(args.size() - 1):
@@ -209,6 +228,7 @@ func _update_target_preview() -> void:
 func _fit_battle_commands() -> void:
 	if not is_instance_valid(options): return
 	if not session.battle_open(): options.custom_minimum_size.y = 0; return
+	if classic_mode: options.custom_minimum_size.y = 0; options.columns = 2; return
 	if battle_view.playing(): return
 	var columns: int = 4 if options.size.x >= 840 else (3 if options.size.x >= 620 else 2)
 	var count: int = options.get_child_count()
@@ -222,6 +242,28 @@ func _fit_battle_commands() -> void:
 			var rows: int = ceili(count / float(mini(columns,count)))
 			options.custom_minimum_size.y = rows * row_height + (rows-1) * options.get_theme_constant("v_separation")
 	options.columns = mini(columns,maxi(1,count))
+
+func _fit_classic_controls() -> void:
+	if not is_instance_valid(classic_commands): return
+	classic_commands.size = Vector2(minf(330,stage.size.x),minf(280,stage.size.y))
+	classic_commands.position = Vector2(8,maxf(0,stage.size.y-classic_commands.size.y-8))
+
+func _refresh_classic_hud() -> void:
+	if is_instance_valid(battle_view) and classic_mode: classic_hud.bind(battle_view)
+
+func _set_classic_mode(enabled: bool) -> void:
+	if classic_mode != enabled:
+		classic_mode = enabled; classic_attack = false
+		dialogue.reparent(classic_scroll if enabled else center)
+		dialogue.custom_minimum_size.y = 0 if enabled else 170
+		dialogue.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		options.custom_minimum_size.y = 0
+		if not enabled: classic_hud.clear()
+	sidebar.visible = not enabled; classic_hud.visible = enabled; classic_commands.visible = enabled
+	_fit_classic_controls(); _refresh_classic_hud()
+
+func _classic_select_attack(value: bool) -> void:
+	classic_attack = value; _refresh()
 
 func _restore_battle_focus(key: String, generation: int) -> void:
 	if not is_inside_tree(): return
@@ -299,6 +341,7 @@ func _refresh() -> void:
 	world_view.visible = not session.battle_open() and not battle_view.playing()
 	instructions.text = ("选择下方命令行动\n轮到的伙伴以金框标出\nEsc 暂停\nF5 保存 · F9 读档" if session.battle_open() else "方向键 / WASD 行走\n空格 / Enter 交谈\nEsc 暂停\nF5 保存 · F9 读档")
 	battle_view.bind(session); battle_view.visible = session.battle_open() or battle_view.playing()
+	_set_classic_mode(battle_view.visible and not battle_view.classic_layout().is_empty())
 	world_view.visible = not battle_view.visible
 	if key != _presentation_key:
 		_presentation_key = key
@@ -336,6 +379,8 @@ func _refresh() -> void:
 	elif session.battle_open():
 		var battle: Dictionary = session.state.extensions[Battle.KEY]
 		var actor: Dictionary = session.entity(battle.party[battle.turn])
+		var context: String = "%s:%s:%s:%s" % [session.state.session_id,session.state.timeline_epoch,battle.execution_id,battle.step]
+		if context != _classic_context: _classic_context = context; classic_attack = false
 		dialogue_text.text = "%s · 第 %d 回合 · %s 行动" % [Battle.encounter(session.package.world, battle.encounter_id).display_name, battle.round, session.package.index.actor_definitions[actor.definition_id].display_name]
 		var status_text: String = "；".join(Statuses.describe(session.package, session.state, actor.instance_id))
 		if not status_text.is_empty(): dialogue_text.text += "\n" + status_text
@@ -349,7 +394,10 @@ func _refresh() -> void:
 				_button(target_pages, "上一组敌人", _change_enemy_page.bind(-1)).disabled = battle_view.enemy_page == 0
 				var page_label = Label.new(); page_label.text = "%d / %d" % [battle_view.enemy_page + 1, battle_view.page_count()]; target_pages.add_child(page_label)
 				_button(target_pages, "下一组敌人", _change_enemy_page.bind(1)).disabled = battle_view.enemy_page == battle_view.page_count() - 1
-			for i in range(start, mini(start + BattleView.PAGE_SIZE, battle.enemies.size())):
+			if classic_mode and not classic_attack:
+				target_pages.visible = false
+				_button(options,"攻击",_classic_select_attack.bind(true))
+			for i in range(start, mini(start + BattleView.PAGE_SIZE, battle.enemies.size()) if not classic_mode or classic_attack else start):
 				var enemy: Dictionary = battle.enemies[i]
 				var definition: Dictionary = session.package.index.actor_definitions[enemy.definition_id]
 				var label: String = "攻击 " + BattleView.enemy_label(session.package,enemy,i) + "\n气血 %d / %d" % [enemy.hp,definition.max_hp]
@@ -357,6 +405,7 @@ func _refresh() -> void:
 				target_button.tooltip_text = _battle_target_detail(enemy)
 				target_button.disabled = enemy.hp == 0
 				_bind_battle_target(target_button,[enemy.instance_id])
+			if classic_mode and classic_attack: _button(options,"返回命令",_classic_select_attack.bind(false))
 			_button(options, "防御", _battle_action.bind("guard", ""))
 			_button(options, "撤离", _battle_action.bind("escape", "")).disabled = not Battle.encounter(session.package.world, battle.encounter_id).allow_escape
 			skill_menu.sync_context(self, battle, actor); item_menu.sync_context(self, battle, actor)
@@ -457,6 +506,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		if battle_view.playing(): _pause()
 		elif session.battle_open() and skill_menu.mode != "closed": skill_menu.cancel(self)
 		elif session.battle_open() and item_menu.mode != "closed": item_menu.cancel(self)
+		elif session.battle_open() and classic_mode and classic_attack: _classic_select_attack(false)
 		else: _pause()
 	elif event.keycode == KEY_F5: _save()
 	elif event.keycode == KEY_F9: _show_saves()
