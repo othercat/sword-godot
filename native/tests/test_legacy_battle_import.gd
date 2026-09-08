@@ -4,6 +4,7 @@ extends SceneTree
 const App = preload("res://scenes/main.tscn")
 const Save = preload("res://src/native_save.gd")
 const Battle = preload("res://src/native_battle.gd")
+const PixelArtChecks = preload("res://tests/pixel_battle_art_checks.gd")
 var checks: Array = []
 var saves: Array = []
 var failed: int = 0
@@ -11,15 +12,23 @@ var output: String
 var package_path: String
 var art_spec: Dictionary = {}
 var art_frames_seen: Array = []
+var pixel_spec: Dictionary = {}
+var pixel_report: Dictionary = {}
 func check(ok: bool, label: String) -> void:
 	checks.append({"name":label,"passed":ok})
 	if not ok: failed += 1; push_error(label)
 func _initialize() -> void: run.call_deferred()
 func run() -> void:
 	var args = OS.get_cmdline_user_args()
-	if args.size() not in [2,3]: quit(2); return
-	if args.size() == 3: art_spec = JSON.parse_string(FileAccess.get_file_as_string(args[2]))
+	if args.size() not in [2,3,4]: quit(2); return
+	if args.size() >= 3: art_spec = JSON.parse_string(FileAccess.get_file_as_string(args[2]))
 	package_path = args[0]; output = args[1]; DirAccess.make_dir_recursive_absolute(output); root.size = Vector2i(1280,800)
+	if args.size() == 4:
+		var parsed_pixel: Variant = JSON.parse_string(FileAccess.get_file_as_string(args[3]))
+		var valid_pixel: bool = parsed_pixel is Dictionary and parsed_pixel.get("actors") is Array and parsed_pixel.actors.size() == 5
+		check(valid_pixel,"explicit pixel mode requires five actor recipes")
+		if not valid_pixel: finish(); return
+		pixel_spec = parsed_pixel
 	var app = App.instantiate(); root.add_child(app); await settle()
 	app.set_process(false); app.set_physics_process(false); app.battle_view.set_process(false)
 	app.saves = Save.new(output.path_join("saves"))
@@ -44,6 +53,7 @@ func run() -> void:
 		await check_art(app,battle)
 	check(receipt.members[0].attack_signed_view == -1 and receipt.members[0].enemy_words[21] == 65535,"raw source words preserved separately from gameplay")
 	var initial: String = save(app,"initial")
+	if not pixel_spec.is_empty(): pixel_report = await PixelArtChecks.exercise(self,app,pixel_spec,initial)
 	if not art_spec.is_empty():
 		for i in range(5):
 			check(s.battle_command("guard"),"source-art normal defense "+str(i)); await drain_art(app,ids)
@@ -87,6 +97,7 @@ func save(app, label: String) -> String:
 func finish() -> void:
 	var report = {"checks":checks,"failed":failed,"saves":saves,"engine_injected_input":true,"physical_input":false,
 		"normal_rule_commands_for_outcomes":true,"legacy_rule_parity":false,"full_playthrough":false,"legacy_art_imported":not art_spec.is_empty(),"source_art_frames_seen":art_frames_seen}
+	report["pixel_art"] = pixel_report
 	FileAccess.open(output.path_join("results.json"),FileAccess.WRITE).store_string(JSON.stringify(report,"\t"))
 	print("legacy import checks=%d failed=%d" % [checks.size(),failed]); quit(0 if failed == 0 else 1)
 func option(app, prefix: String, exact: bool = false) -> Button:
