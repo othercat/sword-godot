@@ -162,7 +162,7 @@ func _draw_animated(battle: Dictionary, bounds: Vector2) -> void:
 			var scale_value: float = float(frame.scale_milli) / 1000.0
 			var rect = Rect2(pos - Vector2(frame.anchor.x, frame.anchor.y) * scale_value, Vector2(frame.width, frame.height) * scale_value)
 			draw_texture_rect(session.package.textures[frame.asset_id], rect, false)
-			displayed_frames[row.instance_id] = {"action":action,"frame_id":frame.frame_id,"asset_id":frame.asset_id,"anchor":pos,"rect":rect}
+			displayed_frames[row.instance_id] = {"action":action,"resolved_action":clip.action,"fallback":clip.action != action,"frame_id":frame.frame_id,"asset_id":frame.asset_id,"anchor":pos,"rect":rect}
 		else:
 			var color = Color("855759") if body.side == 0 else Color("587d95")
 			if row.hp == 0: color = color.darkened(0.6)
@@ -182,4 +182,6 @@ func _draw_animated(battle: Dictionary, bounds: Vector2) -> void:
 				var healing: bool = event.kind in ["heal","revive","status_heal"]
 				draw_string(display_font,pos+Vector2(-12,-62), ("+" if healing else "-")+str(event.amount), HORIZONTAL_ALIGNMENT_LEFT,100,22,Color("80d8a1") if healing else Color("ffc7a0"))
 		var statuses: PackedStringArray = Statuses.describe(session.package, session.state, row.instance_id) if session.battle_open() and not playing() else PackedStringArray()
-		_status_regions.append({"bounds":Rect2(pos-Vector2(48,75),Vector2(115,120)),"text":label+" · "+action+"\n"+"\n".join(statuses)})
+		var resolved: String = str(clip.get("action", "static"))
+		var action_label: String = action if resolved == action else action + " (回退为 " + resolved + ")"
+		_status_regions.append({"bounds":Rect2(pos-Vector2(48,75),Vector2(115,120)),"text":label+" · "+action_label+"\n"+"\n".join(statuses)})
