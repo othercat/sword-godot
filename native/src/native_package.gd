@@ -14,7 +14,8 @@ const Statuses = preload("res://src/native_statuses.gd")
 const Battle = preload("res://src/native_battle.gd")
 const Regions = preload("res://src/native_regions.gd")
 const PartyTrail = preload("res://src/native_party_trail.gd")
-const CAPABILITIES = [Statuses.CAPABILITY, Inventory.CAPABILITY, Skills.CAPABILITY, Battle.CAPABILITY, SceneTravel.GATE_CAPABILITY, Regions.CAPABILITY, Condition.CAPABILITY, PartyTrail.CAPABILITY, SceneTravel.CAPABILITY, "package.local-preview.v1", "world.tile-layers.v1", "world.isometric.v1", "movement.pal-walk.v1", "world.orthogonal.v1", "party.roster.v1", "story.dialogue.v1", "story.choice.v1", "story.variables.v1", MapAnimation.CAPABILITY, MapAnimation.BATTLE_CAPABILITY]
+const BATTLE_SCENE_CAPABILITY = "graphics.battle-scene.v1"
+const CAPABILITIES = [BATTLE_SCENE_CAPABILITY, Statuses.CAPABILITY, Inventory.CAPABILITY, Skills.CAPABILITY, Battle.CAPABILITY, SceneTravel.GATE_CAPABILITY, Regions.CAPABILITY, Condition.CAPABILITY, PartyTrail.CAPABILITY, SceneTravel.CAPABILITY, "package.local-preview.v1", "world.tile-layers.v1", "world.isometric.v1", "movement.pal-walk.v1", "world.orthogonal.v1", "party.roster.v1", "story.dialogue.v1", "story.choice.v1", "story.variables.v1", MapAnimation.CAPABILITY, MapAnimation.BATTLE_CAPABILITY]
 const RULES = {"schema": "pal.native.ruleset.v1", "id": "pal.native.story-core.v1", "version": "0.1.0", "operations": ["dialogue", "choice", "set", "branch", "party", "end"], "variable_assignment": "declared_type_and_scope", "save_phase": "before_node"}
 var error: String = ""
 var manifest: Dictionary = {}
@@ -182,6 +183,8 @@ func _references() -> bool:
 		if actor.get("battle_sprite_set") != null and not index.battle_sprite_sets.has(actor.battle_sprite_set): return _fail("unresolved battle sprite set")
 	var battle_uses: Array = world.roster.map(func(id): return [index.entities[id].definition_id, "upper_left"])
 	for encounter in world.get("encounters", []):
+		if not _texture_ref(encounter.get("background_asset")): return _fail("invalid battle background texture")
+		if encounter.get("background_asset") != null and BATTLE_SCENE_CAPABILITY not in manifest.required_capabilities: return _fail("missing battle scene capability")
 		for enemy in encounter.enemies: battle_uses.append([enemy.definition_id, "lower_right"])
 	for use in battle_uses:
 		var set_id = index.actor_definitions.get(use[0], {}).get("battle_sprite_set")

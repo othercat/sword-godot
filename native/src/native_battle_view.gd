@@ -7,6 +7,8 @@ signal playback_finished
 var presentation = Presentation.new()
 var idle_elapsed: float = 0.0
 var displayed_frames: Dictionary = {}
+var background_asset: String = ""
+var background_rect: Rect2
 const Battle = preload("res://src/native_battle.gd")
 const Statuses = preload("res://src/native_statuses.gd")
 const PAGE_SIZE = 8 # Presentation page size, never a battle capacity limit.
@@ -57,7 +59,7 @@ func _draw() -> void:
 	var bounds = Vector2(get_viewport_rect().size)
 	if Frames.BATTLE_CAPABILITY in session.package.manifest.required_capabilities:
 		_draw_animated(battle, bounds); return
-	draw_rect(Rect2(Vector2.ZERO, bounds), Color("151b24"))
+	_draw_background(battle, bounds)
 	for side in range(2):
 		var start: int = enemy_page * PAGE_SIZE if side == 0 else 0
 		var rows: Array = battle.enemies.slice(start, start + PAGE_SIZE) if side == 0 else battle.party.map(func(id): return Battle.actor(session.state, id))
@@ -94,6 +96,20 @@ func _get_tooltip(at_position: Vector2) -> String:
 		if region.bounds.has_point(at_position): return region.text
 	return ""
 
+static func cover_rect(source: Vector2, bounds: Vector2) -> Rect2:
+	var scaled = source * maxf(bounds.x/source.x, bounds.y/source.y)
+	return Rect2((bounds-scaled)/2, scaled)
+
+func _draw_background(battle: Dictionary, bounds: Vector2) -> void:
+	background_asset = ""; background_rect = Rect2()
+	draw_rect(Rect2(Vector2.ZERO, bounds), Color("18232b"))
+	var encounter: Dictionary = Battle.encounter(session.package.world, battle.encounter_id)
+	if encounter.get("background_asset") == null: return
+	background_asset = encounter.background_asset
+	var texture: Texture2D = session.package.textures[background_asset]
+	background_rect = cover_rect(texture.get_size(), bounds)
+	draw_texture_rect(texture, background_rect, false)
+
 static func party_anchor(index: int, count: int, bounds: Vector2) -> Vector2:
 	# Independently authored screen layout: every party member faces upper-left.
 	# This is presentation order, not a gameplay formation or role-ID limit.
@@ -108,7 +124,7 @@ static func party_anchor(index: int, count: int, bounds: Vector2) -> Vector2:
 
 func _draw_animated(battle: Dictionary, bounds: Vector2) -> void:
 	displayed_frames.clear()
-	draw_rect(Rect2(Vector2.ZERO, bounds), Color("18232b"))
+	_draw_background(battle, bounds)
 	var phase: Dictionary = presentation.current()
 	if not phase.is_empty():
 		for i in range(battle.enemies.size()):
@@ -153,10 +169,13 @@ func _draw_animated(battle: Dictionary, bounds: Vector2) -> void:
 			draw_rect(Rect2(pos-Vector2(12,40),Vector2(24,40)), color)
 		if body.side == 1 and body.index == battle.turn and not playing(): draw_arc(pos, 18, 0, TAU, 32, Color("ddbd70"), 2)
 		var label: String = enemy_label(session.package, row, body.index) if body.side == 0 else definition.display_name
-		draw_string(display_font, pos+Vector2(-46,19), label, HORIZONTAL_ALIGNMENT_LEFT, 135, 13, Color("e5dbc5"))
-		draw_rect(Rect2(pos+Vector2(-36,23),Vector2(72,4)), Color("303942"))
-		draw_rect(Rect2(pos+Vector2(-36,23),Vector2(72.0*row.hp/definition.max_hp,4)), Color("8fab70"))
-		draw_string(display_font, pos+Vector2(-36,43), "%d / %d" % [row.hp,definition.max_hp], HORIZONTAL_ALIGNMENT_LEFT, 100, 11, Color("b2b7b8"))
+		# Party names/HP/MP already have an ordered sidebar. Repeating labels
+		# between diagonally arranged bodies makes one member obscure another.
+		if body.side == 0:
+			draw_string(display_font, pos+Vector2(-46,19), label, HORIZONTAL_ALIGNMENT_LEFT, 135, 13, Color("e5dbc5"))
+			draw_rect(Rect2(pos+Vector2(-36,23),Vector2(72,4)), Color("303942"))
+			draw_rect(Rect2(pos+Vector2(-36,23),Vector2(72.0*row.hp/definition.max_hp,4)), Color("8fab70"))
+			draw_string(display_font, pos+Vector2(-36,43), "%d / %d" % [row.hp,definition.max_hp], HORIZONTAL_ALIGNMENT_LEFT, 100, 11, Color("b2b7b8"))
 		if phase.get("actor_id") == row.instance_id and not phase.event.is_empty():
 			var event: Dictionary = phase.event
 			if event.kind in ["attack","damage","status_damage","heal","revive","status_heal"]:

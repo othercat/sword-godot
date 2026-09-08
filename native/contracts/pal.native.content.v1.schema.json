@@ -1589,6 +1589,13 @@
           "allow_escape": {
             "type": "boolean"
           },
+          "background_asset": {
+            "type": ["string", "null"],
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$",
+            "description": "Optional PNG texture. Missing/null uses the plain battle background. Non-null requires graphics.battle-scene.v1; centered aspect-preserving cover, beneath combatants and UI. Asset provenance supplies source identity."
+          },
           "enemies": {
             "type": "array",
             "items": {
