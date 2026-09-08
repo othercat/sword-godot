@@ -44,6 +44,15 @@ func bind(value) -> void:
 	queue_redraw()
 func playing() -> bool:
 	return presentation.active
+
+func action_caption() -> String:
+	if not playing(): return ""
+	var event: Dictionary = presentation.current().event
+	if event.get("kind") != "cast": return ""
+	var actor: Dictionary = presentation.actors[event.source]
+	var skills: Array = session.package.world.get("skill_definitions", []).filter(func(s): return s.id == event.skill_id)
+	if skills.is_empty(): return ""
+	return (session.package.index.actor_definitions[actor.definition_id].display_name + " · " + skills[0].display_name).replace("\n", " ").replace("\r", " ")
 func display_battle() -> Dictionary:
 	return presentation.battle if playing() else (session.state.extensions.get(Battle.KEY, {}) if session != null else {})
 func present_committed(before: Dictionary, result: Dictionary, outcome: String) -> void:
@@ -189,3 +198,11 @@ func _draw_battle(battle: Dictionary, bounds: Vector2) -> void:
 			if event.kind in ["attack","damage","status_damage","heal","revive","status_heal"]:
 				var healing: bool = event.kind in ["heal","revive","status_heal"]
 				draw_string(display_font,body.effect_origin,("+" if healing else "-")+str(event.amount),HORIZONTAL_ALIGNMENT_LEFT,90,22,Color("80d8a1") if healing else Color("ffc7a0"))
+	var caption: String = action_caption()
+	if not caption.is_empty():
+		var width: float = maxf(24, bounds.x - 40)
+		var text: String = caption
+		while text.length() > 1 and display_font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 18).x > width:
+			text = text.left(text.length() - 2) + "…"
+		draw_rect(Rect2(12, 8, minf(width + 16, display_font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 18).x + 16), 30), Color("101820"))
+		draw_string(display_font, Vector2(20, 29), text, HORIZONTAL_ALIGNMENT_LEFT, width, 18, Color("f1dda7"))

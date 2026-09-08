@@ -137,7 +137,7 @@ static func validate_state(package, state: Dictionary) -> String:
 	var periodic: bool = false; var cause: Dictionary = {}
 	var mutations: Dictionary = {}; var tick_counts: Dictionary = {}
 	var last_actor: int = -1; var last_status: String = ""
-	var completed_round: bool = battle.events.any(func(e): return e.source not in battle.party and e.kind in ["attack", "status_skip"])
+	var completed_round: bool = battle.events.any(func(e): return e.source not in battle.party and e.kind in ["attack", "cast", "status_skip"])
 	for index in range(battle.events.size()):
 		var event: Dictionary = battle.events[index]
 		if event.kind not in ["status_clear", "status_damage", "status_heal", "status_skip", "status_add", "status_remove"]:

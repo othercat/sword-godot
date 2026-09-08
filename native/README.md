@@ -1,5 +1,19 @@
 # PAL Wanxiang Native preview
 
+Optional `battle.enemy-actions.v1` now runs ordered per-instance enemy skills through
+the existing target/effect/status engine. The additive component is stored in content
+extensions and pinned separately; the four base schema files remain byte-compatible.
+`native_enemy_actions.gd` selects rules, while `native_battle_effects.gd` admits complete
+player/enemy action blocks and `native_session.gd` rejects more than 8192 events before
+publishing a candidate. Enemy casts use the existing committed animation and show the
+authored skill name. No enemy script runtime, Legacy slot projection, or new save engine.
+See the shared owner contract `docs/native-enemy-actions-v1.md` and product evidence
+`PAL-Wanxiang/docs/evidence/g1-native-20260907/ENEMY_ACTION_IMPLEMENTATION.md`.
+`tests/test_enemy_actions.gd <compiled-variant-list.json> <isolated-output>` covers
+3/4/5-party windows, revival seats, action-time retargeting, item/cast blocks, silence,
+HP policies, multi-cast saves and complete candidate rollback. Frames/state stress
+cases are explicitly synthetic; this is not complete gameplay or art acceptance.
+
 Optional `world.portal-gates.v1` evaluates the existing condition AST on portal
 interaction before changing any gameplay state. Each direction is independent;
 players see only authored blocked text. Successful entry clears earlier refusal

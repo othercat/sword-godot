@@ -68,6 +68,9 @@ func battle_command(action: String, target: String = "", skill_id: String = "", 
 	if result.has("error"):
 		error = result.error
 		return false
+	if candidate.extensions[Battle.KEY].events.size() > 8192:
+		error = "本次行动超过保存事件预算（8192条），全部行动已撤回。请调整敌方技能或目标数量。"
+		return false
 	var presentation_result: Dictionary = candidate.extensions[Battle.KEY].duplicate(true)
 	if result.has("outcome"):
 		var battle: Dictionary = candidate.extensions[Battle.KEY]

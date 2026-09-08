@@ -8,6 +8,7 @@ const Schema = preload("res://src/native_schema.gd")
 const Skills = preload("res://src/native_skills.gd")
 const Inventory = preload("res://src/native_inventory.gd")
 const Statuses = preload("res://src/native_statuses.gd")
+const EnemyActions = preload("res://src/native_enemy_actions.gd")
 
 static func used(content: Dictionary) -> bool:
 	return not content.get("encounters", []).is_empty() or content.nodes.any(func(n): return n.op == "battle")
@@ -88,8 +89,16 @@ static func validate_state(package, state: Dictionary) -> String:
 	if not executor is Dictionary or not executor.get("activation") is String or not Schema.is_type(executor.get("step"), "integer") or executor.step < 1: return "missing battle executor resume state"
 	var expected: String = "effect." + Schema.digest(JSON.stringify([state.run_id, executor.activation, int(executor.step) - 1, ext.node_id]).to_utf8_buffer())
 	if ext.execution_id != expected or expected in state.committed_effect_ids: return "invalid or already committed battle execution"
+	if ext.events.size() > 8192: return "battle event budget exceeded"
+	var partition: Dictionary = Skills.Effects.action_blocks(state)
+	if partition.has("error"): return partition.error
+	for block in partition.blocks:
+		if block[0].kind == "cast":
+			var cast_issue: String = EnemyActions.validate_cast(package.world, ext, block[0])
+			if not cast_issue.is_empty(): return cast_issue
 	var issue: String = Skills.validate_events(package, state)
 	if issue.is_empty(): issue = Inventory.validate_state(package, state)
+	if issue.is_empty(): issue = EnemyActions.validate_trace(package, state, partition.blocks)
 	return Statuses.validate_state(package, state) if issue.is_empty() else issue
 
 static func command(package, state: Dictionary, action: String, target: String = "", skill_id: String = "", item_id: String = "") -> Dictionary:
@@ -141,16 +150,22 @@ static func command(package, state: Dictionary, action: String, target: String =
 	if next >= 0:
 		battle.turn = next
 		return {}
-	# Living enemies act in declared order and retarget the first living party member.
+	# Resolve each living enemy from the state produced by the previous complete action.
 	for row in battle.enemies:
 		if row.hp <= 0: continue
 		var enemy_blocked: String = Statuses.blocking(package, state, row.instance_id, "skip_turn")
 		if not enemy_blocked.is_empty():
 			battle.events.append({"kind": "status_skip", "source": row.instance_id, "target": row.instance_id, "amount": 0, "status_id": enemy_blocked})
 			continue
-		var defender: Dictionary = actor(state, battle.party[_living_turn(state, battle.party, 0)])
-		_hit(package, state, row, defender, defender.instance_id in battle.guarding, battle.events)
+		var enemy_plan: Dictionary = EnemyActions.plan(package, state, row)
+		if not enemy_plan.is_empty():
+			issue = Skills.apply(package, state, row, enemy_plan)
+			if not issue.is_empty(): return {"error": issue} # Apply failure rolls back the whole command.
+		else:
+			var defender: Dictionary = actor(state, battle.party[_living_turn(state, battle.party, 0)])
+			_hit(package, state, row, defender, defender.instance_id in battle.guarding, battle.events)
 		if _living_turn(state, battle.party, 0) < 0: return {"outcome": "loss"}
+		if battle.enemies.all(func(e): return e.hp == 0): return {"outcome": "win"}
 	Statuses.end_round(package, state)
 	if _living_turn(state, battle.party, 0) < 0: return {"outcome": "loss"}
 	if battle.enemies.all(func(row): return row.hp == 0): return {"outcome": "win"}

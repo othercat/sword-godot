@@ -10,13 +10,15 @@ static func validate_definition(definition: Dictionary) -> String:
 	elif definition.effects.any(func(e): return e.op == "revive"): return "revive requires dead targets"
 	return ""
 
-static func eligible(state: Dictionary, definition: Dictionary) -> Array:
+static func eligible(state: Dictionary, definition: Dictionary, source_id: String = "") -> Array:
 	var battle: Dictionary = state.extensions[KEY]
-	var rows: Array = battle.enemies if definition.target_side == "enemy" else battle.party.map(func(id): return state.entities.filter(func(a): return a.instance_id == id)[0])
+	var source_is_enemy: bool = not source_id.is_empty() and source_id not in battle.party
+	var select_enemies: bool = (definition.target_side == "enemy") != source_is_enemy
+	var rows: Array = battle.enemies if select_enemies else battle.party.map(func(id): return state.entities.filter(func(a): return a.instance_id == id)[0])
 	return rows.filter(func(a): return a.hp > 0 if definition.target_life == "living" else a.hp == 0)
 
-static func plan(state: Dictionary, definition: Dictionary, target: String) -> Dictionary:
-	var targets: Array = eligible(state, definition)
+static func plan(state: Dictionary, definition: Dictionary, target: String, source_id: String = "") -> Dictionary:
+	var targets: Array = eligible(state, definition, source_id)
 	if definition.target_mode == "single": targets = targets.filter(func(a): return a.instance_id == target)
 	elif not target.is_empty(): return {"error": "全体效果不能指定单个目标。"}
 	if targets.is_empty(): return {"error": "没有符合存活状态和阵营的目标。"}
@@ -49,23 +51,56 @@ static func apply(package, state: Dictionary, source: Dictionary, definition: Di
 			if effect.op == "damage": Statuses.after_damage(package, state, source.instance_id, target, amount)
 	return ""
 
-static func validate_events(package, state: Dictionary, definition: Dictionary, identity_key: String, identity: String, command_kind: String, cost: int) -> String:
-	var battle: Dictionary = state.extensions[KEY]; var events: Array = battle.events; var command: Dictionary = events[0]
-	if command.kind != command_kind or command.get(identity_key) != identity: return "missing leading use/cast identity"
-	if command.source not in battle.party or command.target != command.source or command.amount != cost: return "invalid source or debit result"
+static func action_blocks(state: Dictionary) -> Dictionary:
+	var battle: Dictionary = state.extensions[KEY]
+	if battle.events.is_empty() != (battle.step == 0): return {"error": "only initial battle step has empty events"}
 	var enemies: Array = battle.enemies.map(func(a): return a.instance_id)
-	var side: Array = battle.party if definition.target_side == "ally" else enemies
-	var groups: Array = []; var seen: Dictionary = {}; var last: int = -1; var closed: bool = false
+	var blocks: Array = []; var periodic: bool = false; var last_enemy: int = -1
+	for event in battle.events:
+		if event.kind in ["status_damage", "status_heal"] or (event.kind == "status_clear" and event.reason == "expired"):
+			if blocks.is_empty() or last_enemy < 0: return {"error": "round-end effects without enemy phase"}
+			periodic = true; continue
+		if event.kind == "status_clear":
+			if blocks.is_empty(): return {"error": "clear without command"}
+			if not periodic: blocks[-1].append(event)
+			continue # Statuses validates the immediate damage cause, including the periodic tail.
+		if periodic: return {"error": "action/effect after round-end tail"}
+		if event.kind in ["attack", "guard", "escape", "cast", "item_use", "status_skip"]:
+			if blocks.is_empty():
+				if event.source not in battle.party: return {"error": "first command must belong to party"}
+			else:
+				if event.kind not in ["attack", "cast", "status_skip"] or event.source not in enemies: return {"error": "invalid enemy command"}
+				var index: int = enemies.find(event.source)
+				if index <= last_enemy: return {"error": "duplicate or unordered enemy action"}
+				last_enemy = index
+			if event.kind == "attack":
+				if event.target not in (enemies if blocks.is_empty() else battle.party): return {"error": "attack target in wrong faction"}
+			elif event.target != event.source: return {"error": "command must target its source identity"}
+			blocks.append([event])
+		else:
+			if event.kind not in ["damage", "heal", "revive", "status_add", "status_remove"] or blocks.is_empty() or blocks[-1][0].kind not in ["cast", "item_use"]: return {"error": "orphan effect"}
+			blocks[-1].append(event)
+	return {"blocks": blocks}
+
+static func validate_events(package, state: Dictionary, definition: Dictionary, identity_key: String, identity: String, command_kind: String, cost: int, events: Array = []) -> String:
+	var battle: Dictionary = state.extensions[KEY]
+	if events.is_empty():
+		var partition: Dictionary = action_blocks(state)
+		if partition.has("error"): return partition.error
+		if partition.blocks.is_empty(): return "missing use/cast result"
+		events = partition.blocks[0]
+	var command: Dictionary = events[0]
+	if command.kind != command_kind or command.get(identity_key) != identity: return "missing leading use/cast identity"
+	if command.target != command.source or command.amount != cost: return "invalid source or debit result"
+	var enemies: Array = battle.enemies.map(func(a): return a.instance_id)
+	var allies: Array = battle.party if command.source in battle.party else enemies
+	var opponents: Array = enemies if command.source in battle.party else battle.party
+	var side: Array = allies if definition.target_side == "ally" else opponents
+	var groups: Array = []; var seen: Dictionary = {}; var last: int = -1
 	for _effect in definition.effects: groups.append([])
 	for event in events.slice(1):
 		if event.kind == "status_clear": continue # Immediate cause and policy checked by Statuses.
-		if event.kind in ["status_damage", "status_heal"]:
-			closed = true; continue
-		if event.kind not in ["damage", "heal", "revive", "status_add", "status_remove"]:
-			closed = true
-			if not ((event.kind == "attack" and event.source in enemies and event.target in battle.party) or (event.kind == "status_skip" and event.source in enemies)): return "only enemy retaliation/skips may follow effects"
-			continue
-		if closed or event.get(identity_key) != identity or event.source != command.source: return "interrupted or mismatched effect source"
+		if event.get(identity_key) != identity or event.source != command.source: return "interrupted or mismatched effect source"
 		var index: int = event.effect_index
 		if index < 0 or index >= groups.size() or index < last: return "effect order/reference mismatch"
 		last = index
