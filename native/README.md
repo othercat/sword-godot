@@ -273,3 +273,25 @@ They distinguish injected input, diagnostic phase selection, legal command chain
 actual save files and synthetic60/100/144/240 timing. High-refresh devices, final
 companions/pets/formations, ATB/realtime and three-platform delivery remain pending.
 The MIT native boundary is unchanged; no GPL SDLPal/PAL research code was copied.
+
+
+## Instance growth and level learning (2026-09-08)
+
+`actors.progression.v1` consumes the optional MIT `pal.native.progression.v1`
+component. `native_progression.gd` keeps authored curves separate from persistent
+world-actor XP, level and learned skills. Battle enemies keep their base stats.
+Effective stats flow through attacks, healing/revival, statuses, target selection,
+menus and save inspection. The sidebar displays level/XP and the last reward.
+
+The first defeat of each enemy records the living party at that moment. Victory
+settlement separately applies final eligibility, per-enemy death percentage and
+XP saturation, all in the same candidate as the callback. Loading preserves the
+ledger without paying or learning again. Node/run/executor identity and current
+command defeat events are checked; this is not a complete anti-cheat replay.
+
+The four base schemas remain byte-identical. New packages pin the optional schema
+hash and require rule version 0.13.0. Old content locks/saves are not silently
+migrated to new curves. Tests in `tests/test_progression.gd` use the actual window
+and saved files, with explicit synthetic HP/status/callback fault cases. They
+cover 3/4/5-member author packages; this does not certify final game balance,
+secondary training XP, random learning, complete stories or additional devices.

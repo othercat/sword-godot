@@ -26,7 +26,7 @@ func sync_context(app, battle: Dictionary, actor: Dictionary) -> void:
 
 func render(app, battle: Dictionary, actor: Dictionary) -> void:
 	sync_context(app, battle, actor)
-	var ids: Array = app.session.package.world.get("item_definitions", []).map(func(i): return i.id) if item_mode else app.session.package.index.actor_definitions[actor.definition_id].get("skill_ids", [])
+	var ids: Array = app.session.package.world.get("item_definitions", []).map(func(i): return i.id) if item_mode else Statuses.Progression.skill_ids(app.session.package, actor)
 	if mode == "closed":
 		if not ids.is_empty():
 			var button = app._button(app.options, "物品" if item_mode else "技能", _open.bind(app))

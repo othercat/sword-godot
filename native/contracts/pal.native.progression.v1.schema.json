@@ -1,0 +1,456 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/othercat/pal98-runtime-contracts/schemas/pal.native.progression.v1.schema.json",
+  "title": "Native progression: authored definitions, actor component and reward ledger",
+  "x-status": "draft",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "pal.native.progression.v1"
+    }
+  },
+  "oneOf": [
+    {
+      "$ref": "#/definitions/content"
+    },
+    {
+      "$ref": "#/definitions/actor"
+    },
+    {
+      "$ref": "#/definitions/ledger"
+    }
+  ],
+  "definitions": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+    },
+    "ids": {
+      "type": "array",
+      "maxItems": 32,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/definitions/id"
+      }
+    },
+    "experience": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1000000000
+    },
+    "level_number": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000
+    },
+    "skills": {
+      "type": "array",
+      "maxItems": 1024,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/definitions/id"
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "required": [
+        "status",
+        "source_revision"
+      ],
+      "properties": {
+        "status": {
+          "const": "author-choice"
+        },
+        "source_revision": {
+          "type": "string",
+          "maxLength": 128
+        }
+      },
+      "additionalProperties": false
+    },
+    "content": {
+      "type": "object",
+      "required": [
+        "schema",
+        "kind",
+        "profiles",
+        "rewards"
+      ],
+      "properties": {
+        "schema": {
+          "const": "pal.native.progression.v1"
+        },
+        "kind": {
+          "const": "content"
+        },
+        "profiles": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 10000,
+          "items": {
+            "type": "object",
+            "required": [
+              "definition_id",
+              "initial_experience",
+              "recovery",
+              "levels",
+              "provenance"
+            ],
+            "properties": {
+              "definition_id": {
+                "$ref": "#/definitions/id"
+              },
+              "initial_experience": {
+                "$ref": "#/definitions/experience"
+              },
+              "recovery": {
+                "enum": [
+                  "keep_deficit",
+                  "full_living",
+                  "keep_current"
+                ]
+              },
+              "levels": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 999,
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "experience",
+                    "max_hp",
+                    "max_mp",
+                    "attack",
+                    "defense",
+                    "learn_skills"
+                  ],
+                  "properties": {
+                    "experience": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 1000000000
+                    },
+                    "max_hp": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 1000000
+                    },
+                    "max_mp": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 1000000
+                    },
+                    "attack": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 1000000
+                    },
+                    "defense": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 1000000
+                    },
+                    "learn_skills": {
+                      "$ref": "#/definitions/skills"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "provenance": {
+                "$ref": "#/definitions/provenance"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "rewards": {
+          "type": "array",
+          "maxItems": 10000,
+          "items": {
+            "type": "object",
+            "required": [
+              "encounter_id",
+              "dead_percent",
+              "final_eligibility",
+              "enemies",
+              "provenance"
+            ],
+            "properties": {
+              "encounter_id": {
+                "$ref": "#/definitions/id"
+              },
+              "dead_percent": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "final_eligibility": {
+                "enum": [
+                  "living",
+                  "party"
+                ]
+              },
+              "enemies": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 32,
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "instance_id",
+                    "experience"
+                  ],
+                  "properties": {
+                    "instance_id": {
+                      "$ref": "#/definitions/id"
+                    },
+                    "experience": {
+                      "$ref": "#/definitions/experience"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "provenance": {
+                "$ref": "#/definitions/provenance"
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "actor": {
+      "type": "object",
+      "required": [
+        "schema",
+        "kind",
+        "experience",
+        "level",
+        "learned_skills"
+      ],
+      "properties": {
+        "schema": {
+          "const": "pal.native.progression.v1"
+        },
+        "kind": {
+          "const": "actor"
+        },
+        "experience": {
+          "$ref": "#/definitions/experience"
+        },
+        "level": {
+          "$ref": "#/definitions/level_number"
+        },
+        "learned_skills": {
+          "$ref": "#/definitions/skills"
+        }
+      },
+      "additionalProperties": false
+    },
+    "defeat": {
+      "type": "object",
+      "required": [
+        "enemy_id",
+        "step",
+        "source_id",
+        "living"
+      ],
+      "properties": {
+        "enemy_id": {
+          "$ref": "#/definitions/id"
+        },
+        "source_id": {
+          "$ref": "#/definitions/id"
+        },
+        "step": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000
+        },
+        "living": {
+          "$ref": "#/definitions/ids"
+        }
+      },
+      "additionalProperties": false
+    },
+    "pending": {
+      "type": "object",
+      "required": [
+        "execution_id",
+        "encounter_id",
+        "party",
+        "defeats",
+        "node_id",
+        "activation",
+        "executor_step"
+      ],
+      "properties": {
+        "execution_id": {
+          "$ref": "#/definitions/id"
+        },
+        "encounter_id": {
+          "$ref": "#/definitions/id"
+        },
+        "party": {
+          "$ref": "#/definitions/ids"
+        },
+        "defeats": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "$ref": "#/definitions/defeat"
+          }
+        },
+        "node_id": {
+          "$ref": "#/definitions/id"
+        },
+        "activation": {
+          "$ref": "#/definitions/id"
+        },
+        "executor_step": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000000
+        }
+      },
+      "additionalProperties": false
+    },
+    "credit": {
+      "type": "object",
+      "required": [
+        "execution_id",
+        "encounter_id",
+        "party",
+        "defeats",
+        "outcome",
+        "living",
+        "step",
+        "awards",
+        "node_id",
+        "activation",
+        "executor_step"
+      ],
+      "properties": {
+        "execution_id": {
+          "$ref": "#/definitions/id"
+        },
+        "encounter_id": {
+          "$ref": "#/definitions/id"
+        },
+        "party": {
+          "$ref": "#/definitions/ids"
+        },
+        "defeats": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "$ref": "#/definitions/defeat"
+          }
+        },
+        "outcome": {
+          "enum": [
+            "win",
+            "loss",
+            "escape"
+          ]
+        },
+        "living": {
+          "$ref": "#/definitions/ids"
+        },
+        "step": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000
+        },
+        "awards": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "type": "object",
+            "required": [
+              "instance_id",
+              "amount",
+              "before_experience",
+              "after_experience",
+              "before_level",
+              "after_level"
+            ],
+            "properties": {
+              "instance_id": {
+                "$ref": "#/definitions/id"
+              },
+              "amount": {
+                "$ref": "#/definitions/experience"
+              },
+              "before_experience": {
+                "$ref": "#/definitions/experience"
+              },
+              "after_experience": {
+                "$ref": "#/definitions/experience"
+              },
+              "before_level": {
+                "$ref": "#/definitions/level_number"
+              },
+              "after_level": {
+                "$ref": "#/definitions/level_number"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "node_id": {
+          "$ref": "#/definitions/id"
+        },
+        "activation": {
+          "$ref": "#/definitions/id"
+        },
+        "executor_step": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000000
+        }
+      },
+      "additionalProperties": false
+    },
+    "ledger": {
+      "type": "object",
+      "required": [
+        "schema",
+        "kind",
+        "pending",
+        "credits"
+      ],
+      "properties": {
+        "schema": {
+          "const": "pal.native.progression.v1"
+        },
+        "kind": {
+          "const": "ledger"
+        },
+        "pending": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/definitions/pending"
+            }
+          ]
+        },
+        "credits": {
+          "type": "array",
+          "maxItems": 100000,
+          "items": {
+            "$ref": "#/definitions/credit"
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

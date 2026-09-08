@@ -4,6 +4,7 @@ extends Control
 const Frames = preload("res://src/native_map_animation.gd")
 const Presentation = preload("res://src/native_battle_presentation.gd")
 const Layout = preload("res://src/native_battle_layout.gd")
+const Progression = preload("res://src/native_progression.gd")
 signal playback_finished
 var presentation = Presentation.new()
 var idle_elapsed: float = 0.0
@@ -155,7 +156,7 @@ func _draw_battle(battle: Dictionary, bounds: Vector2) -> void:
 		if row.hp == 0: action = "dead"
 		elif not playing() and session.battle_open() and not Statuses.blocking(session.package,session.state,row.instance_id,"skip_turn").is_empty(): action = "sleep"
 		elif row.instance_id in battle.guarding: action = "defend"
-		elif row.hp < 100 and row.hp * 5 <= definition.max_hp: action = "dying"
+		elif row.hp * 5 <= Progression.stats(session.package, row).max_hp: action = "dying"
 		var elapsed: int = roundi(idle_elapsed * 1000000.0)
 		if phase.get("actor_id") == row.instance_id and not phase.action.is_empty():
 			action = phase.action; elapsed = roundi(presentation.elapsed_us)

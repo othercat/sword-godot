@@ -4,6 +4,7 @@ const Battle = preload("res://src/native_battle.gd")
 const Inventory = preload("res://src/native_inventory.gd")
 const Regions = preload("res://src/native_regions.gd")
 const Condition = preload("res://src/native_condition.gd")
+const Progression = preload("res://src/native_progression.gd")
 signal changed
 signal battle_committed(before: Dictionary, result: Dictionary, outcome: String)
 const Package = preload("res://src/native_package.gd")
@@ -42,6 +43,7 @@ func activate(candidate, now_usec: int = -1) -> bool:
 		var definition: Dictionary = package.index.actor_definitions[source.definition_id]
 		state.entities.append({"entity_kind": "actor", "component_schema_version": 1, "instance_id": source.instance_id, "definition_id": source.definition_id, "scene_id": source.scene_id, "position": source.position.duplicate(), "hp": definition.max_hp, "mp": definition.max_mp, "components": {"pal.native.pose": {"facing": source.facing, "moving_until_tick": 0, "step_phase": 0}}})
 	for variable in world.variables: state.scopes[variable.scope][variable.id] = variable.initial
+	Progression.initialize(package, state)
 	Inventory.initialize(world, state)
 	Regions.initialize(world, state)
 	error = PartyTrail.reseed(package, state, world.active_party)
@@ -75,6 +77,10 @@ func battle_command(action: String, target: String = "", skill_id: String = "", 
 	if result.has("outcome"):
 		var battle: Dictionary = candidate.extensions[Battle.KEY]
 		var node: Dictionary = package.index.nodes[battle.node_id]
+		var growth_issue: String = Progression.settle(package, candidate, result.outcome)
+		if not growth_issue.is_empty():
+			error = growth_issue
+			return false
 		if candidate.committed_effect_ids.size() >= 100000:
 			error = "effect history limit; state retained"
 			return false
@@ -356,6 +362,8 @@ func can_save() -> bool:
 func validate_saved(candidate: Dictionary) -> String:
 	var issue: String = package.schema.validate("pal.native.state.v1", candidate)
 	if not issue.is_empty(): return issue
+	issue = Progression.validate_state(package, candidate)
+	if not issue.is_empty(): return issue
 	issue = SceneTravel.validate_state(package, candidate)
 	if not issue.is_empty(): return issue
 	issue = PartyTrail.validate_state(package, candidate)
@@ -378,7 +386,8 @@ func validate_saved(candidate: Dictionary) -> String:
 		var definition: Dictionary = package.index.actor_definitions[item.definition_id]
 		var sprite_id = definition.get("map_sprite_set")
 		if sprite_id != null and package.index.sprite_sets[sprite_id].get("playback") == "pal.walk-phase.v1" and package.movement_rule(item.scene_id) != "pal.walk.v1": return "saved PAL phase entity requires PAL walking map"
-		if item.hp > definition.max_hp or item.mp > definition.max_mp or not package.can_stand(item.scene_id, item.position): return "saved stat/position range"
+		var effective: Dictionary = Progression.stats(package, item)
+		if item.hp > effective.max_hp or item.mp > effective.max_mp or not package.can_stand(item.scene_id, item.position): return "saved stat/position range"
 		var pose = item.components.get("pal.native.pose")
 		if not pose is Dictionary or pose.get("facing") not in ["up", "down", "left", "right"]: return "missing pose component"
 		var period: int = 6 if package.movement_rule(item.scene_id) == "pal.walk.v1" else 8

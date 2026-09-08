@@ -9,6 +9,7 @@ const Skills = preload("res://src/native_skills.gd")
 const Inventory = preload("res://src/native_inventory.gd")
 const Statuses = preload("res://src/native_statuses.gd")
 const EnemyActions = preload("res://src/native_enemy_actions.gd")
+const Progression = preload("res://src/native_progression.gd")
 
 static func used(content: Dictionary) -> bool:
 	return not content.get("encounters", []).is_empty() or content.nodes.any(func(n): return n.op == "battle")
@@ -53,6 +54,7 @@ static func begin(package, state: Dictionary, node: Dictionary, execution_id: St
 		enemies.append({"instance_id": source.instance_id, "definition_id": source.definition_id, "hp": definition.max_hp, "mp": definition.max_mp})
 	state.extensions[KEY] = {"version": 1, "node_id": node.id, "encounter_id": node.encounter_id, "execution_id": execution_id, "round": 1, "step": 0, "turn": turn, "party": state.active_party.duplicate(), "enemies": enemies, "guarding": [], "events": []}
 	if Statuses.used(package.world): state.extensions[KEY].statuses = []
+	Progression.begin(package, state)
 	state.cursor.phase = "battle_command"
 	return ""
 
@@ -102,7 +104,8 @@ static func validate_state(package, state: Dictionary) -> String:
 	return Statuses.validate_state(package, state) if issue.is_empty() else issue
 
 static func command(package, state: Dictionary, action: String, target: String = "", skill_id: String = "", item_id: String = "") -> Dictionary:
-	var issue: String = validate_state(package, state)
+	var issue: String = Progression.validate_state(package, state)
+	if issue.is_empty(): issue = validate_state(package, state)
 	if not issue.is_empty(): return {"error": issue}
 	if not state.extensions.has(KEY): return {"error": "no active battle"}
 	var battle: Dictionary = state.extensions[KEY]

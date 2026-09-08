@@ -13,6 +13,7 @@ const Inventory = preload("res://src/native_inventory.gd")
 const Statuses = preload("res://src/native_statuses.gd")
 const Battle = preload("res://src/native_battle.gd")
 const EnemyActions = preload("res://src/native_enemy_actions.gd")
+const Progression = preload("res://src/native_progression.gd")
 const Regions = preload("res://src/native_regions.gd")
 const PartyTrail = preload("res://src/native_party_trail.gd")
 const BATTLE_SCENE_CAPABILITY = "graphics.battle-scene.v1"
@@ -40,7 +41,7 @@ func load_package(path: String) -> bool:
 	content_lock = Schema.digest(bytes)
 	if not manifest.dependencies.is_empty(): return _fail("package dependencies not implemented")
 	for capability in manifest.required_capabilities:
-		if capability not in CAPABILITIES and capability != EnemyActions.CAPABILITY: return _fail("unsupported capability: " + capability)
+		if capability not in CAPABILITIES and capability not in [EnemyActions.CAPABILITY, Progression.CAPABILITY]: return _fail("unsupported capability: " + capability)
 	for key in ["pal.native.package.v1", "pal.native.content.v1"]:
 		if manifest.contract_hashes.get(key) != schema.hashes.get(key): return _fail("contract hash mismatch: " + key)
 	if manifest.contract_hashes.size() != 2: return _fail("unknown contract hash")
@@ -65,9 +66,13 @@ func load_package(path: String) -> bool:
 	if not issue.is_empty(): return _fail(issue)
 	var enemy_used: bool = EnemyActions.used(world)
 	if enemy_used != (EnemyActions.CAPABILITY in manifest.required_capabilities): return _fail("enemy action capability/component mismatch")
-	var component_hashes = {EnemyActions.SCHEMA: schema.hashes.get(EnemyActions.SCHEMA)} if enemy_used else null
-	if manifest.extensions.has(EnemyActions.HASH_KEY) != enemy_used: return _fail("component hash declaration mismatch")
-	if manifest.extensions.get(EnemyActions.HASH_KEY) != component_hashes: return _fail("component contract hash mismatch")
+	var growth_used: bool = Progression.used(world)
+	if growth_used != (Progression.CAPABILITY in manifest.required_capabilities): return _fail("progression capability/component mismatch")
+	var component_hashes: Dictionary = {}
+	if enemy_used: component_hashes[EnemyActions.SCHEMA] = schema.hashes.get(EnemyActions.SCHEMA)
+	if growth_used: component_hashes[Progression.SCHEMA] = schema.hashes.get(Progression.SCHEMA)
+	if manifest.extensions.has(EnemyActions.HASH_KEY) != (not component_hashes.is_empty()): return _fail("component hash declaration mismatch")
+	if manifest.extensions.get(EnemyActions.HASH_KEY) != (null if component_hashes.is_empty() else component_hashes): return _fail("component contract hash mismatch")
 	for key in ["package_id", "entry_scene", "entry_node"]:
 		if manifest[key] != world[key]: return _fail("manifest/world mismatch: " + key)
 	if not _references(): return _fail(error)
@@ -248,6 +253,8 @@ func _references() -> bool:
 	if not battle_issue.is_empty(): return _fail(battle_issue)
 	var enemy_issue: String = EnemyActions.validate_content(self)
 	if not enemy_issue.is_empty(): return _fail(enemy_issue)
+	var growth_issue: String = Progression.validate_content(self)
+	if not growth_issue.is_empty(): return _fail(growth_issue)
 	if SceneTravel.used(world) and SceneTravel.CAPABILITY not in manifest.required_capabilities: return _fail("missing scene travel capability")
 	if PartyTrail.used(world):
 		if PartyTrail.CAPABILITY not in manifest.required_capabilities: return _fail("missing party trail capability")
@@ -320,4 +327,6 @@ static func expected_rules(content: Dictionary) -> Dictionary:
 		result.version = "0.11.0"; result.statuses = Statuses.RULE
 	if EnemyActions.used(content):
 		result.version = "0.12.0"; result.enemy_actions = EnemyActions.RULE
+	if Progression.used(content):
+		result.version = "0.13.0"; result.progression = "native.progression.v1"
 	return result

@@ -7,6 +7,7 @@ const CAPABILITY = "battle.enemy-actions.v1"
 const HASH_KEY = "pal.native.component-contracts"
 const RULE = "native.enemy-actions.v1"
 const Skills = preload("res://src/native_skills.gd")
+const Progression = preload("res://src/native_progression.gd")
 
 static func used(content: Dictionary) -> bool:
 	return content.extensions.has(KEY)
@@ -46,14 +47,14 @@ static func target_id(package, state: Dictionary, source: Dictionary, skill: Dic
 	if selector == "lowest_hp":
 		for row in rows.slice(1):
 			# Integer cross multiplication preserves declared-order ties without floats.
-			if int(row.hp) * int(package.index.actor_definitions[selected.definition_id].max_hp) < int(selected.hp) * int(package.index.actor_definitions[row.definition_id].max_hp): selected = row
+			if int(row.hp) * int(Progression.stats(package, selected).max_hp) < int(selected.hp) * int(Progression.stats(package, row).max_hp): selected = row
 	return selected.instance_id
 
 static func plan(package, state: Dictionary, source: Dictionary) -> Dictionary:
 	var battle: Dictionary = state.extensions[Skills.KEY]
 	for rule in policy(package.world, battle.encounter_id, source.instance_id).get("rules", []):
 		if battle.round < rule.first_round or (int(battle.round) - int(rule.first_round)) % int(rule.every_rounds) != 0: continue
-		if int(source.hp) * 100 > int(package.index.actor_definitions[source.definition_id].max_hp) * int(rule.self_hp_percent): continue
+		if int(source.hp) * 100 > int(Progression.stats(package, source).max_hp) * int(rule.self_hp_percent): continue
 		var skill: Dictionary = Skills.definition(package, rule.skill_id)
 		var prepared: Dictionary = Skills.plan(package, state, source, rule.skill_id, target_id(package, state, source, skill, rule.target))
 		if not prepared.has("error"): return prepared
@@ -78,7 +79,7 @@ static func validate_trace(package, state: Dictionary, blocks: Array) -> String:
 	var hp: Dictionary = {}; var maximum: Dictionary = {}
 	for row in state.entities + battle.enemies:
 		if row.instance_id in party or row.instance_id in enemies:
-			hp[row.instance_id] = int(row.hp); maximum[row.instance_id] = int(package.index.actor_definitions[row.definition_id].max_hp)
+			hp[row.instance_id] = int(row.hp); maximum[row.instance_id] = int(Progression.stats(package, row).max_hp)
 	for index in range(battle.events.size() - 1, -1, -1):
 		var event: Dictionary = battle.events[index]
 		hp[event.target] -= _delta(event)

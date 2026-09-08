@@ -33,7 +33,7 @@ static func eligible(state: Dictionary, skill: Dictionary, source_id: String = "
 static func plan(package, state: Dictionary, source: Dictionary, skill_id: String, target: String) -> Dictionary:
 	if not Statuses.blocking(package, state, source.instance_id, "block_skills").is_empty(): return {"error": "当前状态下不能施放技能。"}
 	var skill: Dictionary = definition(package, skill_id)
-	if skill.is_empty() or skill_id not in package.index.actor_definitions[source.definition_id].get("skill_ids", []): return {"error": "此角色未掌握该技能。"}
+	if skill.is_empty() or skill_id not in Statuses.Progression.skill_ids(package, source): return {"error": "此角色未掌握该技能。"}
 	if source.mp < skill.mp_cost: return {"error": "真气不足。"}
 	var result: Dictionary = Effects.plan(state, skill, target, source.instance_id)
 	if not result.has("error"): result.skill = skill
@@ -59,8 +59,8 @@ static func validate_events(package, state: Dictionary) -> String:
 		var skill: Dictionary = definition(package, command.get("skill_id", ""))
 		var sources: Array = (state.entities + battle.enemies).filter(func(a): return a.instance_id == command.source)
 		if skill.is_empty() or sources.is_empty(): return "unknown skill/caster in result"
-		if skill.id not in package.index.actor_definitions[sources[0].definition_id].get("skill_ids", []): return "result caster does not own skill"
-		if sources[0].mp + skill.mp_cost > package.index.actor_definitions[sources[0].definition_id].max_mp: return "post-cast MP cannot follow a legal debit"
+		if skill.id not in Statuses.Progression.skill_ids(package, sources[0]): return "result caster does not own skill"
+		if sources[0].mp + skill.mp_cost > Statuses.Progression.stats(package, sources[0]).max_mp: return "post-cast MP cannot follow a legal debit"
 		var issue: String = Effects.validate_events(package, state, skill, "skill_id", skill.id, "cast", int(skill.mp_cost), block)
 		if not issue.is_empty(): return issue
 	return ""

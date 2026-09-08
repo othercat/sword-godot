@@ -6,6 +6,7 @@ const RULE = "native.battle-statuses.v1"
 const KEY = "pal.native.battle"
 const MAX_PER_ACTOR = 16
 const EFFECT_OPS = ["status_add", "status_remove"]
+const Progression = preload("res://src/native_progression.gd")
 
 static func uses(content: Dictionary) -> Array:
 	var result: Array = content.get("skill_definitions", []).duplicate()
@@ -53,7 +54,7 @@ static func blocking(package, state: Dictionary, id: String, flag: String) -> St
 	return ""
 
 static func stat(package, state: Dictionary, value: Dictionary, field: String) -> int:
-	var base: int = package.index.actor_definitions[value.definition_id].combat[field]
+	var base: int = int(Progression.stats(package, value)[field])
 	var percent: int = 100
 	for row in rows(state, value.instance_id): percent += int(definition(package, row.status_id)[field + "_percent_delta"]) * int(row.stacks)
 	return base * maxi(0, percent) / 100
@@ -85,6 +86,7 @@ static func remove(state: Dictionary, target: String, id: String) -> int:
 
 static func after_damage(package, state: Dictionary, source: String, target: Dictionary, amount: int) -> void:
 	if amount <= 0: return
+	Progression.note_damage(package, state, source, target, amount)
 	for row in rows(state, target.instance_id):
 		var spec: Dictionary = definition(package, row.status_id)
 		var reason: String = "death" if target.hp == 0 and spec.remove_on_death else ("damage" if spec.remove_on_damage else "")
@@ -103,7 +105,7 @@ static func end_round(package, state: Dictionary) -> void:
 			for index in range(spec.round_end_effects.size()):
 				if target.hp <= 0 or find(state, id, row.status_id).is_empty(): break
 				var effect: Dictionary = spec.round_end_effects[index]
-				var amount: int = mini(int(effect.power) * int(row.stacks), int(target.hp) if effect.op == "damage" else int(package.index.actor_definitions[target.definition_id].max_hp - target.hp))
+				var amount: int = mini(int(effect.power) * int(row.stacks), int(target.hp) if effect.op == "damage" else int(Progression.stats(package, target).max_hp - target.hp))
 				target.hp += -amount if effect.op == "damage" else amount
 				battle.events.append({"kind": "status_" + effect.op, "source": row.source_id, "target": id, "amount": amount, "status_id": row.status_id, "tick_index": index})
 				if effect.op == "damage": after_damage(package, state, row.source_id, target, amount)

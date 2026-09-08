@@ -30,7 +30,7 @@ static func apply(package, state: Dictionary, source: Dictionary, definition: Di
 	for i in range(definition.effects.size()):
 		var effect: Dictionary = definition.effects[i]
 		for target in targets:
-			var amount: int = 0; var actor: Dictionary = package.index.actor_definitions[target.definition_id]
+			var amount: int = 0; var actor: Dictionary = Statuses.Progression.stats(package, target)
 			match effect.op:
 				"damage":
 					amount = maxi(1, int(effect.power) - Statuses.stat(package, state, target, "defense"))

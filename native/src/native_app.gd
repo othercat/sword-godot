@@ -230,7 +230,8 @@ func _restore_battle_focus(key: String, generation: int) -> void:
 
 func _battle_target_detail(target: Dictionary) -> String:
 	var definition: Dictionary = session.package.index.actor_definitions[target.definition_id]
-	var detail: String = "%s\n气血 %d / %d · 真气 %d / %d" % [definition.display_name,target.hp,definition.max_hp,target.mp,definition.max_mp]
+	var effective: Dictionary = Session.Progression.stats(session.package, target)
+	var detail: String = "%s\n气血 %d / %d · 真气 %d / %d" % [definition.display_name,target.hp,effective.max_hp,target.mp,effective.max_mp]
 	var statuses: PackedStringArray = Statuses.describe(session.package,session.state,target.instance_id)
 	return detail + ("\n" + "\n".join(statuses) if not statuses.is_empty() else "")
 
@@ -304,9 +305,17 @@ func _refresh() -> void:
 		var actor: Dictionary = session.entity(id)
 		var definition: Dictionary = session.package.index.actor_definitions[actor.definition_id]
 		var label = Label.new()
-		label.text = "%s\n气血 %d / %d   真气 %d" % [definition.display_name, actor.hp, definition.max_hp, actor.mp]
+		var effective: Dictionary = Session.Progression.stats(session.package, actor)
+		label.text = "%s\n气血 %d / %d   真气 %d" % [definition.display_name, actor.hp, effective.max_hp, actor.mp]
+		var growth_label: String = Session.Progression.label(session.package, actor)
+		if not growth_label.is_empty(): label.text += "\n" + growth_label
 		label.add_theme_font_size_override("font_size", 17)
 		roster.add_child(label)
+	var reward_summary: String = Session.Progression.summary(session.package, session.state)
+	if not reward_summary.is_empty():
+		var reward_label = Label.new(); reward_label.name = "GrowthRewardSummary"; reward_label.text = reward_summary
+		reward_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; reward_label.add_theme_font_size_override("font_size", 15)
+		roster.add_child(reward_label)
 	for child in options.get_children():
 		options.remove_child(child)
 		child.queue_free()
