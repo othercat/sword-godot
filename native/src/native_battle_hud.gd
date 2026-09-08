@@ -7,6 +7,14 @@ var cards: Dictionary = {}
 var _identity: Array = []
 var _package
 
+func _ready() -> void:
+	size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	get_parent_control().resized.connect(_fit_width)
+
+func _fit_width() -> void:
+	# One or two people need readable cards, not one stretched across a wide screen.
+	custom_minimum_size.x = minf(get_parent_control().size.x,_identity.size()*246.0)
+
 func bind(view) -> void:
 	var battle: Dictionary = view.display_battle()
 	var ids: Array = battle.get("party",[])
@@ -23,6 +31,7 @@ func bind(view) -> void:
 			text.clip_text = true; text.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 			text.add_theme_font_size_override("font_size",15); row.add_child(text)
 			add_child(panel); cards[id] = {"panel":panel,"face":face,"text":text}
+	_fit_width()
 	var active: String = view.presentation.current().get("actor_id","") if view.playing() else (str(ids[battle.turn]) if not ids.is_empty() else "")
 	for id in ids:
 		var actor: Dictionary = view.presentation.actors[id] if view.playing() else view.session.entity(id)
@@ -45,3 +54,4 @@ func bind(view) -> void:
 func clear() -> void:
 	for child in get_children(): remove_child(child); child.queue_free()
 	cards.clear(); _identity.clear(); _package = null
+	custom_minimum_size.x = 0

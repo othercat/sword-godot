@@ -309,7 +309,7 @@ func open_package(path: String) -> bool:
 	world_view.bind(session)
 	_fit_world()
 	_refresh()
-	message.text = "已打开 · %d 位同行伙伴" % session.state.active_party.size()
+	message.text = "已打开内容包"
 	if not _preview_stop_file.is_empty(): print("[Native preview] package loaded: " + candidate.manifest.package_id + " node=" + session.state.cursor.node_id)
 	return true
 

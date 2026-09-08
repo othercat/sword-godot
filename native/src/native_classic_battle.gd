@@ -51,3 +51,19 @@ static func party_anchor(index: int, count: int) -> Vector2:
 		5:[Vector2(160,180),Vector2(210,175),Vector2(240,160),Vector2(265,145),Vector2(285,125)]}
 	if positions.has(count): return positions[count][index]
 	return Vector2(190+(index%4)*30,100+(index/4)*90.0/maxi(1,ceili(count/4.0)))
+
+static func sprite_fit(extent: Rect2, foot: Vector2, requested_scale: float, side: int) -> float:
+	# Constrain only an overflowing actor. A single union of all facing/action
+	# frames prevents breathing scale during attacks; other actors keep their size.
+	# Motion is in reference coordinates and is not affected by sprite scaling.
+	var motion = Vector2(-18,-8) if side == 1 else Vector2(18,8)
+	var safe = Rect2(Vector2(4,4),SIZE-Vector2(8,8))
+	var factor: float = 1.0
+	for axis in range(2):
+		var lower: float = extent.position[axis]*requested_scale
+		var upper: float = extent.end[axis]*requested_scale
+		if lower < 0:
+			factor = minf(factor,(foot[axis]+minf(0,motion[axis])-safe.position[axis])/-lower)
+		if upper > 0:
+			factor = minf(factor,(safe.end[axis]-foot[axis]-maxf(0,motion[axis]))/upper)
+	return clampf(factor,0.0,1.0)

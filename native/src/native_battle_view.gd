@@ -132,6 +132,20 @@ func _extent(definition: Dictionary, side: int) -> Rect2:
 		_frame_extents[key] = extent.grow_individual(20,32,20,12)
 	return _frame_extents[key]
 
+func _sprite_extent(definition: Dictionary, side: int) -> Rect2:
+	var set_id = definition.get("battle_sprite_set")
+	var key: String = str(set_id)+":"+str(side)+":sprite"
+	if not _frame_extents.has(key):
+		var extent = Rect2(); var found: bool = false
+		if set_id != null:
+			for clip in session.package.index.battle_sprite_sets[set_id].clips:
+				if clip.facing != ("upper_left" if side == 1 else "lower_right"): continue
+				for frame in clip.frames:
+					var rect: Rect2 = Layout.frame_rect(frame)
+					extent = extent.merge(rect) if found else rect; found = true
+		_frame_extents[key] = extent if found else Rect2(-12,-40,24,40)
+	return _frame_extents[key]
+
 func _draw_battle(battle: Dictionary, bounds: Vector2) -> void:
 	_draw_background(battle, bounds)
 	var classic: Dictionary = classic_layout()
@@ -149,7 +163,10 @@ func _draw_battle(battle: Dictionary, bounds: Vector2) -> void:
 			var definition: Dictionary = session.package.index.actor_definitions[row.definition_id]
 			var count: int = mini(PAGE_SIZE, rows.size() - (i / PAGE_SIZE) * PAGE_SIZE)
 			var pos: Vector2 = Layout.enemy_anchor(i % PAGE_SIZE,count,reference_bounds) if side == 0 else (Classic.party_anchor(i,rows.size()) if not classic.is_empty() else Layout.party_anchor(i,rows.size(),bounds))
-			bodies.append({"row":row,"position":pos,"side":side,"index":i,"page":i/PAGE_SIZE if side == 0 else -1,"extent":_extent(definition,side)})
+			var sprite_scale: float = float(classic.get("sprite_scale_milli",1000))/1000.0
+			if definition.get("battle_sprite_set") == null: sprite_scale = 1.0
+			var fit: float = 1.0 if classic.is_empty() else Classic.sprite_fit(_sprite_extent(definition,side),pos,sprite_scale,side)
+			bodies.append({"row":row,"position":pos,"side":side,"index":i,"page":i/PAGE_SIZE if side == 0 else -1,"extent":_extent(definition,side),"sprite_fit":fit})
 	classic_stage = Rect2()
 	if classic.is_empty():
 		layout_spacing = Layout.spacing(bodies)
@@ -188,6 +205,7 @@ func _draw_battle(battle: Dictionary, bounds: Vector2) -> void:
 		var frame: Dictionary = Frames.frame_at(clip,elapsed)
 		var local_rect: Rect2 = Rect2(-12,-40,24,40) if frame.is_empty() else Layout.frame_rect(frame)
 		var body_scale: float = projection.x.x if frame.is_empty() and not classic.is_empty() else scale_value
+		body_scale *= body.sprite_fit
 		var rect = Rect2(pos + local_rect.position * body_scale,local_rect.size * body_scale)
 		draw_circle(pos,maxf(6,15*scale_value),Color(0.05,0.07,0.08,0.55))
 		if not frame.is_empty():
@@ -195,7 +213,7 @@ func _draw_battle(battle: Dictionary, bounds: Vector2) -> void:
 			displayed_frames[row.instance_id] = {"action":action,"resolved_action":clip.action,"fallback":clip.action != action,"frame_id":frame.frame_id,"asset_id":frame.asset_id,"anchor":pos,"rect":rect}
 		else:
 			draw_rect(rect,feedback_color)
-		displayed_bodies[row.instance_id] = {"anchor":pos,"rect":rect,"effect_origin":Layout.effect_origin(rect,bounds),"side":body.side,"index":body.index,"hp":row.hp}
+		displayed_bodies[row.instance_id] = {"anchor":pos,"rect":rect,"effect_origin":Layout.effect_origin(rect,bounds),"side":body.side,"index":body.index,"hp":row.hp,"sprite_fit":body.sprite_fit}
 		if body.side == 1 and body.index == battle.turn and not playing(): draw_arc(pos,18,0,TAU,32,Color("ddbd70"),2)
 		var label: String = enemy_label(session.package,row,body.index) if body.side == 0 else definition.display_name
 		var statuses: PackedStringArray = Statuses.describe(session.package,session.state,row.instance_id) if session.battle_open() and not playing() else PackedStringArray()
