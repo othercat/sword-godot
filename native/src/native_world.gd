@@ -16,23 +16,46 @@ var terrain_layers: Array = []
 var depth_tiles: Array = []
 var _map: Dictionary = {}
 var portal_markers: Array = []
+var _map_key: String = ""
+var _actor_layer: Node2D
 
 func bind(model) -> void:
 	session = model
-	for child in get_children():
-		remove_child(child)
-		child.queue_free()
-	actors = {}
-	visuals = {}
-	terrain_layers = []
-	depth_tiles = []
-	portal_markers = []
-	_history = _history_key()
 	var scene: Dictionary = session.package.index.scenes[session.state.cursor.scene_id]
 	var map_data: Dictionary = session.package.index.maps[scene.map_id]
-	_map = map_data
+	# A package is immutable after validation. Retain only the current map;
+	# a new package instance releases textures even when it has the same IDs.
+	var map_key: String = "%s/%s/%s" % [session.package.get_instance_id(), session.state.content_lock, scene.map_id]
+	if map_key != _map_key:
+		for child in get_children():
+			remove_child(child)
+			child.queue_free()
+		terrain_layers = []; depth_tiles = []
+		actors = {}; portal_markers = []
+		_map = map_data; _map_key = map_key
+		_build_map()
+	else:
+		for child in actors.values() + portal_markers:
+			child.get_parent().remove_child(child)
+			child.queue_free()
+	actors = {}
+	visuals = {}
+	portal_markers = []
+	_history = _history_key()
+	var height: int = map_data.coordinates.tile_height
+	_build_portals_and_actors(scene, height)
+
+func _build_diagnostic_tiles() -> void:
+	var map_data: Dictionary = _map
 	var width: int = map_data.coordinates.tile_width
 	var height: int = map_data.coordinates.tile_height
+	# Keep the diagnostic handle for callers, without building invisible cells
+	# or textures when an authored terrain layer already provides the map.
+	tiles = TileMapLayer.new()
+	add_child(tiles)
+	if map_data.has("terrain"):
+		tiles.visible = false
+		return
 	var atlas_image = Image.create(width * 2, height, false, Image.FORMAT_RGBA8)
 	atlas_image.fill(Color.TRANSPARENT)
 	# Procedural diagnostic tiles only; still drawn by the formal TileMapLayer.
@@ -55,17 +78,18 @@ func bind(model) -> void:
 		tile_set.tile_layout = TileSet.TILE_LAYOUT_DIAMOND_DOWN
 
 	tile_set.add_source(source, 0)
-	tiles = TileMapLayer.new()
 	tiles.tile_set = tile_set
 	# Godot adds a half-tile center offset; the Native contract centers tile (0,0) at zero.
 	tiles.position = MapProjection.project(Vector2(map_data.coordinates.origin.x, map_data.coordinates.origin.y), map_data.coordinates) - Vector2(width, height) / 2.0
-	add_child(tiles)
 	for y in int(map_data.height):
 		for x in int(map_data.width):
 			var logical = {"x": x + map_data.coordinates.origin.x, "y": y + map_data.coordinates.origin.y}
-			if map_data.has("terrain") and not session.package.map_cells[map_data.id].has(Vector2i(logical.x, logical.y)): continue
 			tiles.set_cell(Vector2i(x, y), 0, Vector2i(1, 0) if session.package.map_blocked[map_data.id].has(Vector2i(logical.x, logical.y)) else Vector2i.ZERO)
-	tiles.visible = not map_data.has("terrain")
+
+func _build_map() -> void:
+	var map_data: Dictionary = _map
+	_build_diagnostic_tiles()
+	backdrop = null
 	if map_data.background_asset != null:
 		backdrop = Sprite2D.new()
 		backdrop.texture = session.package.textures[map_data.background_asset]
@@ -74,18 +98,20 @@ func bind(model) -> void:
 		backdrop.position = rect.position
 		backdrop.scale = rect.size / backdrop.texture.get_size()
 		add_child(backdrop)
-	var actor_layer = Node2D.new()
-	actor_layer.y_sort_enabled = true
-	add_child(actor_layer)
+	_actor_layer = Node2D.new()
+	_actor_layer.y_sort_enabled = true
+	add_child(_actor_layer)
 	if map_data.has("terrain"):
 		var atlas_cache: Dictionary = {}
 		for layer in map_data.terrain.layers:
 			if layer.depth_sort:
-				depth_tiles.append_array(Terrain.add_depth(map_data, layer, session.package.textures, actor_layer))
+				depth_tiles.append_array(Terrain.add_depth(map_data, layer, session.package.textures, _actor_layer))
 			else:
 				var drawn = Terrain.make_flat(map_data, layer, session.package.textures, atlas_cache)
 				add_child(drawn)
 				terrain_layers.append(drawn)
+
+func _build_portals_and_actors(scene: Dictionary, height: int) -> void:
 	for portal in scene.get("portals", []):
 		var marker = Polygon2D.new()
 		marker.polygon = PackedVector2Array([Vector2(0, -6), Vector2(9, 0), Vector2(0, 6), Vector2(-9, 0)])
@@ -104,7 +130,7 @@ func bind(model) -> void:
 		if item.scene_id != session.state.cursor.scene_id: continue
 		var definition: Dictionary = session.package.index.actor_definitions[item.definition_id]
 		var body = Node2D.new()
-		actor_layer.add_child(body)
+		_actor_layer.add_child(body)
 		var visual = ActorVisual.new()
 		body.add_child(visual)
 		var color = Color("b4965c") if item.instance_id == session.state.active_party[0] else (Color("74658a") if item.instance_id in session.state.active_party else Color("667f91"))
@@ -120,7 +146,7 @@ func bind(model) -> void:
 		label.add_theme_color_override("font_shadow_color", Color.BLACK)
 		label.add_theme_constant_override("shadow_offset_x", 1)
 		label.add_theme_constant_override("shadow_offset_y", 1)
-		label.visible = not map_data.has("terrain")
+		label.visible = not _map.has("terrain")
 		body.add_child(label)
 		actors[item.instance_id] = body
 		body.position = MapProjection.project(Vector2(item.position.x, item.position.y), _map.coordinates)

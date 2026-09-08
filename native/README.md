@@ -315,3 +315,29 @@ migrated to new curves. Tests in `tests/test_progression.gd` use the actual wind
 and saved files, with explicit synthetic HP/status/callback fault cases. They
 cover 3/4/5-member author packages; this does not certify final game balance,
 secondary training XP, random learning, complete stories or additional devices.
+
+## Terrain rendering and measurement (2026-09-08)
+
+Flat terrain layers now share a bounded packed GPU atlas. Uneven HD dimensions
+fall back to individual sources before a large common-cell allocation. Padding
+keeps explicit anchors and visible RGBA unchanged. Depth-sorted sprites retain
+their existing actor-relative ordering. Only the current immutable map is kept
+across scene/party/save presentation resets; new packages or maps release it.
+Real terrain no longer allocates an invisible diagnostic tile grid.
+
+`tests/test_terrain.gd` covers full-map GPU comparison, unequal anchors, actual
+packing fallback, depth ties and map/package lifetime. The parameterized
+`tests/measure_camp_performance.gd` measures a fixed camp package in the normal
+application window, using injected movement and ordinary session commands:
+
+```text
+godot --path native --script res://tests/measure_camp_performance.gd -- <camp-package> <isolated-output> 8 1280 800 0 0 sweep
+```
+
+Keep the window visible and focused. Interrupted phases remain in the data and
+are excluded from performance comparisons. Raw frame intervals, separate render
+CPU/GPU counters, loading and transfers are recorded. The 30 FPS case is a timing
+diagnostic; the author-facing menu still offers 60/100/120/144/240/unlimited.
+The current 1280x800 canvas uses a 982x481 world viewport, including when scaled
+into a larger window. These short single-host measurements do not certify native
+1080p, physical high-refresh output, long-duration frame pacing or other platforms.

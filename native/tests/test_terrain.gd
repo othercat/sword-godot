@@ -39,6 +39,8 @@ func _run() -> void:
 	check(map_data.terrain.cells.size() == 16384 and map_data.blocked.size() == 687, "all actual source cells and collision flags retained")
 	check(world.terrain_layers.size() == 2 and world.terrain_layers.all(func(layer): return layer is TileMapLayer), "actual lower and upper images use TileMapLayer")
 	check(world.terrain_layers[0].tile_set == world.terrain_layers[1].tile_set, "flat layers share padded GPU textures instead of multiplying the image budget")
+	check(world.terrain_layers[0].tile_set.get_source_count() == 1, "296 actual source tiles share one GPU atlas")
+	check(world.tiles.get_used_cells().is_empty(), "real terrain does not allocate hidden diagnostic cells")
 	check(world.terrain_layers[0].get_used_cells().size() == 16384 and world.terrain_layers[1].get_used_cells().size() == 3391, "both actual layers retain every placement")
 	check(world.depth_tiles.size() == 932, "explicit depth approximation keeps both source height groups")
 	check(not package.can_stand(app.session.state.cursor.scene_id, {"x": 0, "y": -63}), "bounding rectangle gap is unavailable")
@@ -47,6 +49,10 @@ func _run() -> void:
 	await RenderingServer.frame_post_draw
 	root.get_texture().get_image().save_png(output.path_join("terrain-start.png"))
 	var before: Dictionary = app.session.snapshot()
+	var map_node: int = world.terrain_layers[0].get_instance_id()
+	var actor_node: int = world.actors[id].get_instance_id()
+	world.bind(app.session)
+	check(world.terrain_layers[0].get_instance_id() == map_node and world.actors[id].get_instance_id() != actor_node, "same immutable map retains terrain while resetting actor presentation")
 	check(not app.session.move(Vector2i.LEFT) and app.session.snapshot() == before, "source blocked neighbor rejects whole move without altering state")
 	for direction in [Vector2i.DOWN, Vector2i.RIGHT, Vector2i.UP, Vector2i.LEFT]:
 		for _tick in range(6): app.session.tick()
@@ -66,13 +72,20 @@ func _run() -> void:
 	check(app.session.entity(id).position == before.entities[0].position, "terrain save restores authoritative foot position")
 	world._process(0.0); app._fit_world()
 	check(world.visuals[id].elapsed_us == 0.0, "load resets map animation presentation history")
+	check(world.terrain_layers[0].get_instance_id() == map_node, "save restore keeps same immutable terrain nodes")
 	var invalid: Dictionary = app.session.snapshot(); invalid.entities[0].position = {"x": 0, "y": -63}
 	check(not app.session.restore(invalid), "saved position validator rejects rectangle gaps")
 	var retained: Dictionary = app.session.snapshot()
 	for defect in ["missing-capability", "dimensions", "unavailable-spawn", "flat-offset"]:
 		check(not app.open_package(_variant(args[0], defect)) and app.session.snapshot() == retained, "bad terrain cannot replace active session: " + defect)
 	await _render_checks(package, map_data)
+	await _packed_checks(map_data)
 	await _flat_map_check(package, map_data, args[2])
+	check(Terrain._atlas_grid(Vector2i(32, 16), 296) != Vector2i.ZERO, "common original tile sizes fit bounded packed atlas")
+	check(Terrain._atlas_grid(Vector2i(8192, 8192), 1) == Vector2i.ZERO and Terrain._atlas_grid(Vector2i(4096, 4096), 16) == Vector2i.ZERO, "oversized and wasteful HD packing falls back before allocation")
+	var previous_texture = world.terrain_layers[0].tile_set.get_source(0).texture
+	check(app.open_package(args[0]), "same path can be opened as a fresh validated package")
+	check(world.terrain_layers[0].get_instance_id() != map_node and world.terrain_layers[0].tile_set.get_source(0).texture != previous_texture, "new package instance never keeps prior terrain or GPU texture identity")
 	await RenderingServer.frame_post_draw
 	root.get_texture().get_image().save_png(output.path_join("terrain-restored.png"))
 	var report: Dictionary = {"passed": checks.size() - failures, "failed": failures, "checks": checks, "save_path": save_path,
@@ -119,6 +132,39 @@ func _render_checks(package, map_data: Dictionary) -> void:
 	check(viewport.get_texture().get_image().get_pixel(48, 40).b > 0.99, "synthetic actor in front is visible")
 	body.position.y = 10; await RenderingServer.frame_post_draw
 	check(viewport.get_texture().get_image().get_pixel(48, 40).b > 0.99, "equal depth preserves actor-after-terrain tie order")
+	viewport.queue_free(); await process_frame
+
+func _packed_checks(map_data: Dictionary) -> void:
+	var viewport = SubViewport.new(); viewport.size = Vector2i(96, 96); viewport.transparent_bg = true; viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS; root.add_child(viewport)
+	var sample: Dictionary = map_data.duplicate(true); sample.coordinates.origin = {"x": 0, "y": 0}
+	sample.terrain.tiles = [
+		{"id": "tile.red", "asset_id": "asset.red", "width": 11, "height": 9, "anchor": {"x": 3, "y": 1}, "scale_milli": 1000},
+		{"id": "tile.green", "asset_id": "asset.green", "width": 17, "height": 15, "anchor": {"x": 1, "y": 14}, "scale_milli": 1000}]
+	var red = Image.create(11, 9, false, Image.FORMAT_RGBA8); red.fill(Color.RED)
+	var green = Image.create(17, 15, false, Image.FORMAT_RGBA8); green.fill(Color.GREEN)
+	var layer: Dictionary = {"id": "layer.packed", "draw_order": -1, "depth_sort": false, "placements": [
+		{"position": {"x": 0, "y": 0}, "tile_id": "tile.red", "sort_offset_y": 0},
+		{"position": {"x": 1, "y": 0}, "tile_id": "tile.green", "sort_offset_y": 0}]}
+	var packed = Terrain.make_flat(sample, layer, {"asset.red": ImageTexture.create_from_image(red), "asset.green": ImageTexture.create_from_image(green)}, {})
+	packed.position += Vector2(48, 48); viewport.add_child(packed)
+	await RenderingServer.frame_post_draw
+	var image = viewport.get_texture().get_image()
+	check(packed.tile_set.get_source_count() == 1 and packed.get_cell_atlas_coords(Vector2i(1, 0)) != Vector2i.ZERO, "unequal synthetic images use distinct coordinates in one atlas")
+	check(image.get_pixel(45, 47).r > 0.99 and image.get_pixel(63, 42).g > 0.99 and image.get_pixel(44, 47).a == 0.0 and image.get_pixel(63, 41).a == 0.0, "noncentral anchors and different image sizes retain exact GPU raster positions")
+	packed.queue_free(); await process_frame
+	# Each thin image is small; only the hypothetical common cell is expensive.
+	# Exercise the actual fallback without allocating a giant test image.
+	sample.coordinates.tile_width = 2; sample.coordinates.tile_height = 2
+	sample.terrain.tiles[0].width = 4096; sample.terrain.tiles[0].height = 2; sample.terrain.tiles[0].anchor = {"x": 2048, "y": 1}
+	sample.terrain.tiles[1].width = 2; sample.terrain.tiles[1].height = 4096; sample.terrain.tiles[1].anchor = {"x": 1, "y": 2048}
+	red = Image.create(4096, 2, false, Image.FORMAT_RGBA8); red.fill(Color.RED)
+	green = Image.create(2, 4096, false, Image.FORMAT_RGBA8); green.fill(Color.GREEN)
+	var separate = Terrain.make_flat(sample, layer, {"asset.red": ImageTexture.create_from_image(red), "asset.green": ImageTexture.create_from_image(green)}, {})
+	separate.position += Vector2(48, 48); viewport.add_child(separate)
+	await RenderingServer.frame_post_draw
+	image = viewport.get_texture().get_image()
+	check(separate.tile_set.get_source_count() == 2 and separate.get_cell_atlas_coords(Vector2i(1, 0)) == Vector2i.ZERO, "uneven HD sizes actually use separate bounded sources")
+	check(image.get_pixel(25, 48).r > 0.99 and image.get_pixel(49, 25).g > 0.99, "nonpacked fallback retains both source anchors in GPU rendering")
 	viewport.queue_free(); await process_frame
 
 func _flat_map_check(package, map_data: Dictionary, reference_path: String) -> void:
