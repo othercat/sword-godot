@@ -95,7 +95,9 @@ func option(app,prefix:String)->Button:
 	check(false,"missing command "+prefix); return null
 func click(control:Control)->void:
 	if control==null:return
-	await process_frame
+	# Commands are recreated after playback. Deliver input after container and
+	# GUI picking updates have reached a rendered frame, not during that rebuild.
+	await process_frame; await process_frame; await RenderingServer.frame_post_draw
 	var p=control.get_global_rect().get_center()
 	for down in [true,false]:
 		var e=InputEventMouseButton.new();e.position=p;e.global_position=p;e.button_index=MOUSE_BUTTON_LEFT;e.pressed=down;root.push_input(e,true)

@@ -37,6 +37,9 @@ var _movement_frame: int = -1
 var _stats_elapsed: float = 0.0
 var _preview_stop_file: String = ""
 var _preview_elapsed: float = 0.0
+var _hover_target: Button
+var _focus_target: Button
+var _ui_generation: int = 0
 
 func _ready() -> void:
 	get_window().gui_embed_subwindows = true
@@ -57,6 +60,7 @@ func _ready() -> void:
 	layout.add_child(header)
 	title_label = Label.new()
 	title_label.text = "仙剑·万相"
+	title_label.clip_text = true; title_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	title_label.add_theme_font_size_override("font_size", 32)
 	title_label.add_theme_color_override("font_color", Color("d7be86"))
 	title_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -120,6 +124,7 @@ func _ready() -> void:
 	dialogue.add_child(dialogue_text)
 	target_pages = HBoxContainer.new(); target_pages.visible = false; dialogue.add_child(target_pages)
 	options = GridContainer.new(); options.columns = 1
+	options.resized.connect(_fit_battle_commands)
 	dialogue.add_child(options)
 	var footer = HBoxContainer.new()
 	layout.add_child(footer)
@@ -164,9 +169,70 @@ func _button(parent: Node, text: String, action: Callable) -> Button:
 	var button = Button.new()
 	button.text = text
 	button.custom_minimum_size.y = 38
+	if parent == options and session.battle_open():
+		button.clip_text = true; button.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		button.add_theme_font_size_override("font_size",17)
+		button.tooltip_text = text
 	button.pressed.connect(action)
+	button.mouse_entered.connect(func(): _hover_target = button; _update_target_preview())
+	button.gui_input.connect(func(event):
+		if event is InputEventMouseMotion: _hover_target = button; _update_target_preview())
+	button.mouse_exited.connect(func():
+		if _hover_target == button: _hover_target = null
+		_update_target_preview())
+	button.focus_entered.connect(func(): _hover_target = null; _focus_target = button; _update_target_preview())
+	button.focus_exited.connect(func():
+		if _focus_target == button: _focus_target = null
+		_update_target_preview())
 	parent.add_child(button)
 	return button
+
+func _bind_battle_target(button: Button, ids: Array, scope: String = "attack") -> void:
+	button.set_meta("battle_target_ids",ids.duplicate())
+	button.set_meta("battle_focus_key",scope+":"+JSON.stringify(ids))
+
+func _update_target_preview() -> void:
+	if not is_instance_valid(battle_view): return
+	var ids: Array = []
+	if session.battle_open() and session.focused and not session.paused and not session.modal and not battle_view.playing():
+		for control in [_hover_target,_focus_target]:
+			if is_instance_valid(control) and control.is_visible_in_tree() and not control.disabled:
+				ids = control.get_meta("battle_target_ids",[]); break
+	battle_view.preview_targets(ids)
+
+func _fit_battle_commands() -> void:
+	if not is_instance_valid(options): return
+	if not session.battle_open(): options.custom_minimum_size.y = 0; return
+	if battle_view.playing(): return
+	var columns: int = 4 if options.size.x >= 840 else (3 if options.size.x >= 620 else 2)
+	var count: int = options.get_child_count()
+	if skill_menu.mode == "closed" and item_menu.mode == "closed":
+		var targets: Array = options.get_children().filter(func(c): return c.has_meta("battle_target_ids"))
+		if not targets.is_empty():
+			# Reserve a full target page during commands and playback. Otherwise
+			# the last short page expands the battlefield and changes camera fit.
+			count += mini(BattleView.PAGE_SIZE,session.state.extensions[Battle.KEY].enemies.size()) - targets.size()
+			var row_height: float = targets[0].get_combined_minimum_size().y
+			var rows: int = ceili(count / float(mini(columns,count)))
+			options.custom_minimum_size.y = rows * row_height + (rows-1) * options.get_theme_constant("v_separation")
+	options.columns = mini(columns,maxi(1,count))
+
+func _restore_battle_focus(key: String, generation: int) -> void:
+	if not is_inside_tree(): return
+	if generation != _ui_generation or not session.battle_open() or battle_view.playing() or session.paused or session.modal or not session.focused: return
+	var first: Button
+	for control in options.get_children() + target_pages.get_children():
+		if control is not Button or control.disabled: continue
+		if first == null: first = control
+		if str(control.get_meta("battle_focus_key",control.text.get_slice("\n",0))) == key: control.grab_focus(); return
+	if first != null: first.grab_focus()
+
+func _battle_target_detail(target: Dictionary) -> String:
+	var definition: Dictionary = session.package.index.actor_definitions[target.definition_id]
+	var detail: String = "%s\n气血 %d / %d · 真气 %d / %d" % [definition.display_name,target.hp,definition.max_hp,target.mp,definition.max_mp]
+	var statuses: PackedStringArray = Statuses.describe(session.package,session.state,target.instance_id)
+	return detail + ("\n" + "\n".join(statuses) if not statuses.is_empty() else "")
 
 func open_package(path: String) -> bool:
 	var candidate = Package.new()
@@ -215,6 +281,11 @@ func _follow_world() -> void:
 
 func _refresh() -> void:
 	if not is_instance_valid(roster) or session.state.is_empty(): return
+	_ui_generation += 1
+	var focus = get_viewport().gui_get_focus_owner()
+	var restore_focus: bool = focus == null or focus.get_parent() in [options,target_pages]
+	var focus_key: String = str(focus.get_meta("battle_focus_key",focus.text.get_slice("\n",0))) if restore_focus and focus is Button else ""
+	_hover_target = null; _focus_target = null; battle_view.preview_targets([])
 	if session.dialogue_open or session.battle_open(): walk_input.clear()
 	var key: String = world_view._history_key(session) + ":battle=" + str(session.battle_open())
 	world_view.visible = not session.battle_open() and not battle_view.playing()
@@ -264,10 +335,12 @@ func _refresh() -> void:
 				_button(target_pages, "下一组敌人", _change_enemy_page.bind(1)).disabled = battle_view.enemy_page == battle_view.page_count() - 1
 			for i in range(start, mini(start + BattleView.PAGE_SIZE, battle.enemies.size())):
 				var enemy: Dictionary = battle.enemies[i]
-				var target_button = _button(options, "攻击 " + BattleView.enemy_label(session.package, enemy, i), _battle_action.bind("attack", enemy.instance_id))
 				var definition: Dictionary = session.package.index.actor_definitions[enemy.definition_id]
-				target_button.tooltip_text = "气血 %d / %d · 真气 %d / %d" % [enemy.hp, definition.max_hp, enemy.mp, definition.max_mp]
+				var label: String = "攻击 " + BattleView.enemy_label(session.package,enemy,i) + "\n气血 %d / %d" % [enemy.hp,definition.max_hp]
+				var target_button = _button(options,label,_battle_action.bind("attack",enemy.instance_id))
+				target_button.tooltip_text = _battle_target_detail(enemy)
 				target_button.disabled = enemy.hp == 0
+				_bind_battle_target(target_button,[enemy.instance_id])
 			_button(options, "防御", _battle_action.bind("guard", ""))
 			_button(options, "撤离", _battle_action.bind("escape", "")).disabled = not Battle.encounter(session.package.world, battle.encounter_id).allow_escape
 			skill_menu.sync_context(self, battle, actor); item_menu.sync_context(self, battle, actor)
@@ -289,6 +362,8 @@ func _refresh() -> void:
 				dialogue_text.text = portal.display_name + (" · 按空格进入" if status.allowed else " · " + status.text)
 	save_button.disabled = not session.can_save()
 	pause_button.text = "继续" if session.paused else "暂停"
+	_fit_battle_commands()
+	if restore_focus: _restore_battle_focus.call_deferred(focus_key,_ui_generation)
 
 func _change_enemy_page(direction: int) -> void:
 	if not session.battle_open(): return

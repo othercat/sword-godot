@@ -222,6 +222,22 @@ work. Existing system font fallback was observed only on this Windows host.
 
 `tests/test_statuses.gd` 用工坊控件生成的三个作者包，验证3/4/5人正常输入、周期结算、控制、获胜与自然死亡/复活，保存21个待独立检查的合成状态。非法存档与容量/回调故障为单独标注的内存测试。高刷呈现不推进状态效果；正式角色动作、完整战斗平衡、其他设备与人工玩法验收仍需后续工作。
 
+## Battle targets and layout (2026-09-08)
+
+Enemy command buttons show stable ordinals, names and HP; full MP/status detail
+is available in their tooltip. Hover a command or use Tab and Enter to choose its
+target. The most recent mouse/focus interaction owns the preview, including
+single/all-target skills, items and dead-ally revival. Battlefield sprites are
+not directly clickable. Party information remains in the shared sidebar.
+
+The view uses one fitted projection for bodies, ordinals, target marks and effect
+text. All authored action extents participate in fitting; large groups preserve
+relative image scale and may make smaller actors less readable. The application
+currently keeps its 1280x800 logical canvas and letterboxes other window ratios.
+`tests/test_battle_layout.gd` checks actual GUI input, GPU feedback, package
+release, five-party art and explicit large-art stress at four window sizes.
+These automated cases do not certify full playthroughs or additional devices.
+
 ## Committed battle action presentation (2026-09-08)
 
 `graphics.battle-animation.v1` binds optional actor `battle_sprite_set` to a

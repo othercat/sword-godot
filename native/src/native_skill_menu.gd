@@ -49,7 +49,9 @@ func render(app, battle: Dictionary, actor: Dictionary) -> void:
 		var eligible: Array = Effects.eligible(app.session.state, use)
 		app.dialogue_text.text = skill.display_name + " · " + description(skill)
 		if use.target_mode == "all":
-			app._button(app.options, ("用于全部符合条件的目标（%d）" if item_mode else "施放于全部符合条件的目标（%d）") % eligible.size(), commit.bind(app, selected_id, "", context)).disabled = eligible.is_empty()
+			var button = app._button(app.options, ("用于全部符合条件的目标（%d）" if item_mode else "施放于全部符合条件的目标（%d）") % eligible.size(), commit.bind(app, selected_id, "", context))
+			button.disabled = eligible.is_empty()
+			app._bind_battle_target(button,eligible.map(func(row): return row.instance_id),("item:" if item_mode else "skill:")+selected_id)
 		else:
 			var rows: Array = battle.enemies if use.target_side == "enemy" else battle.party.map(func(id): return app.session.entity(id))
 			_pages(app, rows.size())
@@ -58,6 +60,8 @@ func render(app, battle: Dictionary, actor: Dictionary) -> void:
 				var target: Dictionary = rows[i]; var definition: Dictionary = app.session.package.index.actor_definitions[target.definition_id]
 				var button = app._button(app.options, "%d · %s · 气血%d" % [i + 1, definition.display_name, target.hp], commit.bind(app, selected_id, target.instance_id, context))
 				button.disabled = not eligible.any(func(a): return a.instance_id == target.instance_id)
+				button.tooltip_text = app._battle_target_detail(target)
+				app._bind_battle_target(button,[target.instance_id],("item:" if item_mode else "skill:")+selected_id)
 	app._button(app.options, "取消", cancel.bind(app))
 
 func _open(app) -> void:

@@ -33,7 +33,7 @@ func _run() -> void:
 		check(battle.enemies.size() == 3 and battle.enemies.map(func(e): return e.hp) == [36, 65, 36] and battle.enemies.map(func(e): return e.mp) == [5, 13, 5], "authored enemy HP and MP initialize independent instances")
 		check(battle.enemies[0].definition_id == battle.enemies[2].definition_id and battle.enemies[0].definition_id != battle.enemies[1].definition_id, "authored shared definition and leader clone reach runtime")
 		check(session.entity(session.state.active_party[0]).hp == 117 and session.entity(session.state.active_party[0]).mp == 23, "authored ally upper bounds reach new game state")
-		check(app.options.get_child(0).text == "攻击 1 · 练习苗兵" and app.options.get_child(2).text == "攻击 3 · 练习苗兵", "duplicate names have distinct stable visible target ordinals")
+		check(app.options.get_child(0).text == "攻击 1 · 练习苗兵\n气血 36 / 36" and app.options.get_child(2).text == "攻击 3 · 练习苗兵\n气血 36 / 36", "duplicate names have distinct stable visible target ordinals and HP")
 		check(app.options.get_child(2).tooltip_text.contains("真气 5 / 5"), "target tooltip exposes authored MP and HP")
 		await _click(app.options.get_child(2)); battle = session.state.extensions[Battle.KEY]
 		check(battle.enemies.map(func(e): return e.hp) == [36, 65, 18] and battle.events[0].target == ids[2], "mouse target three damages only its independent instance")
@@ -83,7 +83,7 @@ func _run() -> void:
 		before.state_revision += session.state.clock.logic_tick - before.clock.logic_tick
 		before.clock = session.state.clock.duplicate(true)
 		check(app.battle_view.enemy_page == page and session.state == before, "enemy page changes only elapsed clock ticks " + str(page + 1))
-	check(app.options.get_child(7).text == "攻击 32 · 练习苗兵" and app.target_pages.get_child(2).disabled, "final authored target remains reachable and numbered")
+	check(app.options.get_child(7).text == "攻击 32 · 练习苗兵\n气血 36 / 36" and app.target_pages.get_child(2).disabled, "final authored target remains reachable and numbered")
 	for control in app.options.get_children():
 		check(Rect2(Vector2.ZERO, Vector2(root.size)).encloses(control.get_global_rect()), "capacity command remains inside actual application window")
 	await _click(app.options.get_child(7)); battle = session.state.extensions[Battle.KEY]
