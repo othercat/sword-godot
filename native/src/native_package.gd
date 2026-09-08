@@ -8,10 +8,11 @@ const Terrain = preload("res://src/native_terrain.gd")
 const TexturePolicy = preload("res://src/native_texture.gd")
 const SceneTravel = preload("res://src/native_scene_travel.gd")
 const Condition = preload("res://src/native_condition.gd")
+const Skills = preload("res://src/native_skills.gd")
 const Battle = preload("res://src/native_battle.gd")
 const Regions = preload("res://src/native_regions.gd")
 const PartyTrail = preload("res://src/native_party_trail.gd")
-const CAPABILITIES = [Battle.CAPABILITY, SceneTravel.GATE_CAPABILITY, Regions.CAPABILITY, Condition.CAPABILITY, PartyTrail.CAPABILITY, SceneTravel.CAPABILITY, "package.local-preview.v1", "world.tile-layers.v1", "world.isometric.v1", "movement.pal-walk.v1", "world.orthogonal.v1", "party.roster.v1", "story.dialogue.v1", "story.choice.v1", "story.variables.v1", MapAnimation.CAPABILITY]
+const CAPABILITIES = [Skills.CAPABILITY, Battle.CAPABILITY, SceneTravel.GATE_CAPABILITY, Regions.CAPABILITY, Condition.CAPABILITY, PartyTrail.CAPABILITY, SceneTravel.CAPABILITY, "package.local-preview.v1", "world.tile-layers.v1", "world.isometric.v1", "movement.pal-walk.v1", "world.orthogonal.v1", "party.roster.v1", "story.dialogue.v1", "story.choice.v1", "story.variables.v1", MapAnimation.CAPABILITY]
 const RULES = {"schema": "pal.native.ruleset.v1", "id": "pal.native.story-core.v1", "version": "0.1.0", "operations": ["dialogue", "choice", "set", "branch", "party", "end"], "variable_assignment": "declared_type_and_scope", "save_phase": "before_node"}
 var error: String = ""
 var manifest: Dictionary = {}
@@ -208,6 +209,9 @@ func _references() -> bool:
 			"party":
 				for member in node.members:
 					if member not in world.roster: return _fail("party node member outside roster")
+	if Skills.used(world) and Skills.CAPABILITY not in manifest.required_capabilities: return _fail("missing skill capability")
+	var skill_issue: String = Skills.validate_content(self)
+	if not skill_issue.is_empty(): return _fail(skill_issue)
 	if Battle.used(world) and Battle.CAPABILITY not in manifest.required_capabilities: return _fail("missing battle capability")
 	var battle_issue: String = Battle.validate_content(self)
 	if not battle_issue.is_empty(): return _fail(battle_issue)
@@ -275,4 +279,6 @@ static func expected_rules(content: Dictionary) -> Dictionary:
 		result.operations.append("battle")
 		result.battle = Battle.RULE
 		result.save_phase = "before_node_or_battle_command"
+	if Skills.used(content):
+		result.version = "0.9.0"; result.skills = Skills.RULE
 	return result

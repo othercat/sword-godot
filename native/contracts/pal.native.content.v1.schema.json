@@ -146,6 +146,18 @@
               }
             },
             "additionalProperties": false
+          },
+          "skill_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+            },
+            "minItems": 0,
+            "maxItems": 128,
+            "uniqueItems": true
           }
         },
         "additionalProperties": false
@@ -1598,6 +1610,95 @@
             },
             "minItems": 1,
             "maxItems": 32
+          },
+          "provenance": {
+            "$ref": "#/definitions/provenance"
+          }
+        },
+        "additionalProperties": false
+      },
+      "minItems": 0,
+      "maxItems": 1024
+    },
+    "skill_definitions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "display_name",
+          "mp_cost",
+          "target_side",
+          "target_mode",
+          "target_life",
+          "effects",
+          "provenance"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+          },
+          "display_name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "mp_cost": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000
+          },
+          "target_side": {
+            "type": "string",
+            "enum": [
+              "enemy",
+              "ally"
+            ]
+          },
+          "target_mode": {
+            "type": "string",
+            "enum": [
+              "single",
+              "all"
+            ]
+          },
+          "target_life": {
+            "type": "string",
+            "enum": [
+              "living",
+              "dead"
+            ]
+          },
+          "effects": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "op",
+                "power"
+              ],
+              "properties": {
+                "op": {
+                  "type": "string",
+                  "enum": [
+                    "damage",
+                    "heal",
+                    "revive"
+                  ]
+                },
+                "power": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 1000000
+                }
+              },
+              "additionalProperties": false
+            },
+            "minItems": 1,
+            "maxItems": 8
           },
           "provenance": {
             "$ref": "#/definitions/provenance"

@@ -32,8 +32,8 @@ godot --path native --script res://tests/test_battle.gd -- four.palmod.zip three
 The test uses actual application windows and injected mouse events, plus explicit
 synthetic loss/callback-failure variants. It retains command-wait saves for
 independent contract validation. It is not physical-user acceptance or a full game.
-Skills, items, statuses, revival, rewards, original combat parity and formal hero
-animation assets remain pending.
+Items, statuses, rewards, original combat parity and formal hero animation assets
+remain pending. Ordered player skills and revival are the additive rule below.
 
 ## Authored enemy composition
 
@@ -60,3 +60,38 @@ states and rejects cross-content saves. Pagination compares the entire state
 after accounting for elapsed clock ticks and their one-per-tick revision delta.
 Capacity geometry and target 32 are checked at 1280×800; no other window size,
 32-enemy performance, balance or full-playthrough acceptance is implied.
+
+## Ordered player skills
+
+`src/native_skills.gd` consumes shared `battle.skills.v1` / `native.skill-effects.v1`
+definitions and static actor loadouts. `plan` rejects unknown/unowned skills,
+insufficient MP and wrong-side/life targets before mutation. `apply` charges once
+and applies each authored damage/heal/revive effect to the original selected
+targets in order. Damage subtracts defense and respects guarding; healing clamps
+to maxima without reviving; revival preserves MP and can precede healing. Actor
+loadouts remain content-locked, not a second mutable learned-skills list in saves.
+Enemy AI still uses ordinary attacks, even when its definition lists skills.
+
+The battle/session consumers retain all effects, turn order, callbacks and saved
+results in one candidate transaction. A revived earlier party slot waits for the
+next round. New `cast` and indexed effect events drive disposable visual feedback;
+loading never replays costs or effects. Definitions and saved results are checked
+against the shared schema and semantic rules, not original PAL numeric slots.
+
+`native_skill_menu.gd` owns an eight-entry skill/target page, explicit all-target
+confirmation and cancellation. It binds choices to timeline epoch, execution id,
+command step and actor; loading or changing turns clears stale choices. Choosing,
+paging or cancelling does not issue a battle command; normal clock ticks continue.
+
+```text
+godot --path native --script res://tests/test_skills.gd -- four.palmod.zip three.palmod.zip five.palmod.zip output
+```
+
+The Studio owner produces the three packages through actual author controls and
+the existing compiler. This window test covers MP debit once for all targets,
+single-instance selection, ordered revival/healing, natural enemy-caused death,
+turn order, cancellation, stale input, callback rollback and six before/after
+revival saves. The callback failure is an explicitly synthetic mutation; normal
+skills use owner-built content. Independent owner validation reads each actual
+save. This is not learned-skill, enemy-AI, item/status, formal animation or complete
+RPG acceptance. Final commands and file hashes live in the product evidence repo.

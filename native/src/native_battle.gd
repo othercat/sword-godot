@@ -5,6 +5,7 @@ const CAPABILITY = "battle.turn-core.v1"
 const RULE = "native.battle-turn-core.v1"
 const KEY = "pal.native.battle"
 const Schema = preload("res://src/native_schema.gd")
+const Skills = preload("res://src/native_skills.gd")
 
 static func used(content: Dictionary) -> bool:
 	return not content.get("encounters", []).is_empty() or content.nodes.any(func(n): return n.op == "battle")
@@ -84,9 +85,9 @@ static func validate_state(package, state: Dictionary) -> String:
 	if not executor is Dictionary or not executor.get("activation") is String or not Schema.is_type(executor.get("step"), "integer") or executor.step < 1: return "missing battle executor resume state"
 	var expected: String = "effect." + Schema.digest(JSON.stringify([state.run_id, executor.activation, int(executor.step) - 1, ext.node_id]).to_utf8_buffer())
 	if ext.execution_id != expected or expected in state.committed_effect_ids: return "invalid or already committed battle execution"
-	return ""
+	return Skills.validate_events(package, state)
 
-static func command(package, state: Dictionary, action: String, target: String = "") -> Dictionary:
+static func command(package, state: Dictionary, action: String, target: String = "", skill_id: String = "") -> Dictionary:
 	var issue: String = validate_state(package, state)
 	if not issue.is_empty(): return {"error": issue}
 	if not state.extensions.has(KEY): return {"error": "no active battle"}
@@ -94,7 +95,12 @@ static func command(package, state: Dictionary, action: String, target: String =
 	if battle.step >= 100000: return {"error": "battle action budget exceeded"}
 	var source: Dictionary = actor(state, battle.party[battle.turn])
 	var enemy: Dictionary = {}
-	if action == "attack":
+	var prepared: Dictionary = {}
+	if action != "skill" and not skill_id.is_empty(): return {"error": "skill identity supplied to another action"}
+	if action == "skill":
+		prepared = Skills.plan(package, state, source, skill_id, target)
+		if prepared.has("error"): return prepared
+	elif action == "attack":
 		for row in battle.enemies:
 			if row.instance_id == target and row.hp > 0: enemy = row
 		if enemy.is_empty(): return {"error": "choose a living enemy"}
@@ -108,7 +114,9 @@ static func command(package, state: Dictionary, action: String, target: String =
 	if action == "guard":
 		battle.guarding.append(source.instance_id)
 		battle.events.append({"kind": "guard", "source": source.instance_id, "target": source.instance_id, "amount": 0})
+	elif action == "skill": Skills.apply(package, state, source, prepared)
 	else: _hit(package, source, enemy, false, battle.events)
+	if _living_turn(state, battle.party, 0) < 0: return {"outcome": "loss"}
 	if battle.enemies.all(func(row): return row.hp == 0): return {"outcome": "win"}
 	var next: int = _living_turn(state, battle.party, battle.turn + 1)
 	if next >= 0:

@@ -58,10 +58,10 @@ func activate(candidate, now_usec: int = -1) -> bool:
 func battle_open() -> bool:
 	return not state.is_empty() and state.extensions.has(Battle.KEY)
 
-func battle_command(action: String, target: String = "") -> bool:
+func battle_command(action: String, target: String = "", skill_id: String = "") -> bool:
 	if not battle_open() or paused or modal or not focused: return false
 	var candidate: Dictionary = state.duplicate(true)
-	var result: Dictionary = Battle.command(package, candidate, action, target)
+	var result: Dictionary = Battle.command(package, candidate, action, target, skill_id)
 	if result.has("error"):
 		error = result.error
 		return false
