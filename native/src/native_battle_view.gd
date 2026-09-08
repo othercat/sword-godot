@@ -2,6 +2,7 @@
 extends Control
 ## Geometric preview actors until authored battle action sets are available.
 const Battle = preload("res://src/native_battle.gd")
+const Statuses = preload("res://src/native_statuses.gd")
 const PAGE_SIZE = 8 # Presentation page size, never a battle capacity limit.
 var session
 var _event_key: String = ""
@@ -9,6 +10,7 @@ var _battle_key: String = ""
 var enemy_page: int = 0
 var _elapsed: float = 1.0
 var display_font: Font
+var _status_regions: Array = []
 func bind(value) -> void:
 	session = value
 	if not session.battle_open(): return
@@ -30,6 +32,7 @@ func _process(delta: float) -> void:
 	if not session.paused and not session.modal and session.focused: _elapsed += delta
 	queue_redraw()
 func _draw() -> void:
+	_status_regions.clear()
 	if session == null or not session.battle_open(): return
 	var battle: Dictionary = session.state.extensions[Battle.KEY]
 	var bounds = Vector2(get_viewport_rect().size)
@@ -50,8 +53,8 @@ func _draw() -> void:
 			if _elapsed < 0.35:
 				for event in battle.events:
 					if event.kind in ["attack", "cast", "item_use"] and event.source == row.instance_id: pos.x += (1 if side == 0 else -1) * sin(_elapsed / 0.35 * PI) * 18
-					if event.kind in ["attack", "damage"] and event.target == row.instance_id: color = color.lerp(Color.WHITE, 0.5)
-					if event.kind in ["heal", "revive"] and event.target == row.instance_id: color = color.lerp(Color("80d8a1"), 0.7)
+					if event.kind in ["attack", "damage", "status_damage"] and event.target == row.instance_id: color = color.lerp(Color.WHITE, 0.5)
+					if event.kind in ["heal", "revive", "status_heal"] and event.target == row.instance_id: color = color.lerp(Color("80d8a1"), 0.7)
 			draw_rect(Rect2(pos, Vector2(26, maxf(10, gap - 20))), color)
 			var width: float = minf(170.0, cell_width - 44)
 			draw_rect(Rect2(pos + Vector2(34, 29), Vector2(width, 5)), Color("303942"))
@@ -59,4 +62,13 @@ func _draw() -> void:
 			var label: String = enemy_label(session.package, row, start + i) if side == 0 else definition.display_name
 			draw_string(display_font, pos + Vector2(34, 16), label, HORIZONTAL_ALIGNMENT_LEFT, width, 16, Color("e5dbc5"))
 			draw_string(display_font, pos + Vector2(34, 49), "%d / %d · 真气%d" % [row.hp, definition.max_hp, row.mp], HORIZONTAL_ALIGNMENT_LEFT, width, 14, Color("b2b7b8"))
+			var statuses: PackedStringArray = Statuses.describe(session.package, session.state, row.instance_id)
+			if not statuses.is_empty():
+				draw_string(display_font, pos + Vector2(34, 64), statuses[0] + (" 等%d种" % statuses.size() if statuses.size() > 1 else ""), HORIZONTAL_ALIGNMENT_LEFT, width, 11, Color("dec784"))
+				_status_regions.append({"bounds": Rect2(pos, Vector2(cell_width, gap)), "text": definition.display_name + "\n" + "\n".join(statuses)})
 			if side == 1 and i == battle.turn: draw_rect(Rect2(pos - Vector2(4, 4), Vector2(34, maxf(18, gap - 12))), Color("ddbd70"), false, 2)
+
+func _get_tooltip(at_position: Vector2) -> String:
+	for region in _status_regions:
+		if region.bounds.has_point(at_position): return region.text
+	return ""

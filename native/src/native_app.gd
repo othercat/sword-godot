@@ -7,6 +7,7 @@ const World = preload("res://src/native_world.gd")
 const WalkInput = preload("res://src/native_walk_input.gd")
 const MapProjection = preload("res://src/native_map_projection.gd")
 const Battle = preload("res://src/native_battle.gd")
+const Statuses = preload("res://src/native_statuses.gd")
 const BattleView = preload("res://src/native_battle_view.gd")
 var battle_view
 var session = Session.new()
@@ -243,24 +244,29 @@ func _refresh() -> void:
 		var battle: Dictionary = session.state.extensions[Battle.KEY]
 		var actor: Dictionary = session.entity(battle.party[battle.turn])
 		dialogue_text.text = "%s · 第 %d 回合 · %s 行动" % [Battle.encounter(session.package.world, battle.encounter_id).display_name, battle.round, session.package.index.actor_definitions[actor.definition_id].display_name]
-		var start: int = battle_view.enemy_page * BattleView.PAGE_SIZE
-		options.columns = 2 if battle.enemies.size() > 1 else 1
-		if battle_view.page_count() > 1:
-			target_pages.visible = true
-			_button(target_pages, "上一组敌人", _change_enemy_page.bind(-1)).disabled = battle_view.enemy_page == 0
-			var page_label = Label.new(); page_label.text = "%d / %d" % [battle_view.enemy_page + 1, battle_view.page_count()]; target_pages.add_child(page_label)
-			_button(target_pages, "下一组敌人", _change_enemy_page.bind(1)).disabled = battle_view.enemy_page == battle_view.page_count() - 1
-		for i in range(start, mini(start + BattleView.PAGE_SIZE, battle.enemies.size())):
-			var enemy: Dictionary = battle.enemies[i]
-			var target_button = _button(options, "攻击 " + BattleView.enemy_label(session.package, enemy, i), _battle_action.bind("attack", enemy.instance_id))
-			var definition: Dictionary = session.package.index.actor_definitions[enemy.definition_id]
-			target_button.tooltip_text = "气血 %d / %d · 真气 %d / %d" % [enemy.hp, definition.max_hp, enemy.mp, definition.max_mp]
-			target_button.disabled = enemy.hp == 0
-		_button(options, "防御", _battle_action.bind("guard", ""))
-		_button(options, "撤离", _battle_action.bind("escape", "")).disabled = not Battle.encounter(session.package.world, battle.encounter_id).allow_escape
-		skill_menu.sync_context(self, battle, actor); item_menu.sync_context(self, battle, actor)
-		if item_menu.mode == "closed": skill_menu.render(self, battle, actor)
-		if skill_menu.mode == "closed": item_menu.render(self, battle, actor)
+		var status_text: String = "；".join(Statuses.describe(session.package, session.state, actor.instance_id))
+		if not status_text.is_empty(): dialogue_text.text += "\n" + status_text
+		if not Statuses.blocking(session.package, session.state, actor.instance_id, "skip_turn").is_empty():
+			_button(options, "跳过行动", _battle_action.bind("wait", ""))
+		else:
+			var start: int = battle_view.enemy_page * BattleView.PAGE_SIZE
+			options.columns = 2 if battle.enemies.size() > 1 else 1
+			if battle_view.page_count() > 1:
+				target_pages.visible = true
+				_button(target_pages, "上一组敌人", _change_enemy_page.bind(-1)).disabled = battle_view.enemy_page == 0
+				var page_label = Label.new(); page_label.text = "%d / %d" % [battle_view.enemy_page + 1, battle_view.page_count()]; target_pages.add_child(page_label)
+				_button(target_pages, "下一组敌人", _change_enemy_page.bind(1)).disabled = battle_view.enemy_page == battle_view.page_count() - 1
+			for i in range(start, mini(start + BattleView.PAGE_SIZE, battle.enemies.size())):
+				var enemy: Dictionary = battle.enemies[i]
+				var target_button = _button(options, "攻击 " + BattleView.enemy_label(session.package, enemy, i), _battle_action.bind("attack", enemy.instance_id))
+				var definition: Dictionary = session.package.index.actor_definitions[enemy.definition_id]
+				target_button.tooltip_text = "气血 %d / %d · 真气 %d / %d" % [enemy.hp, definition.max_hp, enemy.mp, definition.max_mp]
+				target_button.disabled = enemy.hp == 0
+			_button(options, "防御", _battle_action.bind("guard", ""))
+			_button(options, "撤离", _battle_action.bind("escape", "")).disabled = not Battle.encounter(session.package.world, battle.encounter_id).allow_escape
+			skill_menu.sync_context(self, battle, actor); item_menu.sync_context(self, battle, actor)
+			if item_menu.mode == "closed": skill_menu.render(self, battle, actor)
+			if skill_menu.mode == "closed": item_menu.render(self, battle, actor)
 	elif node.op == "dialogue" and session.dialogue_open:
 		var speaker: String = ""
 		if node.speaker != null: speaker = session.package.index.actor_definitions[session.entity(node.speaker).definition_id].display_name + "\n"

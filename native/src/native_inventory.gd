@@ -86,8 +86,7 @@ static func apply(package, state: Dictionary, source: Dictionary, prepared: Dict
 		var issue: String = change(package, state, [{"item_id": item.id, "delta": -cost}])
 		if not issue.is_empty(): return issue
 	state.extensions[Effects.KEY].events.append({"kind": "item_use", "source": source.instance_id, "target": source.instance_id, "amount": cost, "item_id": item.id})
-	Effects.apply(package, state, source, item.battle_use, prepared.targets, "item_id", item.id)
-	return ""
+	return Effects.apply(package, state, source, item.battle_use, prepared.targets, "item_id", item.id)
 
 static func validate_state(package, state: Dictionary) -> String:
 	if state.extensions.has(KEY) != used(package.world): return "inventory state/capability mismatch"
@@ -100,4 +99,4 @@ static func validate_state(package, state: Dictionary) -> String:
 	if item.is_empty() or item.battle_use == null: return "unknown or unusable item result"
 	var remaining: int = count(state, item.id)
 	if (remaining + 1 > item.max_stack if item.consumable else remaining < 1): return "post-use count cannot follow a legal inventory debit"
-	return Effects.validate_events(state, item.battle_use, "item_id", item.id, "item_use", 1 if item.consumable else 0)
+	return Effects.validate_events(package, state, item.battle_use, "item_id", item.id, "item_use", 1 if item.consumable else 0)

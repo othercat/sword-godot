@@ -32,8 +32,9 @@ godot --path native --script res://tests/test_battle.gd -- four.palmod.zip three
 The test uses actual application windows and injected mouse events, plus explicit
 synthetic loss/callback-failure variants. It retains command-wait saves for
 independent contract validation. It is not physical-user acceptance or a full game.
-Items, statuses, rewards, original combat parity and formal hero animation assets
-remain pending. Ordered player skills and revival are the additive rule below.
+Ordered player skills, items, fixed rewards and battle statuses are additive
+capabilities. Original combat parity and formal hero animation assets remain
+separate work.
 
 ## Authored enemy composition
 
@@ -93,5 +94,48 @@ single-instance selection, ordered revival/healing, natural enemy-caused death,
 turn order, cancellation, stale input, callback rollback and six before/after
 revival saves. The callback failure is an explicitly synthetic mutation; normal
 skills use owner-built content. Independent owner validation reads each actual
-save. This is not learned-skill, enemy-AI, item/status, formal animation or complete
-RPG acceptance. Final commands and file hashes live in the product evidence repo.
+save. This skill suite alone is not learned-skill, enemy-AI, item/status, formal
+animation or complete RPG acceptance. Final commands and file hashes live in the
+product evidence repo.
+
+## Authored battle statuses
+
+`native_statuses.gd` consumes optional `battle.statuses.v1` / rules0.11.0,
+`native.battle-statuses.v1`. Definitions are authored in Studio; instances live
+only in the existing battle extension, with stable actor/status/source IDs,
+stacks and remaining rounds. No PAL poison script or fixed memory array is used.
+`native_battle_effects.gd` shares add/remove effects between skills and items.
+
+Refresh/stack/replace, attack/defense percent deltas, skip turn, block skills,
+hit/death clearing and ordered round-end damage/heal use the shared contract's
+explicit semantics. Enemy actions precede party-order then enemy-order periodic
+effects. The current round counts: effects happen before duration decrements.
+Healing cannot revive; retained dead-actor statuses still lose duration. Full
+battle completion removes every transient instance. Capacity failure after an
+earlier effect, or callback failure after death clearing, discards the complete
+session candidate, including HP/MP/inventory/turn changes.
+
+Menu commands recheck control restrictions. The view displays status summaries
+and full hover text; periodic results drive damage/heal feedback using the
+existing presentation clock. They are never executed by rendering or loading.
+Save admission binds last status mutations, reapplication amounts and remaining
+rounds, and rejects repeated/out-of-order periodic components and invalid clears.
+It allows self-applied silence and explicitly retained status after death; it
+does not reconstruct an entire prior battle or act as save anti-cheat.
+
+```text
+godot --path native --script res://tests/test_statuses.gd -- four.palmod.zip three.palmod.zip five.palmod.zip output
+```
+
+The packages come from the actual Studio status/skill/item controls. The test
+uses injected mouse input for four round-end boundaries, a normal skill victory,
+and natural periodic death followed by revival. It retains seven actual saves
+per party configuration for independent contract inspection. Separately labeled
+in-memory probes cover replace/stat rules, enemy skips, self-silence, 16-kind
+capacity, forged records and full candidate rollback. A layout frame is awaited
+before clicking newly rebuilt controls after load. Source/package/command hashes
+and first-failure logs are retained by the product evidence runner.
+
+Status probability/resistance, equipment, enemy skill AI, Legacy parity, formal
+hero action sets, physical-user and cross-platform release acceptance remain
+outside this increment. Existing external RGBA/alpha-edge rendering is retained.

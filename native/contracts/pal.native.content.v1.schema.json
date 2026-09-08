@@ -1741,27 +1741,75 @@
           "effects": {
             "type": "array",
             "items": {
-              "type": "object",
-              "required": [
-                "op",
-                "power"
-              ],
-              "properties": {
-                "op": {
-                  "type": "string",
-                  "enum": [
-                    "damage",
-                    "heal",
-                    "revive"
-                  ]
+              "oneOf": [
+                {
+                  "type": "object",
+                  "required": [
+                    "op",
+                    "power"
+                  ],
+                  "properties": {
+                    "op": {
+                      "type": "string",
+                      "enum": [
+                        "damage",
+                        "heal",
+                        "revive"
+                      ]
+                    },
+                    "power": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 1000000
+                    }
+                  },
+                  "additionalProperties": false
                 },
-                "power": {
-                  "type": "integer",
-                  "minimum": 1,
-                  "maximum": 1000000
+                {
+                  "type": "object",
+                  "required": [
+                    "op",
+                    "status_id",
+                    "stacks"
+                  ],
+                  "properties": {
+                    "op": {
+                      "const": "status_add"
+                    },
+                    "status_id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128,
+                      "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+                    },
+                    "stacks": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 16
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "op",
+                    "status_id"
+                  ],
+                  "properties": {
+                    "op": {
+                      "const": "status_remove"
+                    },
+                    "status_id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128,
+                      "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+                    }
+                  },
+                  "additionalProperties": false
                 }
-              },
-              "additionalProperties": false
+              ]
             },
             "minItems": 1,
             "maxItems": 8
@@ -1845,27 +1893,75 @@
                   "effects": {
                     "type": "array",
                     "items": {
-                      "type": "object",
-                      "required": [
-                        "op",
-                        "power"
-                      ],
-                      "properties": {
-                        "op": {
-                          "type": "string",
-                          "enum": [
-                            "damage",
-                            "heal",
-                            "revive"
-                          ]
+                      "oneOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "op",
+                            "power"
+                          ],
+                          "properties": {
+                            "op": {
+                              "type": "string",
+                              "enum": [
+                                "damage",
+                                "heal",
+                                "revive"
+                              ]
+                            },
+                            "power": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 1000000
+                            }
+                          },
+                          "additionalProperties": false
                         },
-                        "power": {
-                          "type": "integer",
-                          "minimum": 1,
-                          "maximum": 1000000
+                        {
+                          "type": "object",
+                          "required": [
+                            "op",
+                            "status_id",
+                            "stacks"
+                          ],
+                          "properties": {
+                            "op": {
+                              "const": "status_add"
+                            },
+                            "status_id": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 128,
+                              "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+                            },
+                            "stacks": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 16
+                            }
+                          },
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "required": [
+                            "op",
+                            "status_id"
+                          ],
+                          "properties": {
+                            "op": {
+                              "const": "status_remove"
+                            },
+                            "status_id": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 128,
+                              "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+                            }
+                          },
+                          "additionalProperties": false
                         }
-                      },
-                      "additionalProperties": false
+                      ]
                     },
                     "minItems": 1,
                     "maxItems": 8
@@ -1903,6 +1999,113 @@
             "type": "integer",
             "minimum": 1,
             "maximum": 1000000
+          }
+        },
+        "additionalProperties": false
+      },
+      "minItems": 0,
+      "maxItems": 1024
+    },
+    "status_definitions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "display_name",
+          "duration_rounds",
+          "max_stacks",
+          "reapply",
+          "attack_percent_delta",
+          "defense_percent_delta",
+          "skip_turn",
+          "block_skills",
+          "remove_on_damage",
+          "remove_on_death",
+          "round_end_effects",
+          "provenance"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+          },
+          "display_name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "duration_rounds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000
+          },
+          "max_stacks": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 16
+          },
+          "reapply": {
+            "type": "string",
+            "enum": [
+              "refresh",
+              "stack",
+              "replace"
+            ]
+          },
+          "attack_percent_delta": {
+            "type": "integer",
+            "minimum": -100,
+            "maximum": 1000
+          },
+          "defense_percent_delta": {
+            "type": "integer",
+            "minimum": -100,
+            "maximum": 1000
+          },
+          "skip_turn": {
+            "type": "boolean"
+          },
+          "block_skills": {
+            "type": "boolean"
+          },
+          "remove_on_damage": {
+            "type": "boolean"
+          },
+          "remove_on_death": {
+            "type": "boolean"
+          },
+          "round_end_effects": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "op",
+                "power"
+              ],
+              "properties": {
+                "op": {
+                  "type": "string",
+                  "enum": [
+                    "damage",
+                    "heal"
+                  ]
+                },
+                "power": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 1000000
+                }
+              },
+              "additionalProperties": false
+            },
+            "minItems": 0,
+            "maxItems": 4
+          },
+          "provenance": {
+            "$ref": "#/definitions/provenance"
           }
         },
         "additionalProperties": false

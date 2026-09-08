@@ -4,6 +4,7 @@ extends RefCounted
 const Skills = preload("res://src/native_skills.gd")
 const Inventory = preload("res://src/native_inventory.gd")
 const Effects = preload("res://src/native_battle_effects.gd")
+const Statuses = preload("res://src/native_statuses.gd")
 const PAGE_SIZE = 8
 var mode: String = "closed"
 var selected_id: String = ""
@@ -27,7 +28,10 @@ func render(app, battle: Dictionary, actor: Dictionary) -> void:
 	sync_context(app, battle, actor)
 	var ids: Array = app.session.package.world.get("item_definitions", []).map(func(i): return i.id) if item_mode else app.session.package.index.actor_definitions[actor.definition_id].get("skill_ids", [])
 	if mode == "closed":
-		if not ids.is_empty(): app._button(app.options, "物品" if item_mode else "技能", _open.bind(app))
+		if not ids.is_empty():
+			var button = app._button(app.options, "物品" if item_mode else "技能", _open.bind(app))
+			button.disabled = not item_mode and not Statuses.blocking(app.session.package, app.session.state, actor.instance_id, "block_skills").is_empty()
+			if button.disabled: button.tooltip_text = "当前状态下不能施放技能。"
 		return
 	_clear(app.options); _clear(app.target_pages); app.target_pages.visible = false
 	app.options.columns = 2
@@ -39,7 +43,7 @@ func render(app, battle: Dictionary, actor: Dictionary) -> void:
 			var label: String = "%s · 数量%d" % [skill.display_name, Inventory.count(app.session.state, skill.id)] if item_mode else "%s · 真气%d" % [skill.display_name, skill.mp_cost]
 			var button = app._button(app.options, label, _select.bind(app, ids[i]))
 			button.tooltip_text = description(skill)
-			button.disabled = use == null or (Inventory.count(app.session.state, skill.id) < 1 if item_mode else actor.mp < skill.mp_cost) or (use != null and Effects.eligible(app.session.state, use).is_empty())
+			button.disabled = use == null or (Inventory.count(app.session.state, skill.id) < 1 if item_mode else actor.mp < skill.mp_cost or not Statuses.blocking(app.session.package, app.session.state, actor.instance_id, "block_skills").is_empty()) or (use != null and Effects.eligible(app.session.state, use).is_empty())
 	else:
 		var skill: Dictionary = _definition(app, selected_id); var use: Dictionary = _use(skill)
 		var eligible: Array = Effects.eligible(app.session.state, use)
