@@ -158,6 +158,13 @@
             "minItems": 0,
             "maxItems": 128,
             "uniqueItems": true
+          },
+          "battle_sprite_set": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional map animation set; omitted/null retains sprite_asset or synthetic silhouette."
           }
         },
         "additionalProperties": false
@@ -1533,75 +1540,7 @@
                   "minItems": 1,
                   "maxItems": 256,
                   "items": {
-                    "type": "object",
-                    "required": [
-                      "frame_id",
-                      "asset_id",
-                      "width",
-                      "height",
-                      "duration_us",
-                      "anchor",
-                      "scale_milli",
-                      "layer"
-                    ],
-                    "properties": {
-                      "frame_id": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 128,
-                        "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
-                      },
-                      "asset_id": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 128,
-                        "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
-                      },
-                      "width": {
-                        "type": "integer",
-                        "minimum": 1,
-                        "maximum": 8192
-                      },
-                      "height": {
-                        "type": "integer",
-                        "minimum": 1,
-                        "maximum": 8192
-                      },
-                      "duration_us": {
-                        "type": "integer",
-                        "minimum": 1000,
-                        "maximum": 60000000
-                      },
-                      "anchor": {
-                        "type": "object",
-                        "required": [
-                          "x",
-                          "y"
-                        ],
-                        "properties": {
-                          "x": {
-                            "type": "integer",
-                            "minimum": 0,
-                            "maximum": 8192
-                          },
-                          "y": {
-                            "type": "integer",
-                            "minimum": 0,
-                            "maximum": 8192
-                          }
-                        },
-                        "additionalProperties": false
-                      },
-                      "scale_milli": {
-                        "type": "integer",
-                        "minimum": 1,
-                        "maximum": 16000
-                      },
-                      "layer": {
-                        "const": 0
-                      }
-                    },
-                    "additionalProperties": false
+                    "$ref": "#/definitions/animation_frame"
                   }
                 }
               },
@@ -2112,6 +2051,97 @@
       },
       "minItems": 0,
       "maxItems": 1024
+    },
+    "battle_sprite_sets": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 10000,
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "facing_space",
+          "missing_action",
+          "clips",
+          "provenance"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+          },
+          "kind": {
+            "const": "battle"
+          },
+          "facing_space": {
+            "const": "screen_diagonal_2"
+          },
+          "missing_action": {
+            "enum": [
+              "idle",
+              "static",
+              "error"
+            ]
+          },
+          "clips": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 22,
+            "items": {
+              "type": "object",
+              "required": [
+                "action",
+                "facing",
+                "loop",
+                "frames"
+              ],
+              "properties": {
+                "action": {
+                  "enum": [
+                    "idle",
+                    "attack",
+                    "cast",
+                    "item",
+                    "defend",
+                    "hit",
+                    "dying",
+                    "dead",
+                    "sleep",
+                    "escape",
+                    "victory"
+                  ]
+                },
+                "facing": {
+                  "enum": [
+                    "upper_left",
+                    "lower_right"
+                  ]
+                },
+                "loop": {
+                  "type": "boolean"
+                },
+                "frames": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 256,
+                  "items": {
+                    "$ref": "#/definitions/animation_frame"
+                  }
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "provenance": {
+            "$ref": "#/definitions/provenance"
+          }
+        },
+        "additionalProperties": false
+      },
+      "description": "Optional battle action sets; requires graphics.battle-animation.v1. Screen facings never imply mirroring. Uses the shared RGBA frame, anchor, scale and time contract."
     }
   },
   "additionalProperties": false,
@@ -2309,6 +2339,77 @@
           "additionalProperties": false
         }
       ]
+    },
+    "animation_frame": {
+      "type": "object",
+      "required": [
+        "frame_id",
+        "asset_id",
+        "width",
+        "height",
+        "duration_us",
+        "anchor",
+        "scale_milli",
+        "layer"
+      ],
+      "properties": {
+        "frame_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+        },
+        "asset_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8192
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8192
+        },
+        "duration_us": {
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 60000000
+        },
+        "anchor": {
+          "type": "object",
+          "required": [
+            "x",
+            "y"
+          ],
+          "properties": {
+            "x": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 8192
+            },
+            "y": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 8192
+            }
+          },
+          "additionalProperties": false
+        },
+        "scale_milli": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16000
+        },
+        "layer": {
+          "const": 0
+        }
+      },
+      "additionalProperties": false
     }
   }
 }

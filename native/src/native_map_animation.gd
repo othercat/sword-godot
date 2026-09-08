@@ -1,7 +1,9 @@
 # SPDX-License-Identifier: MIT
 extends RefCounted
-## Shared map frame selection; presentation only, never dispatches game effects.
+## Shared map/battle frame selection; presentation only, never dispatches game effects.
 const CAPABILITY = "graphics.map-animation.v1"
+const BATTLE_CAPABILITY = "graphics.battle-animation.v1"
+const BATTLE_ACTIONS = ["idle", "attack", "cast", "item", "defend", "hit", "dying", "dead", "sleep", "escape", "victory"]
 const FACINGS = ["up", "down", "left", "right"]
 
 static func validate(sprites: Dictionary, assets: Dictionary) -> String:
@@ -21,9 +23,15 @@ static func validate(sprites: Dictionary, assets: Dictionary) -> String:
 				if frame.anchor.x > frame.width or frame.anchor.y > frame.height: return "anchor outside declared image: " + id
 				duration += int(frame.duration_us)
 			if duration > 60000000: return "animation clip exceeds 60 seconds: " + id
-		for facing in FACINGS:
+		var battle: bool = sprite.kind == "battle"
+		var facings: Array = [] if battle else FACINGS.duplicate()
+		if battle:
+			for clip in sprite.clips:
+				if clip.facing not in facings: facings.append(clip.facing)
+		for facing in facings:
 			if not clips.has("idle/" + facing): return "missing directional idle: " + id
-			if sprite.missing_action == "error" and not clips.has("walk/" + facing): return "missing walk without fallback: " + id
+			for action in (BATTLE_ACTIONS if battle else ["walk"]):
+				if sprite.missing_action == "error" and not clips.has(action + "/" + facing): return "missing action without fallback: " + id
 	return ""
 
 static func clip_for(sprite: Dictionary, action: String, facing: String) -> Dictionary:

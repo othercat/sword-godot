@@ -150,6 +150,8 @@ func _ready() -> void:
 	battle_view = BattleView.new(); battle_view.display_font = font; battle_view.visible = false; viewport.add_child(battle_view)
 	get_window().focus_entered.connect(func(): session.set_focus(true))
 	get_window().focus_exited.connect(func(): walk_input.clear(); session.set_focus(false))
+	session.battle_committed.connect(battle_view.present_committed)
+	battle_view.playback_finished.connect(_refresh)
 	save_button.disabled = true
 	var args = OS.get_cmdline_user_args()
 	for i in range(args.size() - 1):
@@ -215,9 +217,10 @@ func _refresh() -> void:
 	if not is_instance_valid(roster) or session.state.is_empty(): return
 	if session.dialogue_open or session.battle_open(): walk_input.clear()
 	var key: String = world_view._history_key(session) + ":battle=" + str(session.battle_open())
-	world_view.visible = not session.battle_open()
+	world_view.visible = not session.battle_open() and not battle_view.playing()
 	instructions.text = ("选择下方命令行动\n轮到的伙伴以金框标出\nEsc 暂停\nF5 保存 · F9 读档" if session.battle_open() else "方向键 / WASD 行走\n空格 / Enter 交谈\nEsc 暂停\nF5 保存 · F9 读档")
-	battle_view.visible = session.battle_open(); battle_view.bind(session)
+	battle_view.bind(session); battle_view.visible = session.battle_open() or battle_view.playing()
+	world_view.visible = not battle_view.visible
 	if key != _presentation_key:
 		_presentation_key = key
 		walk_input.clear()
@@ -240,7 +243,10 @@ func _refresh() -> void:
 		target_pages.remove_child(child); child.queue_free()
 	target_pages.visible = false; options.columns = 1
 	var node: Dictionary = session.current_node()
-	if session.battle_open():
+	if battle_view.playing():
+		dialogue_text.text = "正在播放行动结果…"
+		_button(options, "跳过演出", battle_view.skip)
+	elif session.battle_open():
 		var battle: Dictionary = session.state.extensions[Battle.KEY]
 		var actor: Dictionary = session.entity(battle.party[battle.turn])
 		dialogue_text.text = "%s · 第 %d 回合 · %s 行动" % [Battle.encounter(session.package.world, battle.encounter_id).display_name, battle.round, session.package.index.actor_definitions[actor.definition_id].display_name]
@@ -290,10 +296,12 @@ func _change_enemy_page(direction: int) -> void:
 	_refresh()
 
 func _battle_action(action: String, target: String) -> void:
+	if battle_view.playing(): return
 	if session.battle_command(action, target): message.text = ""
 	else: message.text = session.error
 
 func _continue(choice_id: String = "") -> void:
+	if battle_view.playing(): return
 	if not session.advance_dialogue(choice_id) and not session.error.is_empty():
 		message.text = session.error
 		if not _preview_stop_file.is_empty(): printerr("[Native preview] node=" + session.state.cursor.node_id + " " + session.error)
@@ -343,6 +351,8 @@ func _input(event: InputEvent) -> void:
 func _unhandled_key_input(event: InputEvent) -> void:
 	if not event is InputEventKey: return
 	if picker.visible or save_picker.visible: return
+	if battle_view.playing() and event.keycode in [KEY_ENTER, KEY_SPACE, KEY_W, KEY_A, KEY_S, KEY_D, KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT]:
+		walk_input.clear(); return
 	if event.keycode in [KEY_W, KEY_A, KEY_S, KEY_D, KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT]:
 		walk_input.key_event(event.keycode, event.pressed, event.echo)
 	if not event.pressed or event.echo: return
@@ -350,7 +360,8 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		if session.interact(): message.text = ""
 		elif not session.error.is_empty(): message.text = session.error
 	elif event.keycode == KEY_ESCAPE:
-		if session.battle_open() and skill_menu.mode != "closed": skill_menu.cancel(self)
+		if battle_view.playing(): _pause()
+		elif session.battle_open() and skill_menu.mode != "closed": skill_menu.cancel(self)
 		elif session.battle_open() and item_menu.mode != "closed": item_menu.cancel(self)
 		else: _pause()
 	elif event.keycode == KEY_F5: _save()
@@ -359,6 +370,8 @@ func _unhandled_key_input(event: InputEvent) -> void:
 func _physics_process(_delta: float) -> void:
 	if picker.visible or save_picker.visible: return
 	session.tick()
+	if battle_view.playing():
+		walk_input.clear(); return
 	var now: int = Time.get_ticks_usec()
 	var render_frame: int = Engine.get_process_frames()
 	if movement_frame_allowed(now, render_frame):

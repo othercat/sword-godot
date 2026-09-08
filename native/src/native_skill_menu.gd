@@ -67,6 +67,7 @@ func _select(app, id: String) -> void:
 	mode = "targets"; selected_id = id; page = 0; app._refresh()
 
 func commit(app, id: String, target: String, expected_context: String) -> void:
+	if app.battle_view.playing(): return
 	if not app.session.battle_open(): return
 	var battle: Dictionary = app.session.state.extensions[Effects.KEY]
 	sync_context(app, battle, app.session.entity(battle.party[battle.turn]))

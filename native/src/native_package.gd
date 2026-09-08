@@ -14,7 +14,7 @@ const Statuses = preload("res://src/native_statuses.gd")
 const Battle = preload("res://src/native_battle.gd")
 const Regions = preload("res://src/native_regions.gd")
 const PartyTrail = preload("res://src/native_party_trail.gd")
-const CAPABILITIES = [Statuses.CAPABILITY, Inventory.CAPABILITY, Skills.CAPABILITY, Battle.CAPABILITY, SceneTravel.GATE_CAPABILITY, Regions.CAPABILITY, Condition.CAPABILITY, PartyTrail.CAPABILITY, SceneTravel.CAPABILITY, "package.local-preview.v1", "world.tile-layers.v1", "world.isometric.v1", "movement.pal-walk.v1", "world.orthogonal.v1", "party.roster.v1", "story.dialogue.v1", "story.choice.v1", "story.variables.v1", MapAnimation.CAPABILITY]
+const CAPABILITIES = [Statuses.CAPABILITY, Inventory.CAPABILITY, Skills.CAPABILITY, Battle.CAPABILITY, SceneTravel.GATE_CAPABILITY, Regions.CAPABILITY, Condition.CAPABILITY, PartyTrail.CAPABILITY, SceneTravel.CAPABILITY, "package.local-preview.v1", "world.tile-layers.v1", "world.isometric.v1", "movement.pal-walk.v1", "world.orthogonal.v1", "party.roster.v1", "story.dialogue.v1", "story.choice.v1", "story.variables.v1", MapAnimation.CAPABILITY, MapAnimation.BATTLE_CAPABILITY]
 const RULES = {"schema": "pal.native.ruleset.v1", "id": "pal.native.story-core.v1", "version": "0.1.0", "operations": ["dialogue", "choice", "set", "branch", "party", "end"], "variable_assignment": "declared_type_and_scope", "save_phase": "before_node"}
 var error: String = ""
 var manifest: Dictionary = {}
@@ -66,6 +66,7 @@ func load_package(path: String) -> bool:
 	if not _references(): return _fail(error)
 	if _json(payloads["content/rules.json"]) != expected_rules(world): return _fail("unsupported rules definition")
 	if Condition.used(world) and Condition.CAPABILITY not in manifest.required_capabilities: return _fail("missing condition capability")
+	if not index.battle_sprite_sets.is_empty() and MapAnimation.BATTLE_CAPABILITY not in manifest.required_capabilities: return _fail("missing battle animation capability")
 	if not index.sprite_sets.is_empty() and MapAnimation.CAPABILITY not in manifest.required_capabilities: return _fail("missing map animation capability")
 	var declared: Dictionary = {"content/world.json": "content", "content/rules.json": "content"}
 	var distribution = manifest.extensions.get("pal.native.distribution")
@@ -94,7 +95,7 @@ func load_package(path: String) -> bool:
 		# invisible RGB used by texture filtering, never quantize to a palette.
 		TexturePolicy.fix_transparent_edges(decoded)
 		textures[asset.id] = ImageTexture.create_from_image(decoded)
-	for sprite in index.sprite_sets.values():
+	for sprite in index.sprite_sets.values() + index.battle_sprite_sets.values():
 		for clip in sprite.clips:
 			for frame in clip.frames:
 				var texture: Texture2D = textures[frame.asset_id]
@@ -139,6 +140,12 @@ func _references() -> bool:
 	for row in world.get("sprite_sets", []):
 		if index.sprite_sets.has(row.id): return _fail("duplicate sprite set ID")
 		index.sprite_sets[row.id] = row
+	index.battle_sprite_sets = {}
+	for row in world.get("battle_sprite_sets", []):
+		if index.battle_sprite_sets.has(row.id): return _fail("duplicate battle sprite set ID")
+		index.battle_sprite_sets[row.id] = row
+	var battle_animation_issue: String = MapAnimation.validate(index.battle_sprite_sets, index.assets)
+	if not battle_animation_issue.is_empty(): return _fail(battle_animation_issue)
 	var animation_issue: String = MapAnimation.validate(index.sprite_sets, index.assets)
 	if not animation_issue.is_empty(): return _fail(animation_issue)
 	for key in ["roster", "active_party", "narrative_cast"]:
@@ -172,6 +179,13 @@ func _references() -> bool:
 	for actor in world.actor_definitions:
 		if not _texture_ref(actor.sprite_asset): return _fail("invalid actor texture")
 		if actor.get("map_sprite_set") != null and not index.sprite_sets.has(actor.map_sprite_set): return _fail("unresolved map sprite set")
+		if actor.get("battle_sprite_set") != null and not index.battle_sprite_sets.has(actor.battle_sprite_set): return _fail("unresolved battle sprite set")
+	var battle_uses: Array = world.roster.map(func(id): return [index.entities[id].definition_id, "upper_left"])
+	for encounter in world.get("encounters", []):
+		for enemy in encounter.enemies: battle_uses.append([enemy.definition_id, "lower_right"])
+	for use in battle_uses:
+		var set_id = index.actor_definitions.get(use[0], {}).get("battle_sprite_set")
+		if set_id != null and not index.battle_sprite_sets[set_id].clips.any(func(c): return c.action == "idle" and c.facing == use[1]): return _fail("battle actor lacks authored side-facing idle")
 	for sprite in index.sprite_sets.values():
 		if sprite.get("playback", "time") == "pal.walk-phase.v1":
 			if "movement.pal-walk.v1" not in manifest.required_capabilities or sprite.missing_action != "error": return _fail("PAL phase capability/directions missing")

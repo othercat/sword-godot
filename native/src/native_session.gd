@@ -5,6 +5,7 @@ const Inventory = preload("res://src/native_inventory.gd")
 const Regions = preload("res://src/native_regions.gd")
 const Condition = preload("res://src/native_condition.gd")
 signal changed
+signal battle_committed(before: Dictionary, result: Dictionary, outcome: String)
 const Package = preload("res://src/native_package.gd")
 const Schema = preload("res://src/native_schema.gd")
 const SceneTravel = preload("res://src/native_scene_travel.gd")
@@ -67,6 +68,7 @@ func battle_command(action: String, target: String = "", skill_id: String = "", 
 	if result.has("error"):
 		error = result.error
 		return false
+	var presentation_result: Dictionary = candidate.extensions[Battle.KEY].duplicate(true)
 	if result.has("outcome"):
 		var battle: Dictionary = candidate.extensions[Battle.KEY]
 		var node: Dictionary = package.index.nodes[battle.node_id]
@@ -79,7 +81,11 @@ func battle_command(action: String, target: String = "", skill_id: String = "", 
 		var budget: Dictionary = {"remaining": 1024, "planning": {"remaining": PartyTrail.MAX_VISITS}}
 		if not _execute(candidate, node["on_" + result.outcome], budget) or not _drain_regions(candidate, budget): return false
 	candidate.state_revision += 1
-	_publish(candidate); changed.emit()
+	var previous: Dictionary = state
+	_publish(candidate)
+	if "graphics.battle-animation.v1" in package.manifest.required_capabilities:
+		battle_committed.emit(previous.duplicate(true), presentation_result, result.get("outcome", ""))
+	changed.emit()
 	return true
 
 func current_node() -> Dictionary:

@@ -221,3 +221,25 @@ work. Existing system font fallback was observed only on this Windows host.
 `native_statuses.gd` 接入 draft `battle.statuses.v1`，通过既有技能/物品效果添加解除。作者可配置叠层、刷新/替换、持续轮数、攻击/防御修正、跳过行动、禁止技能、受伤/死亡解除与每轮末的伤害/治疗。稳定身份、来源和剩余轮数随战斗保存；状态清除、容量失败和战后回调共享会话候选事务，失败不半写。气血栏显示状态，悬停查看完整列表。详见[战斗文档](docs/BATTLE_TURN_CORE.md#authored-battle-statuses)。
 
 `tests/test_statuses.gd` 用工坊控件生成的三个作者包，验证3/4/5人正常输入、周期结算、控制、获胜与自然死亡/复活，保存21个待独立检查的合成状态。非法存档与容量/回调故障为单独标注的内存测试。高刷呈现不推进状态效果；正式角色动作、完整战斗平衡、其他设备与人工玩法验收仍需后续工作。
+
+## Committed battle action presentation (2026-09-08)
+
+`graphics.battle-animation.v1` binds optional actor `battle_sprite_set` to a
+separate side-facing action table, sharing map frame/PNG validation. The existing
+package loader validates actual PNG dimensions and side consumers; no DOS data,
+Python, native compiler or automatic mirror is used by the player path.
+
+`native_battle_presentation.gd` receives committed before/result/outcome copies.
+Source action, hit, lethal dead and metadata phases project bounded result values
+without rerunning rules. Hidden map/dialogue/command input is gated during playback;
+pause, modal and focus freeze it. Saving writes authority, and load/skip/package
+change clears the queue and package reference. Geometry remains explicit fallback.
+Three/four/five seats use an independently authored ascending diagonal, while all
+party information remains in the same sidebar. No gameplay formation is implied.
+
+Tests `test_battle_animation.gd` and `test_battle_art.gd` use the actual application
+window: synthetic author packages and generated Miao art are separate evidence.
+They distinguish injected input, diagnostic phase selection, legal command chains,
+actual save files and synthetic60/100/144/240 timing. High-refresh devices, final
+companions/pets/formations, ATB/realtime and three-platform delivery remain pending.
+The MIT native boundary is unchanged; no GPL SDLPal/PAL research code was copied.
