@@ -24,14 +24,14 @@ func sync_context(app, battle: Dictionary, actor: Dictionary) -> void:
 	if key != context:
 		context = key; mode = "closed"; selected_id = ""; page = 0
 
-func render(app, battle: Dictionary, actor: Dictionary) -> void:
+func render(app, battle: Dictionary, actor: Dictionary, icon: String = "") -> void:
 	sync_context(app, battle, actor)
 	var ids: Array = app.session.package.world.get("item_definitions", []).map(func(i): return i.id) if item_mode else Statuses.Progression.skill_ids(app.session.package, actor)
 	if mode == "closed":
-		if not ids.is_empty():
-			var button = app._button(app.options, "物品" if item_mode else "技能", _open.bind(app))
-			button.disabled = not item_mode and not Statuses.blocking(app.session.package, app.session.state, actor.instance_id, "block_skills").is_empty()
-			if button.disabled: button.tooltip_text = "当前状态下不能施放技能。"
+		if not ids.is_empty() or not icon.is_empty():
+			var button = app._button(app.options, "物品" if item_mode else "技能", _open.bind(app), icon)
+			button.disabled = ids.is_empty() or (not item_mode and not Statuses.blocking(app.session.package, app.session.state, actor.instance_id, "block_skills").is_empty())
+			if button.disabled: button.tooltip_text = ("没有可用物品定义。" if item_mode else "没有已学技能。") if ids.is_empty() else "当前状态下不能施放技能。"
 		return
 	_clear(app.options); _clear(app.target_pages); app.target_pages.visible = false
 	app.options.columns = 2

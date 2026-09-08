@@ -118,7 +118,7 @@ func targets(app, kind: String) -> void:
 func window_cases(app, label: String) -> void:
 	for size in [Vector2i(1024,768),Vector2i(1280,800),Vector2i(1920,1080),Vector2i(1720,720)]:
 		root.size = size; await settle(); await settle()
-		var view = app.battle_view; var bounds = Rect2(Vector2.ZERO,Vector2(app.viewport.size))
+		var view = app.battle_view; var bounds: Rect2 = app.viewport.get_visible_rect()
 		var contained: bool = true; var separate: bool = true
 		var bodies: Array = view.displayed_bodies.values()
 		for i in range(bodies.size()):
