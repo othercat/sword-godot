@@ -9,13 +9,16 @@ var saves: Array = []
 var failed: int = 0
 var output: String
 var package_path: String
+var art_spec: Dictionary = {}
+var art_frames_seen: Array = []
 func check(ok: bool, label: String) -> void:
 	checks.append({"name":label,"passed":ok})
 	if not ok: failed += 1; push_error(label)
 func _initialize() -> void: run.call_deferred()
 func run() -> void:
 	var args = OS.get_cmdline_user_args()
-	if args.size() != 2: quit(2); return
+	if args.size() not in [2,3]: quit(2); return
+	if args.size() == 3: art_spec = JSON.parse_string(FileAccess.get_file_as_string(args[2]))
 	package_path = args[0]; output = args[1]; DirAccess.make_dir_recursive_absolute(output); root.size = Vector2i(1280,800)
 	var app = App.instantiate(); root.add_child(app); await settle()
 	app.set_process(false); app.set_physics_process(false); app.battle_view.set_process(false)
@@ -35,9 +38,18 @@ func run() -> void:
 	var ids: Array = battle.enemies.map(func(e): return e.instance_id)
 	check(battle.enemies.all(func(e): return e.hp == 28 and e.mp == 0),"authored initial HP and MP loaded")
 	check(battle.enemies.all(func(e): return s.package.index.actor_definitions[e.definition_id].combat == {"attack":60,"defense":0}),"explicit Native attributes used instead of unsigned legacy values")
-	check(battle.enemies.all(func(e): return not s.package.index.actor_definitions[e.definition_id].has("battle_sprite_set")),"unimported ABC art remains unassigned")
+	if art_spec.is_empty():
+		check(battle.enemies.all(func(e): return not s.package.index.actor_definitions[e.definition_id].has("battle_sprite_set")),"unimported ABC art remains unassigned")
+	else:
+		await check_art(app,battle)
 	check(receipt.members[0].attack_signed_view == -1 and receipt.members[0].enemy_words[21] == 65535,"raw source words preserved separately from gameplay")
 	var initial: String = save(app,"initial")
+	if not art_spec.is_empty():
+		for i in range(5):
+			check(s.battle_command("guard"),"source-art normal defense "+str(i)); await drain_art(app,ids)
+		check(art_frames_seen.has(art_spec.enemy.frames[2].sha256) and art_frames_seen.has(art_spec.enemy.frames[3].sha256),"both real attack frames rendered during normal enemy commands")
+		check(app.saves.load_into(s,initial),"restore after source-art playback observation")
+		await settle()
 	await RenderingServer.frame_post_draw; root.get_texture().get_image().save_png(output.path_join("imported-draft.png"))
 	await click(option(app,"攻击",true)); await click(option(app,"攻击 2"))
 	battle = s.state.extensions[Battle.KEY]
@@ -74,7 +86,7 @@ func save(app, label: String) -> String:
 	saves.append({"label":label,"package_path":package_path,"save_path":path}); return path
 func finish() -> void:
 	var report = {"checks":checks,"failed":failed,"saves":saves,"engine_injected_input":true,"physical_input":false,
-		"normal_rule_commands_for_outcomes":true,"legacy_rule_parity":false,"full_playthrough":false,"legacy_art_imported":false}
+		"normal_rule_commands_for_outcomes":true,"legacy_rule_parity":false,"full_playthrough":false,"legacy_art_imported":not art_spec.is_empty(),"source_art_frames_seen":art_frames_seen}
 	FileAccess.open(output.path_join("results.json"),FileAccess.WRITE).store_string(JSON.stringify(report,"\t"))
 	print("legacy import checks=%d failed=%d" % [checks.size(),failed]); quit(0 if failed == 0 else 1)
 func option(app, prefix: String, exact: bool = false) -> Button:
@@ -89,3 +101,63 @@ func click(control: Control) -> void:
 	await settle()
 func settle() -> void:
 	await process_frame; await process_frame; await process_frame
+
+func image_hash(image: Image) -> String:
+	image.convert(Image.FORMAT_RGBA8)
+	var bytes: PackedByteArray = image.get_data()
+	# Native's established edge repair changes only invisible RGB. Normalize
+	# alpha-zero RGB, while checking every alpha and every visible RGB byte.
+	for i in range(0,bytes.size(),4):
+		if bytes[i+3] == 0: bytes[i] = 0; bytes[i+1] = 0; bytes[i+2] = 0
+	var context = HashingContext.new(); context.start(HashingContext.HASH_SHA256); context.update(bytes)
+	return context.finish().hex_encode()
+
+func check_art(app, battle: Dictionary) -> void:
+	var package = app.session.package; var view = app.battle_view
+	var definition: Dictionary = package.index.actor_definitions[battle.enemies[0].definition_id]
+	check(definition.has("battle_sprite_set"),"source enemy has an imported action set")
+	if not definition.has("battle_sprite_set"): return
+	var sprite: Dictionary = package.index.battle_sprite_sets[definition.battle_sprite_set]
+	check(sprite.clips.size() == 2 and sprite.missing_action == "idle","only supplied idle/attack clips with explicit missing-action fallback")
+	var frames: Array = []
+	for action in ["idle","attack"]:
+		var clip: Dictionary = sprite.clips.filter(func(c): return c.action == action and c.facing == "lower_right")[0]
+		check(clip.frames.size() == 2,"two source frames bound to "+action)
+		frames.append_array(clip.frames)
+	for i in range(4):
+		var expected: Dictionary = art_spec.enemy.frames[i]; var frame: Dictionary = frames[i]
+		check(frame.width == expected.width and frame.height == expected.height,"original dimensions retained for source frame "+str(i))
+		check(package.index.assets[frame.asset_id].sha256 == expected.sha256,"exact exported PNG bound for source frame "+str(i))
+		check(image_hash(package.textures[frame.asset_id].get_image()) == expected.rgba_sha256,"GPU texture retains every alpha and visible RGB byte for source frame "+str(i))
+		check(not package.index.assets[frame.asset_id].redistributable,"source frame remains local-use-only "+str(i))
+	var encounter: Dictionary = Battle.encounter(package.world,battle.encounter_id)
+	var background: Dictionary = art_spec.background.frames[0]
+	check(package.index.assets[encounter.background_asset].sha256 == background.sha256,"exact FBP export bound to the encounter")
+	check(image_hash(package.textures[encounter.background_asset].get_image()) == background.rgba_sha256,"background palette bytes reach the GPU texture")
+	var state: Dictionary = app.session.state.duplicate(true)
+	for elapsed in [0.0,0.201]:
+		view.idle_elapsed = elapsed; view.queue_redraw(); await RenderingServer.frame_post_draw
+		var frame: Dictionary = view.displayed_frames[battle.enemies[0].instance_id]
+		var expected: Dictionary = art_spec.enemy.frames[0 if elapsed == 0 else 1]
+		check(package.index.assets[frame.asset_id].sha256 == expected.sha256,"actual source idle frame at "+str(elapsed))
+		var size: Vector2 = frame.rect.size / view.projection.x.x
+		check(size.is_equal_approx(Vector2(expected.width,expected.height)),"source enemy renders at original reference size")
+	check(app.session.state == state,"inspecting original art leaves authoritative state unchanged")
+	check(view.background_rect == view.classic_stage,"320x200 source background fills the retained reference stage without cropping")
+	root.get_texture().get_image().save_png(output.path_join("source-art-idle.png"))
+
+func drain_art(app, ids: Array) -> void:
+	var view = app.battle_view; var steps: int = 0
+	var committed: Dictionary = app.session.state.duplicate(true)
+	while view.playing() and steps < 1000:
+		view.queue_redraw(); await RenderingServer.frame_post_draw
+		for id in ids:
+			if not view.displayed_frames.has(id): continue
+			var frame: Dictionary = view.displayed_frames[id]
+			var hash_value: String = app.session.package.index.assets[frame.asset_id].sha256
+			if hash_value not in art_frames_seen:
+				art_frames_seen.append(hash_value)
+				root.get_texture().get_image().save_png(output.path_join("source-art-frame-"+str(art_frames_seen.size())+".png"))
+		view._process(.05); steps += 1
+	check(not view.playing(),"source-art action finishes within its declared duration")
+	check(app.session.state == committed,"source-art playback does not settle damage twice")
