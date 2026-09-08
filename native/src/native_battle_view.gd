@@ -12,6 +12,7 @@ var presentation = Presentation.new()
 var idle_elapsed: float = 0.0
 var displayed_frames: Dictionary = {}
 var displayed_bodies: Dictionary = {}
+var displayed_markers: Dictionary = {}
 var target_ids: Array = []
 var projection: Transform2D = Transform2D.IDENTITY
 var layout_spacing: float = 1.0
@@ -88,7 +89,7 @@ func _process(delta: float) -> void:
 	if previous_phase != presentation.phase_index: display_changed.emit()
 	queue_redraw()
 func _draw() -> void:
-	_status_regions.clear(); displayed_frames.clear(); displayed_bodies.clear()
+	_status_regions.clear(); displayed_frames.clear(); displayed_bodies.clear(); displayed_markers.clear()
 	if session == null or (not session.battle_open() and not playing()): return
 	_draw_battle(display_battle(), Vector2(get_viewport_rect().size))
 
@@ -149,6 +150,7 @@ func _sprite_extent(definition: Dictionary, side: int) -> Rect2:
 func _draw_battle(battle: Dictionary, bounds: Vector2) -> void:
 	_draw_background(battle, bounds)
 	var classic: Dictionary = classic_layout()
+	var dream: bool = Classic.is_dream(classic)
 	var reference_bounds: Vector2 = Classic.SIZE if not classic.is_empty() else bounds
 	var phase: Dictionary = presentation.current()
 	var static_feedback: bool = Frames.BATTLE_CAPABILITY not in session.package.manifest.required_capabilities and _elapsed < .35
@@ -163,9 +165,10 @@ func _draw_battle(battle: Dictionary, bounds: Vector2) -> void:
 			var definition: Dictionary = session.package.index.actor_definitions[row.definition_id]
 			var count: int = mini(PAGE_SIZE, rows.size() - (i / PAGE_SIZE) * PAGE_SIZE)
 			var pos: Vector2 = Layout.enemy_anchor(i % PAGE_SIZE,count,reference_bounds) if side == 0 else (Classic.party_anchor(i,rows.size()) if not classic.is_empty() else Layout.party_anchor(i,rows.size(),bounds))
+			if dream and side == 0: pos = Classic.dream_enemy_anchor(session.package.world,battle.encounter_id,row.instance_id,i,rows.size())
 			var sprite_scale: float = float(classic.get("sprite_scale_milli",1000))/1000.0
 			if definition.get("battle_sprite_set") == null: sprite_scale = 1.0
-			var fit: float = 1.0 if classic.is_empty() else Classic.sprite_fit(_sprite_extent(definition,side),pos,sprite_scale,side)
+			var fit: float = 1.0 if classic.is_empty() or dream else Classic.sprite_fit(_sprite_extent(definition,side),pos,sprite_scale,side)
 			bodies.append({"row":row,"position":pos,"side":side,"index":i,"page":i/PAGE_SIZE if side == 0 else -1,"extent":_extent(definition,side),"sprite_fit":fit})
 	classic_stage = Rect2()
 	if classic.is_empty():
@@ -184,6 +187,7 @@ func _draw_battle(battle: Dictionary, bounds: Vector2) -> void:
 		var definition: Dictionary = session.package.index.actor_definitions[row.definition_id]
 		var pos: Vector2 = body.position
 		var feedback_color = Color("855759") if body.side == 0 else Color("587d95")
+		if dream and body.side == 0 and row.instance_id in target_ids: feedback_color = feedback_color.lightened(.4)
 		if row.hp == 0: feedback_color = feedback_color.darkened(.6)
 		if static_feedback:
 			for event in battle.events:
@@ -209,12 +213,17 @@ func _draw_battle(battle: Dictionary, bounds: Vector2) -> void:
 		var rect = Rect2(pos + local_rect.position * body_scale,local_rect.size * body_scale)
 		draw_circle(pos,maxf(6,15*scale_value),Color(0.05,0.07,0.08,0.55))
 		if not frame.is_empty():
-			draw_texture_rect(session.package.textures[frame.asset_id],rect,false)
+			var tint: Color = Color(1.35,1.35,1.35) if dream and body.side == 0 and row.instance_id in target_ids and int(idle_elapsed*5)%2 == 0 else Color.WHITE
+			var texture: Texture2D = session.package.textures[frame.asset_id]
+			if dream:
+				var clipped: Rect2 = rect.intersection(classic_stage)
+				if clipped.has_area(): draw_texture_rect_region(texture,clipped,Rect2((clipped.position-rect.position)/rect.size*texture.get_size(),clipped.size/rect.size*texture.get_size()),tint)
+			else: draw_texture_rect(texture,rect,false,tint)
 			displayed_frames[row.instance_id] = {"action":action,"resolved_action":clip.action,"fallback":clip.action != action,"frame_id":frame.frame_id,"asset_id":frame.asset_id,"anchor":pos,"rect":rect}
 		else:
-			draw_rect(rect,feedback_color)
+			draw_rect(rect.intersection(classic_stage) if dream else rect,feedback_color)
 		displayed_bodies[row.instance_id] = {"anchor":pos,"rect":rect,"effect_origin":Layout.effect_origin(rect,bounds),"side":body.side,"index":body.index,"hp":row.hp,"sprite_fit":body.sprite_fit}
-		if body.side == 1 and body.index == battle.turn and not playing(): draw_arc(pos,18,0,TAU,32,Color("ddbd70"),2)
+		if body.side == 1 and body.index == battle.turn and not playing() and not dream: draw_arc(pos,18,0,TAU,32,Color("ddbd70"),2)
 		var label: String = enemy_label(session.package,row,body.index) if body.side == 0 else definition.display_name
 		var statuses: PackedStringArray = Statuses.describe(session.package,session.state,row.instance_id) if session.battle_open() and not playing() else PackedStringArray()
 		var resolved: String = str(clip.get("action","static"))
@@ -224,13 +233,19 @@ func _draw_battle(battle: Dictionary, bounds: Vector2) -> void:
 	# nearer sprite. Full names, resources and status detail belong to controls.
 	for id in displayed_bodies:
 		var body: Dictionary = displayed_bodies[id]
-		if body.side == 0:
+		if body.side == 0 and not dream:
 			var badge: Vector2 = (body.anchor + Vector2(20,0)).clamp(Vector2(15,15),bounds-Vector2(15,15))
 			draw_circle(badge,13,Color("0b1219"))
 			draw_arc(badge,13,0,TAU,24,Color("718392"),1)
 			var number: String = str(body.index+1)
 			draw_string(display_font,badge+Vector2(-display_font.get_string_size(number,HORIZONTAL_ALIGNMENT_LEFT,-1,14).x/2,5),number,HORIZONTAL_ALIGNMENT_LEFT,28,14,Color("e5dbc5"))
-		if id in target_ids:
+		if dream and body.side == 1 and not playing() and (id in target_ids or body.index == battle.turn):
+			var offset: Vector2 = Vector2(-8,-67 if id in target_ids else -74)
+			var at: Vector2 = projection * (Classic.party_anchor(body.index,battle.party.size())+offset)
+			var marker_size: Vector2 = Vector2(9,6)*projection.x.x
+			displayed_markers[id] = Rect2(at,marker_size)
+			draw_colored_polygon(PackedVector2Array([at,at+Vector2(marker_size.x,0),at+Vector2(marker_size.x/2,marker_size.y)]),Color("82d5e7") if id in target_ids else Color("ddbd70"))
+		if id in target_ids and not dream:
 			var top: Vector2 = Vector2(body.rect.get_center().x,maxf(12,body.rect.position.y-12))
 			draw_colored_polygon(PackedVector2Array([top+Vector2(-7,-7),top+Vector2(7,-7),top+Vector2(0,4)]),Color("82d5e7"))
 			draw_arc(body.anchor,22,0,TAU,32,Color("82d5e7"),2)

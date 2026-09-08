@@ -10,6 +10,7 @@ const Inventory = preload("res://src/native_inventory.gd")
 const Statuses = preload("res://src/native_statuses.gd")
 const EnemyActions = preload("res://src/native_enemy_actions.gd")
 const Progression = preload("res://src/native_progression.gd")
+const Classic = preload("res://src/native_classic_battle.gd")
 
 static func used(content: Dictionary) -> bool:
 	return not content.get("encounters", []).is_empty() or content.nodes.any(func(n): return n.op == "battle")
@@ -46,6 +47,8 @@ static func validate_content(package) -> String:
 
 static func begin(package, state: Dictionary, node: Dictionary, execution_id: String) -> String:
 	if state.extensions.has(KEY): return "battle is already active"
+	var layout_issue: String = Classic.party_issue(package.world,node.encounter_id,state.active_party.size())
+	if not layout_issue.is_empty(): return layout_issue
 	var turn: int = _living_turn(state, state.active_party, 0)
 	if turn < 0: return "battle entry requires a living party member"
 	var enemies: Array = []
@@ -71,6 +74,8 @@ static func validate_state(package, state: Dictionary) -> String:
 	var node: Dictionary = package.index.nodes.get(ext.node_id, {})
 	if node.get("op") != "battle" or node.encounter_id != ext.encounter_id: return "battle encounter/node mismatch"
 	if ext.party != state.active_party or ext.turn >= ext.party.size(): return "battle party/turn mismatch"
+	var layout_issue: String = Classic.party_issue(package.world,ext.encounter_id,ext.party.size())
+	if not layout_issue.is_empty(): return layout_issue
 	if actor(state, ext.party[ext.turn]).hp <= 0: return "dead actor cannot own command turn"
 	var source: Dictionary = encounter(package.world, ext.encounter_id)
 	if source.is_empty() or source.enemies.size() != ext.enemies.size(): return "battle enemy roster mismatch"

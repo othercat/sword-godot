@@ -1,5 +1,33 @@
 # PAL Wanxiang Native preview
 
+The first battle presentation milestone now has an explicit Dream preset,
+`pal.dream-oblique.v1`, carried by optional `pal.native.battle-layout.v2` and
+`graphics.battle-layout.v2`. Studio selects it through its existing battle page.
+It uses the named Dream source's 1–5 party feet, four bottom status boxes plus
+the fifth at right-middle, and 30x30 root commands shifted up by 47 reference
+pixels for four or five participants. Imported enemy positions bind stable
+instance IDs to the selected DATA positions plus the recorded unsigned Y offset.
+This preset checks 1–5 party/enemies at authoring, battle entry and save loading;
+the generic 32-enemy mode and old v1 presentation keep their existing scope.
+
+`native_dream_battle_hud.gd` shares the battlefield's 320x200 reference transform
+and disposable animation snapshot. Reference coordinates do not constrain PNG
+resolution or RGBA colors. Dream sprites retain authored scale and clip at the
+stage boundary. The independent glyph/frame drawing is not the original RLE UI;
+submenu confirmation, approach animation and current training damage remain
+Native behavior. Cooperative stays disabled. Future rule calibration starts with
+confirmed PALDLL_DX9 evidence, then SDLPal-lcx gaps and Dream-only behavior.
+
+`tests/test_dream_battle.gd <geometry.json> <fresh-output>` takes independently
+recorded source expectations and Studio packages. The current Windows run passed
+405 checks over 1–5 party at 1280x800, 1920x1080 and 1680x720; imported outcome
+checks passed 68 and retained v1 window regression passed 522. The contract owner
+independently inspected 24 saves. These use injected window input and synthetic
+display-clock steps, not physical input, sustained high-refresh or full gameplay.
+Source artwork and captures remain local. Low-resolution source-art integration,
+loose external player assets and direct MKF loading remain subsequent work;
+today imported author PNGs are compiled into the content package.
+
 Studio's `samples/miaopang-camp-native-practice` now connects the existing runtime
 features into a named opening slice: optional five-person camp drill, solo audience,
 one supply package, reunion and three-person departure. The new
@@ -342,7 +370,7 @@ The current 1280x800 canvas uses a 982x481 world viewport, including when scaled
 into a larger window. These short single-host measurements do not certify native
 1080p, physical high-refresh output, long-duration frame pacing or other platforms.
 
-## Optional classic battle presentation
+## Retained v1 classic battle presentation
 
 Packages may opt an encounter into `pal.native.battle-layout.v1` with the paired
 `graphics.battle-layout.v1` capability and exact component contract hash. Studio
@@ -351,8 +379,9 @@ The classic preset contains the entire 320x200 reference stage and background,
 projects explicit 1–5 party foot arrangements, uses authored frame proportions,
 and displays per-instance HP/MP and optional matching portraits along the bottom.
 The reference canvas is independent of texture resolution and RGBA color depth.
-Enemy placement currently remains the Native generic formation. The original
-DATA.MKF enemy placement and traditional command icon skin are not implemented.
+In this retained v1 preset, enemy placement remains the Native generic formation.
+The new v2 Dream option above adds source positions; neither reproduces the full
+original RLE command icon skin.
 
 `native_classic_battle.gd` owns presentation configuration; `native_battle_hud.gd`
 consumes the same disposable actor snapshot as the battlefield. Root Attack opens

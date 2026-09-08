@@ -8,8 +8,8 @@ var hashes: Dictionary = {}
 var error: String = ""
 
 func _init() -> void:
-	for kind in ["content", "package", "state", "save", "enemy-actions", "progression", "equipment", "battle-layout"]:
-		var identity = "pal.native.%s.v1" % kind
+	for kind in ["content.v1", "package.v1", "state.v1", "save.v1", "enemy-actions.v1", "progression.v1", "equipment.v1", "battle-layout.v1", "battle-layout.v2"]:
+		var identity = "pal.native.%s" % kind
 		var bytes = FileAccess.get_file_as_bytes("res://contracts/%s.schema.json" % identity)
 		var reader = Reader.new()
 		var value = reader.decode(bytes)

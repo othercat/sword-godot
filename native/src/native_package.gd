@@ -43,7 +43,7 @@ func load_package(path: String) -> bool:
 	content_lock = Schema.digest(bytes)
 	if not manifest.dependencies.is_empty(): return _fail("package dependencies not implemented")
 	for capability in manifest.required_capabilities:
-		if capability not in CAPABILITIES and capability not in [EnemyActions.CAPABILITY, Progression.CAPABILITY, Equipment.CAPABILITY, Classic.CAPABILITY]: return _fail("unsupported capability: " + capability)
+		if capability not in CAPABILITIES and capability not in [EnemyActions.CAPABILITY, Progression.CAPABILITY, Equipment.CAPABILITY, Classic.CAPABILITY, Classic.CAPABILITY_V2]: return _fail("unsupported capability: " + capability)
 	for key in ["pal.native.package.v1", "pal.native.content.v1"]:
 		if manifest.contract_hashes.get(key) != schema.hashes.get(key): return _fail("contract hash mismatch: " + key)
 	if manifest.contract_hashes.size() != 2: return _fail("unknown contract hash")
@@ -74,8 +74,9 @@ func load_package(path: String) -> bool:
 	if equipment_used != (Equipment.CAPABILITY in manifest.required_capabilities): return _fail("equipment capability/component mismatch")
 	var component_hashes: Dictionary = {}
 	var layout_used: bool = Classic.used(world)
-	if layout_used != (Classic.CAPABILITY in manifest.required_capabilities): return _fail("battle layout capability/component mismatch")
-	if layout_used: component_hashes[Classic.SCHEMA] = schema.hashes.get(Classic.SCHEMA)
+	for capability in [Classic.CAPABILITY,Classic.CAPABILITY_V2]:
+		if (layout_used and Classic.capability(world) == capability) != (capability in manifest.required_capabilities): return _fail("battle layout capability/component mismatch")
+	if layout_used: component_hashes[Classic.schema_id(world)] = schema.hashes.get(Classic.schema_id(world))
 	if enemy_used: component_hashes[EnemyActions.SCHEMA] = schema.hashes.get(EnemyActions.SCHEMA)
 	if growth_used: component_hashes[Progression.SCHEMA] = schema.hashes.get(Progression.SCHEMA)
 	if equipment_used: component_hashes[Equipment.SCHEMA] = schema.hashes.get(Equipment.SCHEMA)

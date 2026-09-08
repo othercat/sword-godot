@@ -10,6 +10,15 @@ party instances determine turns; no fixed three-member array is introduced.
 Combat uses max(1, attack − defense), ceil-half guarding and current-HP clamping.
 These are new training rules, not original PAL damage parity.
 
+The 2026-09-09 Dream presentation increment does not change these formulas or add
+cooperative combat. The source order for future calibration is confirmed
+PALDLL_DX9 evidence (with its original/mod profile), SDLPal-lcx for missing facts,
+and Dream only for its own features. Source-derived screen coordinates do not
+certify rule parity. `pal.dream-oblique.v1` adds a preset-specific 1–5 party/enemy
+gate at content admission, battle entry and saved-state load; generic capacities
+and retained v1 content identities are unchanged. See `../README.md` for the
+versioned presentation, source-position import and current window evidence.
+
 `native_session.gd` owns candidate publication, battle entry, three outcome story
 callbacks, pause/input exclusion and save admission. Each command either publishes
 all effects and its callback or keeps the previous state. The pending execution ID

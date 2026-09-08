@@ -3,9 +3,10 @@ extends Button
 ## Original vector ornaments, not extracted Legacy menu graphics. Button retains
 ## its normal keyboard, focus, disabled and accessibility semantics.
 var symbol: String = ""
+var reference_size: int = 68
 
 func _ready() -> void:
-	custom_minimum_size = Vector2(68, 68)
+	custom_minimum_size = Vector2(reference_size, reference_size)
 	for style in ["normal", "hover", "pressed", "disabled", "focus"]:
 		add_theme_stylebox_override(style, StyleBoxEmpty.new())
 	for color in ["font_color", "font_hover_color", "font_pressed_color", "font_disabled_color", "font_focus_color"]:
@@ -28,6 +29,10 @@ func _draw() -> void:
 			var at = center + direction * radius * ring
 			draw_line(at-tangent*3.5, at+tangent*3.5, tint.darkened(0.2), 1.0, true)
 	var font = get_theme_font("font")
+	if reference_size == 30:
+		var glyph: String = {"attack":"攻","skills":"术","cooperative":"合","misc":"杂"}.get(symbol, "")
+		draw_string(font,center+Vector2(-6,4),glyph,HORIZONTAL_ALIGNMENT_LEFT,14,12,tint)
+		return
 	var mark: String = {"attack":"剑", "skills":"术", "items":"药", "misc":"策"}.get(symbol, "")
 	var label = tr(text)
 	draw_string(font, center + Vector2(-font.get_string_size(mark,HORIZONTAL_ALIGNMENT_LEFT,-1,22).x/2.0,1), mark,HORIZONTAL_ALIGNMENT_LEFT,-1,22,tint)

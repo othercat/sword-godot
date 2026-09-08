@@ -11,6 +11,7 @@ const Statuses = preload("res://src/native_statuses.gd")
 const BattleView = preload("res://src/native_battle_view.gd")
 var battle_view
 var classic_hud = preload("res://src/native_battle_hud.gd").new()
+var dream_hud = preload("res://src/native_dream_battle_hud.gd").new()
 var sidebar: VBoxContainer
 var center: VBoxContainer
 var stage: Control
@@ -129,6 +130,7 @@ func _ready() -> void:
 	world_view = World.new()
 	viewport.add_child(world_view)
 	render_surface.logical_size_changed.connect(_fit_world)
+	dream_hud.visible = false; stage.add_child(dream_hud)
 	classic_commands = PanelContainer.new(); classic_commands.visible = false; stage.add_child(classic_commands)
 	classic_scroll = ScrollContainer.new(); classic_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	classic_scroll.follow_focus = true
@@ -230,6 +232,8 @@ func _update_target_preview() -> void:
 func _fit_battle_commands() -> void:
 	if not is_instance_valid(options): return
 	if not session.battle_open(): options.custom_minimum_size.y = 0; return
+	if _dream_mode():
+		options.custom_minimum_size.y = 0; options.columns = 1 if _dream_misc() else 3; return
 	if classic_mode: options.custom_minimum_size.y = 0; options.columns = 3 if classic_root else 2; return
 	if battle_view.playing(): return
 	var columns: int = 4 if options.size.x >= 840 else (3 if options.size.x >= 620 else 2)
@@ -247,6 +251,31 @@ func _fit_battle_commands() -> void:
 
 func _fit_classic_controls() -> void:
 	if not is_instance_valid(classic_commands): return
+	if _dream_mode():
+		var frame: Rect2 = BattleView.Classic.stage_rect(stage.size)
+		var zoom: float = frame.size.x/320.0
+		dream_hud.position = frame.position; dream_hud.scale = Vector2(zoom,zoom)
+		dream_hud.visible = not battle_view.playing()
+		dream_hud.commands.visible = classic_root
+		classic_commands.visible = not classic_root
+		classic_commands.scale = Vector2(zoom,zoom)
+		var panel = Rect2(2,20,71,112) if _dream_misc() else Rect2(10,42,300,114)
+		if item_menu.mode != "closed": panel = Rect2(2,0,316,150)
+		if battle_view.playing(): panel = Rect2(2,20,105,42)
+		classic_commands.position = frame.position+panel.position*zoom; classic_commands.size = panel.size
+		classic_commands.remove_theme_stylebox_override("panel")
+		options.add_theme_constant_override("v_separation",1); options.add_theme_constant_override("h_separation",3)
+		dialogue.add_theme_constant_override("separation",1)
+		dialogue_text.add_theme_font_size_override("font_size",8)
+		dialogue_text.visible = not classic_root and not _dream_misc()
+		for control in options.get_children()+target_pages.get_children():
+			if control is Button:
+				control.custom_minimum_size.y = 17; control.add_theme_font_size_override("font_size",8)
+		options.columns = 1 if _dream_misc() else 3
+		return
+	classic_commands.scale = Vector2.ONE; dialogue_text.visible = true
+	options.remove_theme_constant_override("v_separation"); options.remove_theme_constant_override("h_separation")
+	dialogue.remove_theme_constant_override("separation")
 	classic_commands.size = Vector2(minf(240 if classic_root else 330,stage.size.x-8),minf(300 if classic_root else 280,stage.size.y))
 	classic_commands.position = Vector2(8,maxf(0,stage.size.y-classic_commands.size.y-8))
 	if classic_root: classic_commands.add_theme_stylebox_override("panel",StyleBoxEmpty.new())
@@ -254,7 +283,38 @@ func _fit_classic_controls() -> void:
 	dialogue_text.add_theme_font_size_override("font_size",16 if classic_mode else 20)
 
 func _refresh_classic_hud() -> void:
-	if is_instance_valid(battle_view) and classic_mode: classic_hud.bind(battle_view)
+	if is_instance_valid(battle_view) and classic_mode:
+		if _dream_mode(): dream_hud.bind(battle_view)
+		else: classic_hud.bind(battle_view)
+
+func _dream_mode() -> bool:
+	return is_instance_valid(battle_view) and BattleView.Classic.is_dream(battle_view.classic_layout()) and battle_view.visible
+
+func _dream_misc() -> bool:
+	return classic_misc and skill_menu.mode == "closed" and item_menu.mode == "closed"
+
+func _battle_controls() -> Array:
+	return options.get_children()+target_pages.get_children()+dream_hud.commands.get_children()
+
+func _dream_root(battle: Dictionary, actor: Dictionary) -> void:
+	for symbol in ["attack","skills","cooperative","misc"]:
+		var action: Callable
+		match symbol:
+			"attack": action = _classic_select_attack.bind(true)
+			"skills": action = skill_menu._open.bind(self)
+			"misc": action = _classic_select_misc.bind(true)
+			_: action = func(): pass
+		var labels = {"attack":"攻击","skills":"技能","cooperative":"合击","misc":"其他"}
+		var button: Button = _button(dream_hud.commands,labels[symbol],action,symbol)
+		# Invisible Button text still contributes to its minimum hit size.
+		button.clip_text = true; button.add_theme_font_size_override("font_size",8)
+		button.reference_size = 30; button.custom_minimum_size = Vector2(30,30)
+		var rect: Rect2 = BattleView.Classic.dream_command_rect(symbol,battle.party.size())
+		button.position = rect.position; button.size = rect.size
+		if symbol == "cooperative": button.disabled = true; button.tooltip_text = "当前内容没有合击命令。"
+		if symbol == "skills":
+			button.disabled = Session.Progression.skill_ids(session.package,actor).is_empty() or not Statuses.blocking(session.package,session.state,actor.instance_id,"block_skills").is_empty()
+		button.queue_redraw()
 
 func _set_classic_mode(enabled: bool) -> void:
 	if classic_mode != enabled:
@@ -264,7 +324,10 @@ func _set_classic_mode(enabled: bool) -> void:
 		dialogue.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		options.custom_minimum_size.y = 0
 		if not enabled: classic_hud.clear()
-	sidebar.visible = not enabled; classic_hud.visible = enabled; classic_commands.visible = enabled
+	var dream: bool = enabled and _dream_mode()
+	sidebar.visible = not enabled; classic_hud.visible = enabled and not dream; classic_commands.visible = enabled
+	dream_hud.visible = dream
+	if not dream: dream_hud.clear()
 	_fit_classic_controls(); _refresh_classic_hud()
 
 func _classic_select_attack(value: bool) -> void:
@@ -281,7 +344,7 @@ func _restore_battle_focus(key: String, generation: int) -> void:
 	if not is_inside_tree(): return
 	if generation != _ui_generation or not session.battle_open() or battle_view.playing() or session.paused or session.modal or not session.focused: return
 	var first: Button
-	for control in options.get_children() + target_pages.get_children():
+	for control in _battle_controls():
 		if control is not Button or control.disabled: continue
 		if first == null: first = control
 		if str(control.get_meta("battle_focus_key",control.text.get_slice("\n",0))) == key: control.grab_focus(); return
@@ -347,7 +410,7 @@ func _refresh() -> void:
 	equipment_button.visible = Session.Equipment.used(session.package.world)
 	equipment_button.disabled = session.battle_open() or battle_view.playing() or session.paused or session.modal
 	var focus = get_viewport().gui_get_focus_owner()
-	var restore_focus: bool = focus == null or focus.get_parent() in [options,target_pages]
+	var restore_focus: bool = focus == null or focus.get_parent() in [options,target_pages,dream_hud.commands]
 	var focus_key: String = str(focus.get_meta("battle_focus_key",focus.text.get_slice("\n",0))) if restore_focus and focus is Button else ""
 	_hover_target = null; _focus_target = null; battle_view.preview_targets([])
 	if session.dialogue_open or session.battle_open(): walk_input.clear()
@@ -385,6 +448,7 @@ func _refresh() -> void:
 		child.queue_free()
 	for child in target_pages.get_children():
 		target_pages.remove_child(child); child.queue_free()
+	dream_hud.clear_commands()
 	target_pages.visible = false; options.columns = 1; classic_root = false
 	var node: Dictionary = session.current_node()
 	if battle_view.playing():
@@ -406,14 +470,17 @@ func _refresh() -> void:
 			else: item_menu.render(self,battle,actor)
 		elif classic_mode and not classic_attack:
 			if classic_misc:
+				if _dream_mode(): item_menu.render(self,battle,actor)
 				_button(options,"防御",_battle_action.bind("guard",""))
 				_button(options,"撤离",_battle_action.bind("escape","")).disabled = not Battle.encounter(session.package.world,battle.encounter_id).allow_escape
 				_button(options,"返回命令",_classic_select_misc.bind(false))
 			else:
 				classic_root = true; options.columns = 3
-				_classic_spacer(); _button(options,"攻击",_classic_select_attack.bind(true),"attack"); _classic_spacer()
-				skill_menu.render(self,battle,actor,"skills"); _classic_spacer(); item_menu.render(self,battle,actor,"items")
-				_classic_spacer(); _button(options,"其他",_classic_select_misc.bind(true),"misc"); _classic_spacer()
+				if _dream_mode(): _dream_root(battle,actor)
+				else:
+					_classic_spacer(); _button(options,"攻击",_classic_select_attack.bind(true),"attack"); _classic_spacer()
+					skill_menu.render(self,battle,actor,"skills"); _classic_spacer(); item_menu.render(self,battle,actor,"items")
+					_classic_spacer(); _button(options,"其他",_classic_select_misc.bind(true),"misc"); _classic_spacer()
 		else:
 			var start: int = battle_view.enemy_page * BattleView.PAGE_SIZE
 			options.columns = 2 if battle.enemies.size() > 1 else 1

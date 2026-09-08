@@ -78,7 +78,7 @@ func finish() -> void:
 	FileAccess.open(output.path_join("results.json"),FileAccess.WRITE).store_string(JSON.stringify(report,"\t"))
 	print("legacy import checks=%d failed=%d" % [checks.size(),failed]); quit(0 if failed == 0 else 1)
 func option(app, prefix: String, exact: bool = false) -> Button:
-	for control in app.options.get_children():
+	for control in app._battle_controls():
 		if control is Button and (control.text == prefix if exact else control.text.begins_with(prefix)): return control
 	check(false,"missing command "+prefix); return null
 func click(control: Control) -> void:
