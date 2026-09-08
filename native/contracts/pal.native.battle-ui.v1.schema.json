@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "pal.native.battle-ui.v1",
+  "title": "Native Dream battle UI PNG bindings",
+  "x-status": "draft",
+  "type": "object",
+  "required": ["schema", "kind", "encounters"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "pal.native.battle-ui.v1"},
+    "kind": {"const": "content"},
+    "encounters": {
+      "type": "array", "minItems": 1, "maxItems": 10000,
+      "items": {
+        "type": "object", "required": ["encounter_id", "sprites"], "additionalProperties": false,
+        "properties": {
+          "encounter_id": {"$ref": "#/definitions/id"},
+          "sprites": {
+            "type": "array", "minItems": 1, "maxItems": 34,
+            "items": {
+              "type": "object", "required": ["slot", "asset_id", "width", "height", "provenance"], "additionalProperties": false,
+              "properties": {
+                "slot": {"enum": ["panel", "slash", "digit.hp.0", "digit.hp.1", "digit.hp.2", "digit.hp.3", "digit.hp.4", "digit.hp.5", "digit.hp.6", "digit.hp.7", "digit.hp.8", "digit.hp.9", "digit.mp.0", "digit.mp.1", "digit.mp.2", "digit.mp.3", "digit.mp.4", "digit.mp.5", "digit.mp.6", "digit.mp.7", "digit.mp.8", "digit.mp.9", "command.attack.normal", "command.attack.focus", "command.attack.disabled", "command.skills.normal", "command.skills.focus", "command.skills.disabled", "command.cooperative.normal", "command.cooperative.focus", "command.cooperative.disabled", "command.misc.normal", "command.misc.focus", "command.misc.disabled"]},
+                "asset_id": {"$ref": "#/definitions/id"},
+                "width": {"type": "integer", "minimum": 1, "maximum": 8192},
+                "height": {"type": "integer", "minimum": 1, "maximum": 8192},
+                "provenance": {"$ref": "#/definitions/provenance"}
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "id": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"},
+    "provenance": {
+      "type": "object", "required": ["status"], "additionalProperties": false,
+      "properties": {
+        "status": {"enum": ["synthetic", "author-choice", "draft-adaptation", "approved"]},
+        "source_id": {"$ref": "#/definitions/id"},
+        "source_revision": {"type": "string", "maxLength": 128},
+        "source_beat_ids": {"type": "array", "maxItems": 100, "uniqueItems": true, "items": {"$ref": "#/definitions/id"}}
+      }
+    }
+  }
+}

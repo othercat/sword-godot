@@ -4,6 +4,11 @@ extends Button
 ## its normal keyboard, focus, disabled and accessibility semantics.
 var symbol: String = ""
 var reference_size: int = 68
+var skin: Dictionary = {}
+
+func skin_state() -> String:
+	if disabled: return "disabled"
+	return "focus" if has_focus() or is_hovered() or is_pressed() else "normal"
 
 func _ready() -> void:
 	custom_minimum_size = Vector2(reference_size, reference_size)
@@ -14,6 +19,14 @@ func _ready() -> void:
 	for event in [mouse_entered, mouse_exited, focus_entered, focus_exited, button_down, button_up]: event.connect(queue_redraw)
 
 func _draw() -> void:
+	var state: String = skin_state()
+	var key: String = "command." + symbol + "." + state
+	var texture: Texture2D = skin.get(key, skin.get("command." + symbol + ".normal"))
+	if texture != null:
+		var fallback: bool = not skin.has(key)
+		draw_texture_rect(texture,Rect2(Vector2.ZERO,size),false,Color(.45,.45,.45) if fallback and disabled else Color.WHITE)
+		if fallback and state == "focus": draw_rect(Rect2(Vector2.ONE,size-Vector2(2,2)),Color("ead296"),false,1)
+		return
 	var center = size / 2.0
 	var radius: float = minf(size.x, size.y) / 2.0 - 3.0
 	var tint = Color("d9b978") if has_focus() or is_hovered() else Color("6ca9a4")

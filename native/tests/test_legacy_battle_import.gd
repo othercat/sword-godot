@@ -5,6 +5,7 @@ const App = preload("res://scenes/main.tscn")
 const Save = preload("res://src/native_save.gd")
 const Battle = preload("res://src/native_battle.gd")
 const PixelArtChecks = preload("res://tests/pixel_battle_art_checks.gd")
+const BattleUiChecks = preload("res://tests/battle_ui_checks.gd")
 var checks: Array = []
 var saves: Array = []
 var failed: int = 0
@@ -53,6 +54,7 @@ func run() -> void:
 		await check_art(app,battle)
 	check(receipt.members[0].attack_signed_view == -1 and receipt.members[0].enemy_words[21] == 65535,"raw source words preserved separately from gameplay")
 	var initial: String = save(app,"initial")
+	if BattleUiChecks.Ui.used(s.package.world): await BattleUiChecks.exercise(self,app)
 	if not pixel_spec.is_empty(): pixel_report = await PixelArtChecks.exercise(self,app,pixel_spec,initial)
 	if not art_spec.is_empty():
 		for i in range(5):

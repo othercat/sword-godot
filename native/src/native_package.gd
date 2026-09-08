@@ -16,6 +16,7 @@ const Battle = preload("res://src/native_battle.gd")
 const EnemyActions = preload("res://src/native_enemy_actions.gd")
 const Equipment = preload("res://src/native_equipment.gd")
 const Classic = preload("res://src/native_classic_battle.gd")
+const BattleUi = preload("res://src/native_battle_ui.gd")
 const Progression = preload("res://src/native_progression.gd")
 const Regions = preload("res://src/native_regions.gd")
 const PartyTrail = preload("res://src/native_party_trail.gd")
@@ -50,7 +51,7 @@ func load_package(path: String) -> bool:
 	content_lock = Schema.digest(bytes)
 	if not manifest.dependencies.is_empty(): return _fail("package dependencies not implemented")
 	for capability in manifest.required_capabilities:
-		if capability not in CAPABILITIES and capability not in [EnemyActions.CAPABILITY, Progression.CAPABILITY, Equipment.CAPABILITY, Classic.CAPABILITY, Classic.CAPABILITY_V2]: return _fail("unsupported capability: " + capability)
+		if capability not in CAPABILITIES and capability not in [EnemyActions.CAPABILITY, Progression.CAPABILITY, Equipment.CAPABILITY, Classic.CAPABILITY, Classic.CAPABILITY_V2, BattleUi.CAPABILITY]: return _fail("unsupported capability: " + capability)
 	for key in ["pal.native.package.v1", "pal.native.content.v1"]:
 		if manifest.contract_hashes.get(key) != schema.hashes.get(key): return _fail("contract hash mismatch: " + key)
 	if manifest.contract_hashes.size() != 2: return _fail("unknown contract hash")
@@ -80,6 +81,9 @@ func load_package(path: String) -> bool:
 	var equipment_used: bool = Equipment.used(world)
 	if equipment_used != (Equipment.CAPABILITY in manifest.required_capabilities): return _fail("equipment capability/component mismatch")
 	var component_hashes: Dictionary = {}
+	var ui_used: bool = BattleUi.used(world)
+	if ui_used != (BattleUi.CAPABILITY in manifest.required_capabilities): return _fail("battle UI capability/component mismatch")
+	if ui_used: component_hashes[BattleUi.SCHEMA] = schema.hashes.get(BattleUi.SCHEMA)
 	var layout_used: bool = Classic.used(world)
 	for capability in [Classic.CAPABILITY,Classic.CAPABILITY_V2]:
 		if (layout_used and Classic.capability(world) == capability) != (capability in manifest.required_capabilities): return _fail("battle layout capability/component mismatch")
@@ -123,7 +127,7 @@ func load_package(path: String) -> bool:
 		# invisible RGB used by texture filtering, never quantize to a palette.
 		TexturePolicy.fix_transparent_edges(decoded)
 		textures[asset.id] = ImageTexture.create_from_image(decoded)
-	for portrait in Classic.definition(world).get("portraits",[]):
+	for portrait in Classic.definition(world).get("portraits",[]) + BattleUi.sprites(world):
 		var texture: Texture2D = textures[portrait.asset_id]
 		if texture.get_width() != portrait.width or texture.get_height() != portrait.height: return _fail("portrait PNG dimensions mismatch")
 	for sprite in index.sprite_sets.values() + index.battle_sprite_sets.values():
@@ -276,6 +280,8 @@ func _references() -> bool:
 	if not equipment_issue.is_empty(): return _fail(equipment_issue)
 	var layout_issue: String = Classic.validate_content(self)
 	if not layout_issue.is_empty(): return _fail(layout_issue)
+	var ui_issue: String = BattleUi.validate_content(self)
+	if not ui_issue.is_empty(): return _fail(ui_issue)
 	var growth_issue: String = Progression.validate_content(self)
 	if not growth_issue.is_empty(): return _fail(growth_issue)
 	if SceneTravel.used(world) and SceneTravel.CAPABILITY not in manifest.required_capabilities: return _fail("missing scene travel capability")

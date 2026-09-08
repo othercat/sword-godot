@@ -306,6 +306,7 @@ func _dream_root(battle: Dictionary, actor: Dictionary) -> void:
 			_: action = func(): pass
 		var labels = {"attack":"攻击","skills":"技能","cooperative":"合击","misc":"其他"}
 		var button: Button = _button(dream_hud.commands,labels[symbol],action,symbol)
+		button.skin = Session.Package.BattleUi.for_encounter(session.package,battle.encounter_id)
 		# Invisible Button text still contributes to its minimum hit size.
 		button.clip_text = true; button.add_theme_font_size_override("font_size",8)
 		button.reference_size = 30; button.custom_minimum_size = Vector2(30,30)
