@@ -23,6 +23,8 @@ var options: GridContainer
 var target_pages: HBoxContainer
 var skill_menu = preload("res://src/native_skill_menu.gd").new()
 var item_menu = preload("res://src/native_skill_menu.gd").new(true)
+var equipment_button: Button
+var equipment_menu = preload("res://src/native_equipment_menu.gd").new()
 var save_button: Button
 var pause_button: Button
 var picker: FileDialog
@@ -86,6 +88,7 @@ func _ready() -> void:
 	party_title.text = "同行伙伴"
 	party_title.add_theme_color_override("font_color", Color("d7be86"))
 	sidebar.add_child(party_title)
+	equipment_button = _button(sidebar, "装备", _show_equipment); equipment_button.visible = false
 	var scroll = ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	sidebar.add_child(scroll)
@@ -151,6 +154,8 @@ func _ready() -> void:
 	save_picker.add_child(save_list)
 	picker.visibility_changed.connect(_modal_changed)
 	save_picker.visibility_changed.connect(_modal_changed)
+	equipment_menu.setup(self); add_child(equipment_menu)
+	equipment_menu.visibility_changed.connect(_modal_changed)
 	session.changed.connect(_refresh)
 	battle_view = BattleView.new(); battle_view.display_font = font; battle_view.visible = false; viewport.add_child(battle_view)
 	get_window().focus_entered.connect(func(): session.set_focus(true))
@@ -283,6 +288,8 @@ func _follow_world() -> void:
 func _refresh() -> void:
 	if not is_instance_valid(roster) or session.state.is_empty(): return
 	_ui_generation += 1
+	equipment_button.visible = Session.Equipment.used(session.package.world)
+	equipment_button.disabled = session.battle_open() or battle_view.playing() or session.paused or session.modal
 	var focus = get_viewport().gui_get_focus_owner()
 	var restore_focus: bool = focus == null or focus.get_parent() in [options,target_pages]
 	var focus_key: String = str(focus.get_meta("battle_focus_key",focus.text.get_slice("\n",0))) if restore_focus and focus is Button else ""
@@ -394,9 +401,12 @@ func _show_picker() -> void:
 	walk_input.clear()
 	picker.popup_centered_ratio(0.8)
 
+func _show_equipment() -> void:
+	walk_input.clear(); equipment_menu.open()
+
 func _modal_changed() -> void:
 	walk_input.clear()
-	session.set_modal(picker.visible or save_picker.visible)
+	session.set_modal(picker.visible or save_picker.visible or equipment_menu.visible)
 
 func _pause() -> void:
 	walk_input.clear()
@@ -434,7 +444,7 @@ func _input(event: InputEvent) -> void:
 
 func _unhandled_key_input(event: InputEvent) -> void:
 	if not event is InputEventKey: return
-	if picker.visible or save_picker.visible: return
+	if picker.visible or save_picker.visible or equipment_menu.visible: return
 	if battle_view.playing() and event.keycode in [KEY_ENTER, KEY_SPACE, KEY_W, KEY_A, KEY_S, KEY_D, KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT]:
 		walk_input.clear(); return
 	if event.keycode in [KEY_W, KEY_A, KEY_S, KEY_D, KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT]:
@@ -452,7 +462,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 	elif event.keycode == KEY_F9: _show_saves()
 
 func _physics_process(_delta: float) -> void:
-	if picker.visible or save_picker.visible: return
+	if picker.visible or save_picker.visible or equipment_menu.visible: return
 	session.tick()
 	if battle_view.playing():
 		walk_input.clear(); return

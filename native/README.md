@@ -1,5 +1,17 @@
 # PAL Wanxiang Native preview
 
+Optional `actors.equipment.v1` adds per-instance worn item references and an in-game
+equipment menu. Studio authors slot identities, signed attribute modifiers and
+definition eligibility; initial loadouts debit existing shared inventory once.
+Changing gear is an atomic inventory/loadout transaction outside combat. Lower
+maxima clip HP/MP without healing or reviving; growth, status effects, targeting,
+battle settlement and saves consume the same derived attributes. The additive
+equipment component is pinned separately and the four base schemas retain their
+bytes. Existing packages remain unchanged. See the contract owner's
+`docs/native-equipment-v1.md` and Studio's `docs/native/NATIVE_EQUIPMENT.md`.
+Current gear does not grant skills, dynamic affixes, durability or enemy loadouts.
+No legacy memory layout or equipment scripts are copied into this MIT project.
+
 Optional `battle.enemy-actions.v1` now runs ordered per-instance enemy skills through
 the existing target/effect/status engine. The additive component is stored in content
 extensions and pinned separately; the four base schema files remain byte-compatible.

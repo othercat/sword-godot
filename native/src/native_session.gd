@@ -4,6 +4,7 @@ const Battle = preload("res://src/native_battle.gd")
 const Inventory = preload("res://src/native_inventory.gd")
 const Regions = preload("res://src/native_regions.gd")
 const Condition = preload("res://src/native_condition.gd")
+const Equipment = preload("res://src/native_equipment.gd")
 const Progression = preload("res://src/native_progression.gd")
 signal changed
 signal battle_committed(before: Dictionary, result: Dictionary, outcome: String)
@@ -43,8 +44,16 @@ func activate(candidate, now_usec: int = -1) -> bool:
 		var definition: Dictionary = package.index.actor_definitions[source.definition_id]
 		state.entities.append({"entity_kind": "actor", "component_schema_version": 1, "instance_id": source.instance_id, "definition_id": source.definition_id, "scene_id": source.scene_id, "position": source.position.duplicate(), "hp": definition.max_hp, "mp": definition.max_mp, "components": {"pal.native.pose": {"facing": source.facing, "moving_until_tick": 0, "step_phase": 0}}})
 	for variable in world.variables: state.scopes[variable.scope][variable.id] = variable.initial
+	var equipment_costs: Array = Equipment.initialize(package, state)
 	Progression.initialize(package, state)
 	Inventory.initialize(world, state)
+	if Equipment.used(world):
+		error = Inventory.change(package, state, equipment_costs)
+		if not error.is_empty():
+			package = previous_package; state = previous_state; return false
+		for actor in state.entities:
+			var effective: Dictionary = Progression.stats(package, actor)
+			actor.hp = effective.max_hp; actor.mp = effective.max_mp
 	Regions.initialize(world, state)
 	error = PartyTrail.reseed(package, state, world.active_party)
 	if not error.is_empty() or not _advance(world.entry_node):
@@ -96,6 +105,23 @@ func battle_command(action: String, target: String = "", skill_id: String = "", 
 		battle_committed.emit(previous.duplicate(true), presentation_result, result.get("outcome", ""))
 	changed.emit()
 	return true
+
+func change_equipment(instance_id: String, slot_id: String, item_id: String = "") -> bool:
+	if state.is_empty() or battle_open() or paused or modal or not focused:
+		error = "请在战斗和菜单以外的正常游戏中整装。"; return false
+	if instance_id not in state.roster:
+		error = "只能为队伍或候补伙伴更换装备。"; return false
+	var candidate: Dictionary = state.duplicate(true)
+	var actor: Dictionary = _candidate_entity(candidate, instance_id)
+	var plan: Dictionary = Equipment.plan(package, actor, slot_id, item_id)
+	if plan.has("error"): error = plan.error; return false
+	error = Inventory.change(package, candidate, plan.changes)
+	if not error.is_empty(): return false
+	actor.components[Equipment.KEY].loadout = plan.loadout
+	var effective: Dictionary = Progression.stats(package, actor)
+	actor.hp = mini(int(actor.hp), int(effective.max_hp)); actor.mp = mini(int(actor.mp), int(effective.max_mp))
+	candidate.state_revision += 1
+	_publish(candidate); error = ""; changed.emit(); return true
 
 func current_node() -> Dictionary:
 	return {} if state.is_empty() else package.index.nodes[state.cursor.node_id]
@@ -361,6 +387,8 @@ func can_save() -> bool:
 
 func validate_saved(candidate: Dictionary) -> String:
 	var issue: String = package.schema.validate("pal.native.state.v1", candidate)
+	if not issue.is_empty(): return issue
+	issue = Equipment.validate_state(package, candidate)
 	if not issue.is_empty(): return issue
 	issue = Progression.validate_state(package, candidate)
 	if not issue.is_empty(): return issue

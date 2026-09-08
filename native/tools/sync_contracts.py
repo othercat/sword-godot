@@ -16,7 +16,7 @@ target = Path(__file__).resolve().parents[1] / "contracts"
 origin = subprocess.check_output(["git", "remote", "get-url", "origin"], cwd=source, text=True).strip()
 if origin not in ("https://github.com/othercat/pal98-runtime-contracts.git", "git@github.com:othercat/pal98-runtime-contracts.git"):
     raise SystemExit("Unexpected contract owner")
-files = {f"pal.native.{kind}.v1.schema.json": source / "schemas" / f"pal.native.{kind}.v1.schema.json" for kind in ("content", "package", "state", "save", "enemy-actions", "progression")}
+files = {f"pal.native.{kind}.v1.schema.json": source / "schemas" / f"pal.native.{kind}.v1.schema.json" for kind in ("content", "package", "state", "save", "enemy-actions", "progression", "equipment")}
 files["LICENSE"] = source / "LICENSE"
 committed = all(subprocess.run(["git", "show", "HEAD:" + path.relative_to(source).as_posix()], cwd=source, capture_output=True).stdout == path.read_bytes().replace(b"\r\n", b"\n") for path in files.values())
 receipt = {"owner": origin, "base_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=source, text=True).strip(),

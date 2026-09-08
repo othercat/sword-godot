@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 extends RefCounted
 ## Persistent world-actor growth; transient enemies keep their authored base stats.
+const Equipment = preload("res://src/native_equipment.gd")
 const KEY = "pal.native.progression"
 const SCHEMA = "pal.native.progression.v1"
 const CAPABILITY = "actors.progression.v1"
@@ -35,7 +36,7 @@ static func stats(package, actor: Dictionary) -> Dictionary:
 		for row in profile(package, actor.definition_id).levels:
 			if row.experience <= value.experience:
 				for field in ["max_hp", "max_mp", "attack", "defense"]: result[field] = row[field]
-	return result
+	return Equipment.modify_stats(package, actor, result)
 
 static func skill_ids(package, actor: Dictionary) -> Array:
 	var result: Array = package.index.actor_definitions[actor.definition_id].get("skill_ids", []).duplicate()

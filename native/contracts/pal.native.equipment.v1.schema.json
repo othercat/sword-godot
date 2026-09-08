@@ -1,0 +1,224 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://othercat.github.io/pal98-runtime-contracts/pal.native.equipment.v1.schema.json",
+  "title": "Native equipment component v1",
+  "x-status": "draft",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "pal.native.equipment.v1"
+    }
+  },
+  "oneOf": [
+    {
+      "type": "object",
+      "required": [
+        "schema",
+        "kind",
+        "slots",
+        "items",
+        "initial_loadouts"
+      ],
+      "properties": {
+        "schema": {
+          "const": "pal.native.equipment.v1"
+        },
+        "kind": {
+          "const": "content"
+        },
+        "slots": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "display_name",
+              "provenance"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/definitions/id"
+              },
+              "display_name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              },
+              "provenance": {
+                "$ref": "#/definitions/provenance"
+              }
+            },
+            "additionalProperties": false
+          },
+          "minItems": 1,
+          "maxItems": 32
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "item_id",
+              "slot_id",
+              "allowed_definitions",
+              "modifiers",
+              "provenance"
+            ],
+            "properties": {
+              "item_id": {
+                "$ref": "#/definitions/id"
+              },
+              "slot_id": {
+                "$ref": "#/definitions/id"
+              },
+              "allowed_definitions": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/definitions/id"
+                },
+                "minItems": 0,
+                "maxItems": 10000,
+                "uniqueItems": true
+              },
+              "modifiers": {
+                "type": "object",
+                "required": [
+                  "max_hp",
+                  "max_mp",
+                  "attack",
+                  "defense"
+                ],
+                "properties": {
+                  "max_hp": {
+                    "type": "integer",
+                    "minimum": -1000000,
+                    "maximum": 1000000
+                  },
+                  "max_mp": {
+                    "type": "integer",
+                    "minimum": -1000000,
+                    "maximum": 1000000
+                  },
+                  "attack": {
+                    "type": "integer",
+                    "minimum": -1000000,
+                    "maximum": 1000000
+                  },
+                  "defense": {
+                    "type": "integer",
+                    "minimum": -1000000,
+                    "maximum": 1000000
+                  }
+                },
+                "additionalProperties": false
+              },
+              "provenance": {
+                "$ref": "#/definitions/provenance"
+              }
+            },
+            "additionalProperties": false
+          },
+          "minItems": 1,
+          "maxItems": 10000
+        },
+        "initial_loadouts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "instance_id",
+              "loadout",
+              "provenance"
+            ],
+            "properties": {
+              "instance_id": {
+                "$ref": "#/definitions/id"
+              },
+              "loadout": {
+                "$ref": "#/definitions/loadout"
+              },
+              "provenance": {
+                "$ref": "#/definitions/provenance"
+              }
+            },
+            "additionalProperties": false
+          },
+          "minItems": 0,
+          "maxItems": 10000
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "schema",
+        "kind",
+        "loadout"
+      ],
+      "properties": {
+        "schema": {
+          "const": "pal.native.equipment.v1"
+        },
+        "kind": {
+          "const": "actor"
+        },
+        "loadout": {
+          "$ref": "#/definitions/loadout"
+        }
+      },
+      "additionalProperties": false
+    }
+  ],
+  "definitions": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+    },
+    "provenance": {
+      "type": "object",
+      "required": [
+        "status",
+        "source_revision"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "synthetic",
+            "author-choice",
+            "approved"
+          ]
+        },
+        "source_revision": {
+          "type": "string",
+          "maxLength": 128
+        }
+      },
+      "additionalProperties": false
+    },
+    "loadout": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "slot_id",
+          "item_id"
+        ],
+        "properties": {
+          "slot_id": {
+            "$ref": "#/definitions/id"
+          },
+          "item_id": {
+            "$ref": "#/definitions/id"
+          }
+        },
+        "additionalProperties": false
+      },
+      "minItems": 0,
+      "maxItems": 32
+    }
+  }
+}
