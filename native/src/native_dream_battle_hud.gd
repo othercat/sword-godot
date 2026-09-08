@@ -11,6 +11,9 @@ var active_id: String = ""
 var _view
 
 func _init() -> void:
+	# This reference layout uses pixel-art panels and glyphs. Linear sampling
+	# changes their indexed source colors and blends transparent icon edges.
+	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	size = Classic.SIZE; clip_contents = true; mouse_filter = Control.MOUSE_FILTER_IGNORE
 	commands.size = Classic.SIZE; commands.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(commands)

@@ -21,10 +21,10 @@ func check(ok: bool, label: String) -> void:
 func _initialize() -> void: run.call_deferred()
 func run() -> void:
 	var args = OS.get_cmdline_user_args()
-	if args.size() not in [2,3,4]: quit(2); return
+	if args.size() not in [2,3,4,5] or (args.size() == 5 and args[4] != "--complete-ui"): quit(2); return
 	if args.size() >= 3: art_spec = JSON.parse_string(FileAccess.get_file_as_string(args[2]))
 	package_path = args[0]; output = args[1]; DirAccess.make_dir_recursive_absolute(output); root.size = Vector2i(1280,800)
-	if args.size() == 4:
+	if args.size() >= 4:
 		var parsed_pixel: Variant = JSON.parse_string(FileAccess.get_file_as_string(args[3]))
 		var valid_pixel: bool = parsed_pixel is Dictionary and parsed_pixel.get("actors") is Array and parsed_pixel.actors.size() == 5
 		check(valid_pixel,"explicit pixel mode requires five actor recipes")
@@ -54,7 +54,8 @@ func run() -> void:
 		await check_art(app,battle)
 	check(receipt.members[0].attack_signed_view == -1 and receipt.members[0].enemy_words[21] == 65535,"raw source words preserved separately from gameplay")
 	var initial: String = save(app,"initial")
-	if BattleUiChecks.Ui.used(s.package.world): await BattleUiChecks.exercise(self,app)
+	if args.size() == 5: check(BattleUiChecks.Ui.used(s.package.world),"complete UI mode requires an authored skin")
+	if BattleUiChecks.Ui.used(s.package.world): await BattleUiChecks.exercise(self,app,args.size() == 5)
 	if not pixel_spec.is_empty(): pixel_report = await PixelArtChecks.exercise(self,app,pixel_spec,initial)
 	if not art_spec.is_empty():
 		for i in range(5):
