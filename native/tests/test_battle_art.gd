@@ -31,8 +31,10 @@ func _run()->void:
 		var body: Dictionary=view.displayed_frames[hero]
 		var img: Image=session.package.textures[body.asset_id].get_image()
 		check(img.detect_alpha()!=Image.ALPHA_NONE and img.get_width()>180,"real generated RGBA body is loaded outside palette limit")
-		companions=session.package.index.actor_definitions.has("actor.miaopang.native.spear")
+		var third: Dictionary=session.entity(session.state.active_party[2])
+		companions=third.definition_id!=session.entity(session.state.active_party[1]).definition_id
 		if companions:
+			check(third.instance_id.begins_with("instance.author.") and third.definition_id.begins_with("actor.author."),"runtime uses actual author-created character identities")
 			var ids: Dictionary={}
 			for member in session.state.active_party:
 				var shown: Dictionary=view.displayed_frames[member]; ids[shown.asset_id]=true
