@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 extends RefCounted
 const Zip = preload("res://src/native_zip.gd")
+const Directory = preload("res://src/native_directory.gd")
 const Reader = preload("res://src/native_json.gd")
 const Schema = preload("res://src/native_schema.gd")
 const MapAnimation = preload("res://src/native_map_animation.gd")
@@ -28,14 +29,20 @@ var content_lock: String = ""
 var index: Dictionary = {}
 var textures: Dictionary = {}
 var schema = Schema.new()
-var _zip = Zip.new()
+var _source
 var map_cells: Dictionary = {}
 var map_blocked: Dictionary = {}
 
 func load_package(path: String) -> bool:
 	error = ""
-	if not _zip.open(path): return _fail(_zip.error)
-	var bytes = _zip.read("manifest.json")
+	# Reject network share/URL spellings before any directory existence query.
+	var local_path = path.replace("\\", "/")
+	if local_path.begins_with("//") or (local_path.contains("://") and not local_path.begins_with("res://") and not local_path.begins_with("user://")):
+		return _fail("Native package must be a local file or directory")
+	_source = Directory.new() if DirAccess.dir_exists_absolute(path) or path.get_file() == "manifest.json" else Zip.new()
+	if not _source.open(path): return _fail(_source.error)
+	var bytes: PackedByteArray = _source.read("manifest.json")
+	if not _source.error.is_empty(): return _fail(_source.error)
 	manifest = _json(bytes)
 	if not error.is_empty(): return _fail(error)
 	var issue: String = schema.validate("pal.native.package.v1", manifest)
@@ -53,12 +60,12 @@ func load_package(path: String) -> bool:
 		if not Zip.portable(file.path) or folded.has(file.path.to_lower()): return _fail("duplicate/nonportable manifest path")
 		folded[file.path.to_lower()] = true
 		files[file.path] = file
-	if files.size() + 1 != _zip.entries.size(): return _fail("undeclared or missing ZIP files")
+	if files.size() + 1 != _source.entries.size(): return _fail("undeclared or missing package files")
 	var payloads: Dictionary = {}
 	for name in files:
-		if not _zip.entries.has(name) or _zip.entries[name].size != files[name].size_bytes: return _fail("missing file or length mismatch: " + name)
-		var data = _zip.read(name)
-		if not _zip.error.is_empty() or Schema.digest(data) != files[name].sha256: return _fail("payload hash mismatch: " + name)
+		if not _source.entries.has(name) or _source.entries[name].size != files[name].size_bytes: return _fail("missing file or length mismatch: " + name)
+		var data: PackedByteArray = _source.read(name)
+		if not _source.error.is_empty() or Schema.digest(data) != files[name].sha256: return _fail("payload hash mismatch: " + name)
 		payloads[name] = data
 	if not payloads.has("content/world.json") or not payloads.has("content/rules.json"): return _fail("missing Native world/rules")
 	if manifest.ruleset_id != RULES.id or Schema.digest(payloads["content/rules.json"]) != manifest.ruleset_hash: return _fail("rules identity mismatch")
@@ -131,7 +138,7 @@ func load_package(path: String) -> bool:
 			if texture.get_width() != tile.width or texture.get_height() != tile.height: return _fail("tile PNG dimensions mismatch")
 	for path_name in files:
 		if declared.get(path_name) != files[path_name].kind: return _fail("file kind mismatch")
-	_zip.close()
+	_source.close()
 	return true
 
 static func _big32(bytes: PackedByteArray, offset: int) -> int:
@@ -147,7 +154,7 @@ func _json(bytes: PackedByteArray) -> Dictionary:
 
 func _fail(message: String) -> bool:
 	error = message
-	_zip.close()
+	if _source != null: _source.close()
 	return false
 
 func _references() -> bool:

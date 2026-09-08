@@ -162,7 +162,7 @@ func _ready() -> void:
 	picker = FileDialog.new()
 	picker.file_mode = FileDialog.FILE_MODE_OPEN_FILE
 	picker.access = FileDialog.ACCESS_FILESYSTEM
-	picker.filters = PackedStringArray(["*.zip ; 万相内容包"])
+	picker.filters = PackedStringArray(["manifest.json ; 万相 MOD 目录入口", "*.zip ; 万相压缩内容包"])
 	picker.title = "打开 MOD 内容包"
 	picker.file_selected.connect(open_package)
 	add_child(picker)

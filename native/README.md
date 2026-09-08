@@ -1,5 +1,22 @@
 # PAL Wanxiang Native preview
 
+Native packages now open from a local directory or its exact `manifest.json`,
+as well as the existing ZIP. The player picker offers both entries; Studio's
+default preview selects its emitted `content.palmod/manifest.json`. The same
+package admission checks validate hashes, rules, identities and decoded PNGs.
+Directory content is read once into the loaded session, with no live asset
+overrides or base-game lookup. Identical manifest bytes mean identical save
+compatibility, independent of storage form. `.palsave` storage is unchanged.
+
+`native_directory.gd` checks the complete tree and rejects links, undeclared
+files and portable-name/size conflicts. Its local path checks precede reading;
+no ACL or permission changes are needed. `tests/test_loose_package.gd` exercises
+the production application with original-art packages, cross-storage saves,
+malformed directories and Windows junctions in disposable local copies.
+This does not implement direct MKF loading or player release packaging. Other
+OS filesystem behavior, hostile concurrent replacements and physical file-picker
+input require separate verification. See the contract owner's `docs/native-v1.md`.
+
 The first battle presentation milestone now has an explicit Dream preset,
 `pal.dream-oblique.v1`, carried by optional `pal.native.battle-layout.v2` and
 `graphics.battle-layout.v2`. Studio selects it through its existing battle page.
