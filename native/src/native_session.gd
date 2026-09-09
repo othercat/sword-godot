@@ -8,6 +8,7 @@ const Equipment = preload("res://src/native_equipment.gd")
 const Progression = preload("res://src/native_progression.gd")
 const AttackRandom = preload("res://src/native_attack_random.gd")
 const PlayerPhysical = preload("res://src/native_player_physical.gd")
+const Training = preload("res://src/native_training.gd")
 signal changed
 signal battle_committed(before: Dictionary, result: Dictionary, outcome: String)
 const Package = preload("res://src/native_package.gd")
@@ -47,6 +48,7 @@ func activate(candidate, now_usec: int = -1) -> bool:
 		state.entities.append({"entity_kind": "actor", "component_schema_version": 1, "instance_id": source.instance_id, "definition_id": source.definition_id, "scene_id": source.scene_id, "position": source.position.duplicate(), "hp": definition.max_hp, "mp": definition.max_mp, "components": {"pal.native.pose": {"facing": source.facing, "moving_until_tick": 0, "step_phase": 0}}})
 	for variable in world.variables: state.scopes[variable.scope][variable.id] = variable.initial
 	var equipment_costs: Array = Equipment.initialize(package, state)
+	Training.initialize(package,state)
 	Progression.initialize(package, state)
 	PlayerPhysical.initialize(package.world,state)
 	Inventory.initialize(world, state)
@@ -82,10 +84,12 @@ func battle_command(action: String, target: String = "", skill_id: String = "", 
 	if result.has("error"):
 		error = result.error
 		return false
+	Training.finish_command(package.world,candidate)
 	if candidate.extensions[Battle.KEY].events.size() > 8192:
 		error = "本次行动超过保存事件预算（8192条），全部行动已撤回。请调整敌方技能或目标数量。"
 		return false
 	var presentation_result: Dictionary = candidate.extensions[Battle.KEY].duplicate(true)
+	if Training.used(package.world): presentation_result.training_action = candidate.extensions[Training.KEY].pending.actions[-1].duplicate(true)
 	var physical_action: Dictionary = PlayerPhysical.latest(candidate)
 	if not physical_action.is_empty() and physical_action.step == presentation_result.step:
 		presentation_result.physical_action = physical_action.duplicate(true)
@@ -93,6 +97,7 @@ func battle_command(action: String, target: String = "", skill_id: String = "", 
 		var battle: Dictionary = candidate.extensions[Battle.KEY]
 		var node: Dictionary = package.index.nodes[battle.node_id]
 		var growth_issue: String = Progression.settle(package, candidate, result.outcome)
+		if growth_issue.is_empty(): growth_issue = Training.settle(package,candidate,result.outcome,func(a): return Progression.base_stats(package,a),func(a): return Progression.stats(package,a))
 		if not growth_issue.is_empty():
 			error = growth_issue
 			return false
@@ -397,6 +402,8 @@ func validate_saved(candidate: Dictionary) -> String:
 	if not issue.is_empty(): return issue
 	issue = Equipment.validate_state(package, candidate)
 	if not issue.is_empty(): return issue
+	issue = Training.validate_shapes(package,candidate)
+	if not issue.is_empty(): return issue
 	issue = Progression.validate_state(package, candidate)
 	if not issue.is_empty(): return issue
 	issue = SceneTravel.validate_state(package, candidate)
@@ -448,6 +455,8 @@ func validate_saved(candidate: Dictionary) -> String:
 	var battle_issue: String = Battle.validate_state(package, candidate)
 	if not battle_issue.is_empty(): return battle_issue
 	issue = PlayerPhysical.validate_state(package,candidate)
+	if not issue.is_empty(): return issue
+	issue = Training.validate_state(package,candidate,func(a): return Progression.base_stats(package,a))
 	if not issue.is_empty(): return issue
 	var executor = candidate.extensions.get("pal.native.executor")
 	if not executor is Dictionary or not executor.get("activation") is String or not Schema.is_type(executor.get("step"), "integer") or executor.step < 0: return "missing executor resume state"

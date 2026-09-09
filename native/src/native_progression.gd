@@ -2,6 +2,7 @@
 extends RefCounted
 ## Persistent world-actor growth; transient enemies keep their authored base stats.
 const Equipment = preload("res://src/native_equipment.gd")
+const Training = preload("res://src/native_training.gd")
 const KEY = "pal.native.progression"
 const SCHEMA = "pal.native.progression.v1"
 const CAPABILITY = "actors.progression.v1"
@@ -27,7 +28,7 @@ static func learned(value: Dictionary, experience: int) -> Array:
 		if row.experience <= experience: result.append_array(row.learn_skills)
 	return result
 
-static func stats(package, actor: Dictionary) -> Dictionary:
+static func base_stats(package, actor: Dictionary) -> Dictionary:
 	var definition: Dictionary = package.index.actor_definitions[actor.definition_id]
 	var result: Dictionary = {"max_hp": definition.max_hp, "max_mp": definition.max_mp}
 	result.merge(definition.get("combat", {}))
@@ -36,7 +37,10 @@ static func stats(package, actor: Dictionary) -> Dictionary:
 		for row in profile(package, actor.definition_id).levels:
 			if row.experience <= value.experience:
 				for field in ["max_hp", "max_mp", "attack", "defense"]: result[field] = row[field]
-	return Equipment.modify_stats(package, actor, result)
+	return result
+
+static func stats(package, actor: Dictionary) -> Dictionary:
+	return Equipment.modify_stats(package, actor, Training.modify_stats(package, actor, base_stats(package, actor)))
 
 static func skill_ids(package, actor: Dictionary) -> Array:
 	var result: Array = package.index.actor_definitions[actor.definition_id].get("skill_ids", []).duplicate()
@@ -137,7 +141,8 @@ static func settle(package, state: Dictionary, outcome: String) -> String:
 		var actor: Dictionary = state.entities.filter(func(a): return a.instance_id == id)[0]
 		if not actor.components.has(KEY): continue
 		var value: Dictionary = actor.components[KEY]; var growth: Dictionary = profile(package, actor.definition_id)
-		var before: int = int(value.experience); var amount: int = mini(MAX_EXPERIENCE - before, entitlement(credit, policy, id)); var after: int = before + amount
+		var eligible: int = Training.reward_amount(package.world,credit,policy,id) if Training.used(package.world) else entitlement(credit,policy,id)
+		var before: int = int(value.experience); var amount: int = mini(MAX_EXPERIENCE - before, eligible); var after: int = before + amount
 		var old_level: int = int(value.level); var old_stats: Dictionary = stats(package, actor)
 		value.experience = after; value.level = level(growth, after); value.learned_skills = learned(growth, after)
 		credit.awards.append({"instance_id": id, "amount": amount, "before_experience": before, "after_experience": after, "before_level": old_level, "after_level": value.level})
@@ -222,7 +227,8 @@ static func validate_state(package, state: Dictionary) -> String:
 		if credit.awards.map(func(a): return a.instance_id) != credit.party.filter(func(id): return experience.has(id)): return "award recipient/order mismatch"
 		for award in credit.awards:
 			var id: String = award.instance_id; var before: int = experience[id]
-			var amount: int = mini(MAX_EXPERIENCE - before, entitlement(credit, policy, id)); var after: int = before + amount
+			var eligible: int = Training.reward_amount(package.world,credit,policy,id) if Training.used(package.world) else entitlement(credit,policy,id)
+			var amount: int = mini(MAX_EXPERIENCE - before, eligible); var after: int = before + amount
 			var growth: Dictionary = profile(package, entities[id].definition_id)
 			if [award.before_experience, award.after_experience, award.amount, award.before_level, award.after_level] != [before, after, amount, level(growth, before), level(growth, after)]: return "reward amount/experience lineage mismatch"
 			experience[id] = after

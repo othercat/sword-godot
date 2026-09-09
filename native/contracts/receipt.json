@@ -1,6 +1,6 @@
 {
   "owner": "https://github.com/othercat/pal98-runtime-contracts.git",
-  "base_commit": "d7e693d18369a0248b8ffcfb7b69a61d51fbc8a8",
+  "base_commit": "6bd49b32d5f27f89d79f18950178e4413997c780",
   "source_state": "committed-snapshot",
   "status": "draft",
   "license": "MIT",
@@ -19,6 +19,7 @@
     "pal.native.attack-formula.v1.schema.json": "720068a9102bd5c411afb194f98eb2cc3942b778097248c36a469a7e0b9e0664",
     "pal.native.attack-random.v1.schema.json": "3ade35a254e6346f1e815e1a8937f3c5089944512bcbeaa92dca96f62a3e6b8f",
     "pal.native.player-physical.v1.schema.json": "760ad97df47bf242695c73b22fa492cde9796b5383400c1cd6d9570b920e699e",
+    "pal.native.training.v1.schema.json": "2a74f8e02d3ce60928a21b678cc1bad6a13fe346b85ff6e854b0edc15b21e9a0",
     "LICENSE": "2fa9221fc1982b29dd47e035a9b3b14f1045e1ea4b2e3c5abcbb83afd44d6017"
   }
 }

@@ -491,6 +491,34 @@ actions, explicit instance order, and saved per-battle action counters. Single
 actions use 5 or 9 draws; all-target actions use 2 or 3. Bouts calculate before
 aggregate HP settlement; presentation plays recorded hits without another RNG
 call. The previous four-draw profile remains unchanged when used without this
-component. Counters do not yet implement secondary experience or stat growth.
+component. On its own, this profile records counters without secondary growth.
 `tests/test_player_physical.gd` covers the author-built package, commands,
 status-triggered double hits, save replay and separate synthetic cases.
+
+## Optional secondary training and escape checks
+
+The additional `pal.native.training.v1` selects combined rules 0.18.0 and the
+paired capabilities `actors.secondary-training.v1` and `battle.escape-check.v1`.
+Studio authors seven caps, a cost table, initial per-definition secondary values
+and enemy dexterity. `native_training.gd` owns command counts, final-living
+encounter rewards, seven-category growth, recovery and saved receipts. Ordinary
+physical attacks, casts, guarding and failed escape supply the relevant counts.
+Ordinary dexterity does not gain a count; magic/dexterity growth is not yet used
+by skill damage or scheduling. Flee rate checks one logical RNG draw against the
+sum of living enemy-instance difficulties. Failed escape spends a command.
+
+At the maximum secondary level, remaining XP consumes full thresholds without
+extra growth draws. Primary growth, secondary gains and caps precede existing
+equipment bonuses; HP/MP recovery clamps to effective maxima. Candidate state
+publishes progression, RNG and outcome callbacks together or leaves all intact.
+Save inspection reconstructs enemy HP events before escape and checks the
+action/award/RNG chain. These bounded receipts are consistency evidence, not
+cryptographic protection or full historical battle replay.
+
+`tests/test_training.gd` covers a Studio-authored package, 3/4/5-person variants,
+failure/success escape, skill/guard/attack counts, battle outcomes, save replay,
+RNG exhaustion and callback failure. The private product runner separately
+verifies author controls, package admission and old packages. Costs/caps are
+explicit author choices, not an included original table. No original code or
+assets, Legacy save migration, unchanged original RNG sequence, full original
+battle parity or cross-platform acceptance is claimed by this increment.

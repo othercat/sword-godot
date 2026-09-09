@@ -38,7 +38,9 @@ func begin(value, before: Dictionary, result: Dictionary, ending: String) -> voi
 		elif event.kind == "item_use": _add(event.source, "item", event, i)
 		elif event.kind in ["damage", "status_damage"]: _add(event.target, "hit", event, i)
 		elif event.kind == "guard": _add(event.source, "defend", event, i)
-		elif event.kind == "escape": _add(event.source, "escape", event, i)
+		elif event.kind == "escape":
+			_add(event.source, "escape", event, i)
+			if ending != "escape": _add(event.source,"idle",{},-1)
 		elif event.kind == "status_skip": _add(event.source, "sleep", event, i)
 		else: _add(event.target, "", event, i) # Metadata/healing keep the HP-derived base pose.
 		if not physical_event and event.kind in ["attack", "damage", "status_damage"] and _final_hp(event.target, result.events.slice(0, i + 1)) == 0:

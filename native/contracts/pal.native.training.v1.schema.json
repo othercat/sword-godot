@@ -1,0 +1,612 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/othercat/pal98-runtime-contracts/schemas/pal.native.training.v1.schema.json",
+  "title": "Native secondary practice, growth and escape action receipts",
+  "x-status": "draft",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "pal.native.training.v1"
+    }
+  },
+  "oneOf": [
+    {
+      "$ref": "#/definitions/content"
+    },
+    {
+      "$ref": "#/definitions/actor"
+    },
+    {
+      "$ref": "#/definitions/state"
+    }
+  ],
+  "definitions": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+    },
+    "ids": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 32,
+      "items": {
+        "$ref": "#/definitions/id"
+      },
+      "uniqueItems": true
+    },
+    "cursor": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4294967292
+    },
+    "counts": {
+      "type": "array",
+      "minItems": 7,
+      "maxItems": 7,
+      "items": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 1000000
+      }
+    },
+    "levels": {
+      "type": "array",
+      "minItems": 7,
+      "maxItems": 7,
+      "items": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 999
+      }
+    },
+    "experience": {
+      "type": "array",
+      "minItems": 7,
+      "maxItems": 7,
+      "items": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 999999999
+      }
+    },
+    "stats": {
+      "type": "array",
+      "minItems": 7,
+      "maxItems": 7,
+      "items": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 1000000
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "required": [
+        "status",
+        "source_revision"
+      ],
+      "properties": {
+        "status": {
+          "const": "author-choice"
+        },
+        "source_revision": {
+          "type": "string",
+          "maxLength": 128
+        }
+      },
+      "additionalProperties": false
+    },
+    "content": {
+      "type": "object",
+      "required": [
+        "schema",
+        "kind",
+        "profile",
+        "stat_caps",
+        "reward_cap",
+        "level_costs",
+        "profiles",
+        "enemy_dexterity",
+        "provenance"
+      ],
+      "properties": {
+        "schema": {
+          "const": "pal.native.training.v1"
+        },
+        "kind": {
+          "const": "content"
+        },
+        "profile": {
+          "const": "pal98.secondary-training.v1"
+        },
+        "reward_cap": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000000
+        },
+        "level_costs": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 1000,
+          "items": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000000000
+          }
+        },
+        "profiles": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 10000,
+          "items": {
+            "type": "object",
+            "required": [
+              "definition_id",
+              "initial_levels",
+              "initial_experience",
+              "extra_stats"
+            ],
+            "properties": {
+              "definition_id": {
+                "$ref": "#/definitions/id"
+              },
+              "initial_levels": {
+                "$ref": "#/definitions/levels"
+              },
+              "initial_experience": {
+                "$ref": "#/definitions/experience"
+              },
+              "extra_stats": {
+                "type": "array",
+                "minItems": 3,
+                "maxItems": 3,
+                "items": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 1000000
+                }
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "enemy_dexterity": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 10000,
+          "items": {
+            "type": "object",
+            "required": [
+              "definition_id",
+              "dexterity"
+            ],
+            "properties": {
+              "definition_id": {
+                "$ref": "#/definitions/id"
+              },
+              "dexterity": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "provenance": {
+          "$ref": "#/definitions/provenance"
+        },
+        "stat_caps": {
+          "type": "array",
+          "minItems": 7,
+          "maxItems": 7,
+          "items": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000000
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "actor": {
+      "type": "object",
+      "required": [
+        "schema",
+        "kind",
+        "levels",
+        "experience",
+        "gains"
+      ],
+      "properties": {
+        "schema": {
+          "const": "pal.native.training.v1"
+        },
+        "kind": {
+          "const": "actor"
+        },
+        "levels": {
+          "$ref": "#/definitions/levels"
+        },
+        "experience": {
+          "$ref": "#/definitions/experience"
+        },
+        "gains": {
+          "$ref": "#/definitions/stats"
+        }
+      },
+      "additionalProperties": false
+    },
+    "action": {
+      "type": "object",
+      "required": [
+        "step",
+        "source",
+        "action",
+        "skill_id",
+        "item_id",
+        "physical_draws",
+        "rng_before",
+        "rng_after",
+        "counts",
+        "escape",
+        "enemy_health_events"
+      ],
+      "properties": {
+        "step": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000
+        },
+        "source": {
+          "$ref": "#/definitions/id"
+        },
+        "action": {
+          "enum": [
+            "attack",
+            "skill",
+            "item",
+            "guard",
+            "wait",
+            "escape"
+          ]
+        },
+        "skill_id": {
+          "oneOf": [
+            {
+              "$ref": "#/definitions/id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "item_id": {
+          "oneOf": [
+            {
+              "$ref": "#/definitions/id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "physical_draws": {
+          "enum": [
+            0,
+            2,
+            3,
+            5,
+            9
+          ]
+        },
+        "rng_before": {
+          "$ref": "#/definitions/cursor"
+        },
+        "rng_after": {
+          "$ref": "#/definitions/cursor"
+        },
+        "counts": {
+          "$ref": "#/definitions/counts"
+        },
+        "escape": {
+          "oneOf": [
+            {
+              "$ref": "#/definitions/escape"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "enemy_health_events": {
+          "type": "array",
+          "maxItems": 8192,
+          "items": {
+            "type": "object",
+            "required": [
+              "kind",
+              "source",
+              "target",
+              "amount"
+            ],
+            "properties": {
+              "kind": {
+                "enum": [
+                  "attack",
+                  "damage",
+                  "status_damage",
+                  "heal",
+                  "revive",
+                  "status_heal"
+                ]
+              },
+              "source": {
+                "$ref": "#/definitions/id"
+              },
+              "target": {
+                "$ref": "#/definitions/id"
+              },
+              "amount": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000000
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "pending": {
+      "type": "object",
+      "required": [
+        "execution_id",
+        "encounter_id",
+        "node_id",
+        "activation",
+        "executor_step",
+        "party",
+        "rng_start",
+        "actions"
+      ],
+      "properties": {
+        "execution_id": {
+          "$ref": "#/definitions/id"
+        },
+        "encounter_id": {
+          "$ref": "#/definitions/id"
+        },
+        "node_id": {
+          "$ref": "#/definitions/id"
+        },
+        "activation": {
+          "$ref": "#/definitions/id"
+        },
+        "executor_step": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000000
+        },
+        "party": {
+          "$ref": "#/definitions/ids"
+        },
+        "rng_start": {
+          "$ref": "#/definitions/cursor"
+        },
+        "actions": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 100000,
+          "items": {
+            "$ref": "#/definitions/action"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "escape": {
+      "type": "object",
+      "required": [
+        "effective_flee",
+        "difficulty",
+        "roll",
+        "success"
+      ],
+      "properties": {
+        "effective_flee": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "difficulty": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 160000768
+        },
+        "roll": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 16777215
+        },
+        "success": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "award": {
+      "type": "object",
+      "required": [
+        "instance_id",
+        "reward",
+        "before",
+        "after",
+        "grants",
+        "recovery",
+        "rng_before",
+        "rng_after"
+      ],
+      "properties": {
+        "instance_id": {
+          "$ref": "#/definitions/id"
+        },
+        "reward": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000000
+        },
+        "before": {
+          "$ref": "#/definitions/actor"
+        },
+        "after": {
+          "$ref": "#/definitions/actor"
+        },
+        "grants": {
+          "type": "array",
+          "minItems": 7,
+          "maxItems": 7,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2000000000
+          }
+        },
+        "recovery": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2000
+          }
+        },
+        "rng_before": {
+          "$ref": "#/definitions/cursor"
+        },
+        "rng_after": {
+          "$ref": "#/definitions/cursor"
+        }
+      },
+      "additionalProperties": false
+    },
+    "credit": {
+      "type": "object",
+      "required": [
+        "execution_id",
+        "encounter_id",
+        "node_id",
+        "activation",
+        "executor_step",
+        "party",
+        "rng_start",
+        "actions",
+        "outcome",
+        "step",
+        "living",
+        "awards",
+        "rng_end"
+      ],
+      "properties": {
+        "execution_id": {
+          "$ref": "#/definitions/id"
+        },
+        "encounter_id": {
+          "$ref": "#/definitions/id"
+        },
+        "node_id": {
+          "$ref": "#/definitions/id"
+        },
+        "activation": {
+          "$ref": "#/definitions/id"
+        },
+        "executor_step": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000000
+        },
+        "party": {
+          "$ref": "#/definitions/ids"
+        },
+        "rng_start": {
+          "$ref": "#/definitions/cursor"
+        },
+        "actions": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 100000,
+          "items": {
+            "$ref": "#/definitions/action"
+          }
+        },
+        "outcome": {
+          "enum": [
+            "win",
+            "loss",
+            "escape"
+          ]
+        },
+        "step": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000
+        },
+        "living": {
+          "$ref": "#/definitions/ids"
+        },
+        "awards": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 32,
+          "items": {
+            "$ref": "#/definitions/award"
+          }
+        },
+        "rng_end": {
+          "$ref": "#/definitions/cursor"
+        }
+      },
+      "additionalProperties": false
+    },
+    "state": {
+      "type": "object",
+      "required": [
+        "schema",
+        "kind",
+        "pending",
+        "credits"
+      ],
+      "properties": {
+        "schema": {
+          "const": "pal.native.training.v1"
+        },
+        "kind": {
+          "const": "state"
+        },
+        "pending": {
+          "oneOf": [
+            {
+              "$ref": "#/definitions/pending"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "credits": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 10000,
+          "items": {
+            "$ref": "#/definitions/credit"
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

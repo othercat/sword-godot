@@ -488,6 +488,8 @@ func _refresh() -> void:
 		label.add_theme_font_size_override("font_size", 17)
 		roster.add_child(label)
 	var reward_summary: String = Session.Progression.summary(session.package, session.state)
+	var training_summary: String = Session.Training.summary(session.package,session.state)
+	if not training_summary.is_empty(): reward_summary += "\n" + training_summary
 	if not reward_summary.is_empty():
 		var reward_label = Label.new(); reward_label.name = "GrowthRewardSummary"; reward_label.text = reward_summary
 		reward_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; reward_label.add_theme_font_size_override("font_size", 15)
@@ -565,7 +567,7 @@ func _change_enemy_page(direction: int) -> void:
 
 func _battle_action(action: String, target: String) -> void:
 	if battle_view.playing(): return
-	if session.battle_command(action, target): message.text = ""
+	if session.battle_command(action, target): message.text = "撤离失败，继续战斗。" if action == "escape" and session.battle_open() else ""
 	else: message.text = session.error
 
 func _continue(choice_id: String = "") -> void:
@@ -593,6 +595,8 @@ func _show_status() -> void:
 		var actor: Dictionary = session.entity(id)
 		var stats: Dictionary = Session.Progression.stats(session.package,actor)
 		lines.append("%s · 气血 %d/%d · 真气 %d/%d · 攻击 %d · 防御 %d" % [session.package.index.actor_definitions[actor.definition_id].display_name,actor.hp,stats.max_hp,actor.mp,stats.max_mp,stats.attack,stats.defense])
+		if actor.components.has(Session.Training.KEY):
+			lines.append("灵力 %d · 身法 %d · 吉运 %d\n%s" % [stats.magic_strength,stats.dexterity,stats.flee_rate,Session.Training.label(session.package.world,actor)])
 		var statuses: PackedStringArray = Statuses.describe(session.package,session.state,id)
 		if not statuses.is_empty(): lines.append("；".join(statuses))
 	status_text.text = "\n\n".join(lines); status_picker.popup_centered()

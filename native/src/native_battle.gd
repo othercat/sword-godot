@@ -14,6 +14,7 @@ const Classic = preload("res://src/native_classic_battle.gd")
 const AttackFormula = preload("res://src/native_attack_formula.gd")
 const AttackRandom = preload("res://src/native_attack_random.gd")
 const PlayerPhysical = preload("res://src/native_player_physical.gd")
+const Training = preload("res://src/native_training.gd")
 
 static func used(content: Dictionary) -> bool:
 	return not content.get("encounters", []).is_empty() or content.nodes.any(func(n): return n.op == "battle")
@@ -62,6 +63,7 @@ static func begin(package, state: Dictionary, node: Dictionary, execution_id: St
 	if Statuses.used(package.world): state.extensions[KEY].statuses = []
 	Progression.begin(package, state)
 	PlayerPhysical.begin(package.world, state)
+	Training.begin(package.world, state)
 	state.cursor.phase = "battle_command"
 	return ""
 
@@ -114,9 +116,11 @@ static func validate_state(package, state: Dictionary) -> String:
 
 static func command(package, state: Dictionary, action: String, target: String = "", skill_id: String = "", item_id: String = "") -> Dictionary:
 	var issue: String = AttackRandom.validate_state(package.world, state)
+	if issue.is_empty(): issue = Training.validate_shapes(package,state)
 	if issue.is_empty(): issue = Progression.validate_state(package, state)
 	if issue.is_empty(): issue = validate_state(package, state)
 	if issue.is_empty(): issue = PlayerPhysical.validate_state(package, state)
+	if issue.is_empty(): issue = Training.validate_state(package,state,func(a): return Progression.base_stats(package,a))
 	if not issue.is_empty(): return {"error": issue}
 	if not state.extensions.has(KEY): return {"error": "no active battle"}
 	var battle: Dictionary = state.extensions[KEY]
@@ -145,11 +149,15 @@ static func command(package, state: Dictionary, action: String, target: String =
 	elif action == "escape":
 		if not encounter(package.world, battle.encounter_id).allow_escape: return {"error": "此战不能撤离。"}
 	elif action not in ["guard", "wait"]: return {"error": "unsupported battle action"}
+	var random_before: int = Training.cursor(state) if Training.used(package.world) else 0
+	var escaped: Variant = null
 	battle.events = []; battle.step += 1
 	if action == "escape":
+		if Training.used(package.world):
+			escaped = Training.attempt(package.world,state,source)
+			if escaped.has("error"): return escaped
 		battle.events.append({"kind": "escape", "source": source.instance_id, "target": source.instance_id, "amount": 0})
-		return {"outcome": "escape"}
-	if action == "wait":
+	elif action == "wait":
 		battle.events.append({"kind": "status_skip", "source": source.instance_id, "target": source.instance_id, "amount": 0, "status_id": blocked})
 	elif action == "guard":
 		battle.guarding.append(source.instance_id)
@@ -163,6 +171,9 @@ static func command(package, state: Dictionary, action: String, target: String =
 	else:
 		issue = PlayerPhysical.apply(package,state,source,target) if PlayerPhysical.used(package.world) else _hit(package, state, source, enemy, false, battle.events)
 		if not issue.is_empty(): return {"error":issue}
+	issue = Training.note(package.world,state,action,source,skill_id,item_id,random_before,escaped)
+	if not issue.is_empty(): return {"error":issue}
+	if action == "escape" and (escaped == null or escaped.success): return {"outcome":"escape"}
 	if _living_turn(state, battle.party, 0) < 0: return {"outcome": "loss"}
 	if battle.enemies.all(func(row): return row.hp == 0): return {"outcome": "win"}
 	var next: int = _living_turn(state, battle.party, battle.turn + 1)
