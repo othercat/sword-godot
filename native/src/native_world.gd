@@ -5,6 +5,7 @@ const MapProjection = preload("res://src/native_map_projection.gd")
 const Terrain = preload("res://src/native_terrain.gd")
 const SceneTravel = preload("res://src/native_scene_travel.gd")
 const PartyTrail = preload("res://src/native_party_trail.gd")
+const MapPerformance = preload("res://src/native_performance.gd")
 ## TileMapLayer + separate actor nodes. The authoritative world uses tile units.
 var session
 var tiles: TileMapLayer
@@ -44,6 +45,7 @@ func bind(model) -> void:
 	_history = _history_key()
 	var height: int = map_data.coordinates.tile_height
 	_build_portals_and_actors(scene, height)
+	_apply_performance()
 
 func _build_diagnostic_tiles() -> void:
 	var map_data: Dictionary = _map
@@ -163,7 +165,19 @@ func _process(delta: float) -> void:
 		# Time-based presentation interpolation only; does not feed world state.
 		if running: actors[item.instance_id].position = actors[item.instance_id].position.lerp(target, 1.0 - exp(-24.0 * delta))
 		visuals[item.instance_id].present(item, int(session.state.clock.logic_tick), delta, running, item.instance_id == session.state.active_party[0])
+	_apply_performance()
+
+func _apply_performance() -> void:
+	if not session.performance_open(): return
+	var row: Dictionary = MapPerformance.for_node(session.package.world, session.state.cursor.node_id)
+	var elapsed: int = int(session.state.extensions[MapPerformance.KEY].active.elapsed_ticks)
+	for track in row.tracks:
+		var item: Dictionary = session.entity(track.actor_id)
+		actors[track.actor_id].position = MapProjection.project(Vector2(item.position.x, item.position.y), _map.coordinates) + Vector2(track.offset.x, track.offset.y)
+		visuals[track.actor_id].present_performance(MapPerformance.clip_for(session.package.world, track.clip_id), floori(elapsed * 1000000.0 / 60.0))
+		for actor_id in track.hide_actor_ids: actors[actor_id].visible = false
 
 func _history_key(model = null) -> String:
 	var value: Dictionary = session.state if model == null else model.state
-	return "%s/%s/%s/%s/%s/%s/%s" % [value.session_id, value.timeline_epoch, value.cursor.scene_id, value.content_lock, SceneTravel.revision(value), PartyTrail.revision(value), JSON.stringify(value.active_party)]
+	var performance = value.extensions.get(MapPerformance.KEY, {}).get("active")
+	return "%s/%s/%s/%s/%s/%s/%s/%s" % [value.session_id, value.timeline_epoch, value.cursor.scene_id, value.content_lock, SceneTravel.revision(value), PartyTrail.revision(value), JSON.stringify(value.active_party), "" if performance == null else performance.node_id]

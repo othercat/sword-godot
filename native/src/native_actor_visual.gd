@@ -46,6 +46,13 @@ func present(item: Dictionary, logic_tick: int, delta: float, running: bool, lea
 		var phase: int = int(pose.get("step_phase", 0))
 		var order: Array = [0, 1, 0, 2] if leader else [0, 2, 0, 1]
 		displayed_frame = clip.frames[order[phase]]
+	_apply_frame()
+
+func present_performance(clip: Dictionary, time_us: int) -> void:
+	displayed_frame = MapAnimation.frame_at(clip, time_us)
+	_apply_frame()
+
+func _apply_frame() -> void:
 	sprite.visible = not displayed_frame.is_empty()
 	fallback.visible = not sprite.visible
 	if not sprite.visible: return

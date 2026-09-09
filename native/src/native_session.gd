@@ -10,6 +10,7 @@ const Progression = preload("res://src/native_progression.gd")
 const AttackRandom = preload("res://src/native_attack_random.gd")
 const PlayerPhysical = preload("res://src/native_player_physical.gd")
 const Training = preload("res://src/native_training.gd")
+const MapPerformance = preload("res://src/native_performance.gd")
 signal changed
 signal battle_committed(before: Dictionary, result: Dictionary, outcome: String)
 const Package = preload("res://src/native_package.gd")
@@ -62,6 +63,7 @@ func activate(candidate, now_usec: int = -1) -> bool:
 			var effective: Dictionary = Progression.stats(package, actor)
 			actor.hp = effective.max_hp; actor.mp = effective.max_mp
 	Regions.initialize(world, state)
+	MapPerformance.initialize(world, state)
 	error = PartyTrail.reseed(package, state, world.active_party)
 	if not error.is_empty() or not _advance(world.entry_node):
 		package = previous_package
@@ -78,6 +80,23 @@ func activate(candidate, now_usec: int = -1) -> bool:
 
 func battle_open() -> bool:
 	return not state.is_empty() and state.extensions.has(Battle.KEY)
+
+func performance_open() -> bool:
+	return MapPerformance.active(state)
+
+func skip_performance() -> bool:
+	if not performance_open() or paused or modal or not focused: return false
+	if not MapPerformance.for_node(package.world, state.cursor.node_id).skippable: return false
+	var candidate: Dictionary = state.duplicate(true)
+	if not _complete_performance(candidate): return false
+	candidate.state_revision += 1
+	_publish(candidate); changed.emit(); return true
+
+func _complete_performance(candidate: Dictionary) -> bool:
+	var row: Dictionary = MapPerformance.for_node(package.world, candidate.cursor.node_id)
+	candidate.extensions[MapPerformance.KEY].active = null
+	var budget: Dictionary = {"remaining": 1024, "planning": {"remaining": PartyTrail.MAX_VISITS}}
+	return _execute(candidate, row.next_node_id, budget) and _drain_regions(candidate, budget)
 
 func battle_command(action: String, target: String = "", skill_id: String = "", item_id: String = "") -> bool:
 	if not battle_open() or paused or modal or not focused: return false
@@ -124,7 +143,7 @@ func battle_command(action: String, target: String = "", skill_id: String = "", 
 	return true
 
 func change_equipment(instance_id: String, slot_id: String, item_id: String = "") -> bool:
-	if state.is_empty() or battle_open() or paused or modal or not focused:
+	if state.is_empty() or battle_open() or performance_open() or paused or modal or not focused:
 		error = "请在战斗和菜单以外的正常游戏中整装。"; return false
 	if instance_id not in state.roster:
 		error = "只能为队伍或候补伙伴更换装备。"; return false
@@ -167,7 +186,7 @@ func advance_dialogue(choice_id: String = "") -> bool:
 
 func interact() -> bool:
 	if state.is_empty() or paused or modal or not focused: return false
-	if battle_open(): return false
+	if battle_open() or performance_open(): return false
 	if dialogue_open: return advance_dialogue()
 	error = ""
 	var leader: Dictionary = entity(state.active_party[0])
@@ -217,7 +236,7 @@ func _publish(candidate: Dictionary) -> void:
 	error = ""
 
 func _drain_regions(candidate: Dictionary, budget: Dictionary) -> bool:
-	while package.index.nodes[candidate.cursor.node_id].op == "end":
+	while package.index.nodes[candidate.cursor.node_id].op == "end" and not MapPerformance.active(candidate):
 		var event: Dictionary = Regions.next_event(package, candidate)
 		if event.has("error"):
 			error = event.error
@@ -242,6 +261,10 @@ func _execute(candidate: Dictionary, first: String, budget: Dictionary) -> bool:
 			if point.scene_id == candidate.cursor.scene_id and point.node_id == next:
 				candidate.cursor.safe_point_id = point.id
 				break
+		var performance: Dictionary = MapPerformance.for_node(package.world, next)
+		if not performance.is_empty():
+			error = MapPerformance.begin(package, candidate, performance)
+			return error.is_empty()
 		if node.op in ["dialogue", "choice", "end"]:
 			return true
 		var executor: Dictionary = candidate.extensions["pal.native.executor"]
@@ -300,6 +323,24 @@ func _execute(candidate: Dictionary, first: String, budget: Dictionary) -> bool:
 
 func tick() -> void:
 	if state.is_empty() or paused or modal or not focused: return
+	if performance_open():
+		var row: Dictionary = MapPerformance.for_node(package.world, state.cursor.node_id)
+		if state.extensions[MapPerformance.KEY].active.elapsed_ticks + 1 < MapPerformance.ticks(row):
+			state.extensions[MapPerformance.KEY].active.elapsed_ticks += 1
+			state.clock.logic_tick += 1
+			state.state_revision += 1
+			return
+		var candidate: Dictionary = state.duplicate(true)
+		candidate.clock.logic_tick += 1
+		candidate.extensions[MapPerformance.KEY].active.elapsed_ticks += 1
+		var previous_error: String = error
+		if not _complete_performance(candidate):
+			if error != previous_error: changed.emit()
+			return
+		candidate.state_revision += 1
+		_publish(candidate)
+		changed.emit()
+		return
 	state.clock.logic_tick += 1
 	state.state_revision += 1
 
@@ -333,6 +374,7 @@ func set_modal(value: bool, now_usec: int = -1) -> void:
 	changed.emit()
 
 func move(direction: Vector2i) -> bool:
+	if performance_open(): return false
 	if state.is_empty() or paused or modal or not focused or battle_open() or dialogue_open or absi(direction.x) + absi(direction.y) > 1: return false
 	var before: Dictionary = state
 	var before_tick: int = _move_tick
@@ -404,6 +446,8 @@ func can_save() -> bool:
 
 func validate_saved(candidate: Dictionary) -> String:
 	var issue: String = package.schema.validate("pal.native.state.v1", candidate)
+	if not issue.is_empty(): return issue
+	issue = MapPerformance.validate_state(package, candidate)
 	if not issue.is_empty(): return issue
 	issue = Equipment.validate_state(package, candidate)
 	if not issue.is_empty(): return issue
@@ -495,6 +539,7 @@ func movement_ticks() -> int:
 	return 6 if movement_rule() == "pal.walk.v1" else 8
 
 func sample_movement(input) -> bool:
+	if performance_open(): return false
 	if state.is_empty() or paused or modal or not focused or battle_open() or dialogue_open: return false
 	if movement_rule() == "pal.walk.v1":
 		var walk: Dictionary = state.extensions["pal.native.walk"]

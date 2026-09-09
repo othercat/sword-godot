@@ -493,12 +493,12 @@ func _refresh() -> void:
 	if not is_instance_valid(roster) or session.state.is_empty(): return
 	_ui_generation += 1
 	equipment_button.visible = Session.Equipment.used(session.package.world)
-	equipment_button.disabled = session.battle_open() or battle_view.playing() or session.paused or session.modal
+	equipment_button.disabled = session.battle_open() or session.performance_open() or battle_view.playing() or session.paused or session.modal
 	var focus = get_viewport().gui_get_focus_owner()
 	var restore_focus: bool = focus == null or focus.get_parent() in [options,target_pages,dream_hud.commands]
 	var focus_key: String = str(focus.get_meta("battle_focus_key",focus.text.get_slice("\n",0))) if restore_focus and focus is Button else ""
 	_hover_target = null; _focus_target = null; battle_view.preview_targets([])
-	if session.dialogue_open or session.battle_open(): _clear_input()
+	if session.dialogue_open or session.battle_open() or session.performance_open(): _clear_input()
 	var key: String = world_view._history_key(session) + ":battle=" + str(session.battle_open())
 	world_view.visible = not session.battle_open() and not battle_view.playing()
 	instructions.text = "按键方案：" + {"classic":"传统方向键","wasd":"WASD 行走","key_ini":"已导入 key.ini"}[key_bindings.profile.preset] + "\n在“按键”中查看或更改\n鼠标选择命令与目标"
@@ -576,6 +576,11 @@ func _refresh() -> void:
 				_button(options, "撤离", _battle_action.bind("escape", "")).disabled = not Battle.encounter(session.package.world, battle.encounter_id).allow_escape
 				if item_menu.mode == "closed": skill_menu.render(self, battle, actor)
 				if skill_menu.mode == "closed": item_menu.render(self, battle, actor)
+	elif session.performance_open():
+		var performance: Dictionary = Session.MapPerformance.for_node(session.package.world, node.id)
+		dialogue_text.text = performance.display_name
+		if performance.skippable:
+			_button(options, "跳过演出", _skip_performance).disabled = session.paused or session.modal or not session.focused
 	elif node.op == "dialogue" and session.dialogue_open:
 		var speaker: String = ""
 		if node.speaker != null: speaker = session.package.index.actor_definitions[session.entity(node.speaker).definition_id].display_name + "\n"
@@ -611,6 +616,9 @@ func _continue(choice_id: String = "") -> void:
 	if not session.advance_dialogue(choice_id) and not session.error.is_empty():
 		message.text = session.error
 		if not _preview_stop_file.is_empty(): printerr("[Native preview] node=" + session.state.cursor.node_id + " " + session.error)
+
+func _skip_performance() -> void:
+	if not session.skip_performance() and not session.error.is_empty(): message.text = session.error
 
 func _show_picker() -> void:
 	_clear_input()
@@ -680,8 +688,13 @@ func _unhandled_key_input(event: InputEvent) -> void:
 
 func _physics_process(_delta: float) -> void:
 	if session.modal: return
+	var was_performance: bool = session.performance_open()
+	# A battle result may have already committed a map-performance continuation.
+	# Keep its first frame until the preceding battle presentation is visible.
+	if battle_view.playing() and was_performance:
+		_clear_input(); return
 	session.tick()
-	if battle_view.playing():
+	if was_performance or session.performance_open() or battle_view.playing():
 		_clear_input(); return
 	var now: int = Time.get_ticks_usec()
 	var render_frame: int = Engine.get_process_frames()

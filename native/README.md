@@ -588,3 +588,38 @@ command becomes available. The product retains original dark-red disabled art;
 muted bronze/gray is an alternative. Original shapes must not be redesigned.
 Actual window/asset and injected-input coverage is separate from manual artwork
 acceptance; see the product command-panel receipt for precise tested sources.
+
+## Named map performances (draft)
+
+`story.performance.v1` consumes the owner contract `pal.native.performance.v1`.
+The optional component binds explicit end-node boundaries to named PNG clips,
+world-instance tracks, a duration and a continuation. This does not extend the
+old map idle/walk enum or replace its renderer. The existing frame sampler and
+foot-anchor drawing handle performance frames of different sizes and scales.
+Offsets affect projected visual feet and depth sorting, not gameplay positions.
+
+The session waits at the boundary and advances elapsed 60 Hz logic ticks. Pause,
+focus loss and modal UI freeze it. Completion and permitted skip use the normal
+transactional executor; failed continuations keep the prior state and tick.
+The app holds a pending map timeline while an earlier battle result is still
+being presented. Render calls never dispatch continuation effects. Per-frame
+sampling currently follows saved logic ticks; higher-rate interpolation and
+the unified sampling profiles are separate pending work.
+
+Baked-composite tracks can hide explicitly listed participant visuals. No actor
+is deleted or merged; scene, position, HP, pose and identity remain independent.
+The map rebuilds transient actor presentation on finish, skip and timeline/load
+changes. Actors must be in the current scene and the waiting scene/node must
+have an authored save boundary. The existing immutable save reader/writer stores
+and validates the active node and elapsed tick. Old packages omit both component
+and capability and retain their original state shape; old runtimes reject the
+new required capability. Keep old content locks with their matching save/runtime.
+
+`tools/create_performance_fixture.py` creates a diagnostic copy of a supplied
+local package with synthetic color markers. It is not a second authoring
+compiler, an artwork importer or a distributable content product. The input is
+read-only and its existing distribution declarations remain in the output.
+`tests/test_performance.gd` exercises actual app/TileMap presentation, timeline
+guards, save/load, failed continuation rollback and the injected skip button.
+Studio authoring/adoption, genuine named artwork in the story, physical input,
+full playthrough and high-refresh hardware acceptance remain separate gates.
