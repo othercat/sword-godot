@@ -566,3 +566,25 @@ network, original-game dependency, combat authority, save or timer fields are
 introduced. Old packages without these components retain their existing behavior.
 The contract owner documents precise defaults and limits in
 `docs/native-battle-formation-v1.md`. New draft content locks require matching saves.
+
+## Independent authored command panel
+
+`graphics.command-panel.v1` optionally replaces the responsive HUD's default
+command rectangles and appearance. `native_command_panel.gd` resolves one geometry
+table on initial creation and resize, preserving existing focus/input/rule dispatch.
+Each of four stable commands has an independently sized rectangle, builtin/image
+appearance and optional normal/focus/disabled PNGs. Group anchor, offsets, uniform
+scale, clamp, sampling, image fit and RGBA multiplication are content parameters.
+Button image bytes are unchanged. Accessible names and tooltips remain even when
+native Button text is suppressed to remove its minimum-size floor. Builtin labels
+are painted within the same uniformly fitted rectangle.
+
+The optional component requires a responsive HUD and exact capability/schema hash;
+old Dream PNG skins retain their existing admission boundary. HUD disposal does
+not mutate package content. State and saves contain no command-panel fields.
+The current cooperative command is still unavailable: artwork cannot enable it.
+Disabled imagery is used only while disabled; normal/focus images return when a
+command becomes available. The product retains original dark-red disabled art;
+muted bronze/gray is an alternative. Original shapes must not be redesigned.
+Actual window/asset and injected-input coverage is separate from manual artwork
+acceptance; see the product command-panel receipt for precise tested sources.

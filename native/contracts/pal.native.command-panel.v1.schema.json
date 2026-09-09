@@ -1,0 +1,300 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "pal.native.command-panel.v1",
+  "title": "Authored battle command panel: geometry and replaceable imagery",
+  "x-status": "draft",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "kind",
+    "encounters"
+  ],
+  "properties": {
+    "schema": {
+      "const": "pal.native.command-panel.v1"
+    },
+    "kind": {
+      "const": "content"
+    },
+    "encounters": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 512,
+      "items": {
+        "$ref": "#/definitions/profile"
+      }
+    }
+  },
+  "definitions": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+    },
+    "color": {
+      "type": "string",
+      "minLength": 9,
+      "maxLength": 9,
+      "pattern": "^#[0-9a-fA-F]{8}$"
+    },
+    "provenance": {
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": [
+            "synthetic",
+            "author-choice",
+            "draft-adaptation",
+            "approved"
+          ]
+        },
+        "source_id": {
+          "$ref": "#/definitions/id"
+        },
+        "source_revision": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "source_beat_ids": {
+          "type": "array",
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/definitions/id"
+          }
+        }
+      }
+    },
+    "rect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "x",
+        "y",
+        "width",
+        "height"
+      ],
+      "properties": {
+        "x": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 4096
+        },
+        "y": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 4096
+        },
+        "width": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 4096
+        },
+        "height": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 4096
+        }
+      }
+    },
+    "sprite": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "asset_id",
+        "width",
+        "height",
+        "provenance"
+      ],
+      "properties": {
+        "state": {
+          "enum": [
+            "normal",
+            "focus",
+            "disabled"
+          ]
+        },
+        "asset_id": {
+          "$ref": "#/definitions/id"
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8192
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8192
+        },
+        "provenance": {
+          "$ref": "#/definitions/provenance"
+        }
+      }
+    },
+    "button": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "command",
+        "rect",
+        "appearance",
+        "sprites"
+      ],
+      "properties": {
+        "command": {
+          "enum": [
+            "attack",
+            "skills",
+            "cooperative",
+            "misc"
+          ]
+        },
+        "rect": {
+          "$ref": "#/definitions/rect"
+        },
+        "appearance": {
+          "enum": [
+            "image",
+            "builtin"
+          ]
+        },
+        "sprites": {
+          "type": "array",
+          "maxItems": 3,
+          "items": {
+            "$ref": "#/definitions/sprite"
+          }
+        }
+      }
+    },
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "encounter_id",
+        "anchor",
+        "offset",
+        "size",
+        "scale_milli",
+        "clamp_to_canvas",
+        "filter",
+        "fit",
+        "tints",
+        "buttons",
+        "provenance"
+      ],
+      "properties": {
+        "encounter_id": {
+          "$ref": "#/definitions/id"
+        },
+        "anchor": {
+          "enum": [
+            "top-left",
+            "top-right",
+            "bottom-left",
+            "bottom-right"
+          ]
+        },
+        "offset": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "x",
+            "y"
+          ],
+          "properties": {
+            "x": {
+              "type": "number",
+              "minimum": -4096,
+              "maximum": 4096
+            },
+            "y": {
+              "type": "number",
+              "minimum": -4096,
+              "maximum": 4096
+            }
+          }
+        },
+        "size": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "width",
+            "height"
+          ],
+          "properties": {
+            "width": {
+              "type": "number",
+              "minimum": 1,
+              "maximum": 4096
+            },
+            "height": {
+              "type": "number",
+              "minimum": 1,
+              "maximum": 4096
+            }
+          }
+        },
+        "scale_milli": {
+          "type": "integer",
+          "minimum": 50,
+          "maximum": 4000
+        },
+        "clamp_to_canvas": {
+          "type": "boolean"
+        },
+        "filter": {
+          "enum": [
+            "nearest",
+            "linear"
+          ]
+        },
+        "fit": {
+          "enum": [
+            "contain",
+            "stretch"
+          ]
+        },
+        "tints": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "normal",
+            "focus",
+            "disabled"
+          ],
+          "properties": {
+            "normal": {
+              "$ref": "#/definitions/color"
+            },
+            "focus": {
+              "$ref": "#/definitions/color"
+            },
+            "disabled": {
+              "$ref": "#/definitions/color"
+            }
+          }
+        },
+        "buttons": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": {
+            "$ref": "#/definitions/button"
+          }
+        },
+        "provenance": {
+          "$ref": "#/definitions/provenance"
+        }
+      }
+    }
+  }
+}

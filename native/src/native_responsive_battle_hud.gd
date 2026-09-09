@@ -2,6 +2,7 @@
 extends Control
 ## Render one supported authored widget template from the displayed actor snapshot.
 const Config = preload("res://src/native_battle_hud_config.gd")
+const CommandPanel = preload("res://src/native_command_panel.gd")
 const Progression = preload("res://src/native_progression.gd")
 var commands = Control.new()
 var cards: Dictionary = {}
@@ -9,6 +10,7 @@ var skin: Dictionary = {}
 var active_id: String = ""
 var profile: Dictionary = {}
 var boxes: Dictionary = {}
+var command_profile: Dictionary = {}
 var _view
 
 func _init() -> void:
@@ -25,6 +27,7 @@ func fit(bounds: Vector2) -> void:
 			var rect: Rect2 = boxes.commands[key]
 			button.reference_size = rect.size.x; button.custom_minimum_size = rect.size
 			button.position = rect.position; button.size = rect.size
+			if not command_profile.is_empty(): CommandPanel.apply_button(button,command_profile,_view.session.package)
 
 func bind(view) -> void:
 	_view = view; cards.clear()
@@ -35,6 +38,8 @@ func bind(view) -> void:
 	if size.x <= 0 or size.y <= 0: queue_redraw(); return
 	var ids: Array = battle.get("party",[])
 	boxes = Config.geometry(profile.layout,size,ids.size())
+	command_profile = CommandPanel.for_encounter(view.session.package.world,battle.encounter_id)
+	if not command_profile.is_empty(): boxes.commands = CommandPanel.geometry(command_profile,boxes.content).buttons
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST if profile.style.portrait_filter == "nearest" else CanvasItem.TEXTURE_FILTER_LINEAR
 	active_id = view.presentation.current().get("actor_id","") if view.playing() else (str(ids[battle.turn]) if not ids.is_empty() else "")
 	for i in range(ids.size()):
@@ -52,6 +57,9 @@ func bind(view) -> void:
 
 func command_rect(symbol: String) -> Rect2:
 	return boxes.commands[symbol]
+
+func style_command(button) -> void:
+	if not command_profile.is_empty(): CommandPanel.apply_button(button,command_profile,_view.session.package)
 
 func _draw() -> void:
 	if _view == null or profile.is_empty(): return
@@ -91,4 +99,4 @@ func clear_commands() -> void:
 	for child in commands.get_children(): commands.remove_child(child); child.queue_free()
 
 func clear() -> void:
-	clear_commands(); cards.clear(); profile.clear(); boxes.clear(); _view = null; active_id = ""; queue_redraw()
+	clear_commands(); cards.clear(); profile.clear(); boxes.clear(); command_profile = {}; _view = null; active_id = ""; queue_redraw()

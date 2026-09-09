@@ -28,6 +28,7 @@ files["pal.native.battle-hud.v1.schema.json"] = source / "schemas/pal.native.bat
 files["pal.native.battle-canvas.v1.schema.json"] = source / "schemas/pal.native.battle-canvas.v1.schema.json"
 files["pal.native.battle-formation.v1.schema.json"] = source / "schemas/pal.native.battle-formation.v1.schema.json"
 files["pal.native.enemy-overlay.v1.schema.json"] = source / "schemas/pal.native.enemy-overlay.v1.schema.json"
+files["pal.native.command-panel.v1.schema.json"] = source / "schemas/pal.native.command-panel.v1.schema.json"
 files["LICENSE"] = source / "LICENSE"
 committed = all(subprocess.run(["git", "show", "HEAD:" + path.relative_to(source).as_posix()], cwd=source, capture_output=True).stdout == path.read_bytes().replace(b"\r\n", b"\n") for path in files.values())
 receipt = {"owner": origin, "base_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=source, text=True).strip(),

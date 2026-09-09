@@ -369,6 +369,7 @@ func _dream_root(battle: Dictionary, actor: Dictionary) -> void:
 		var rect: Rect2 = responsive_hud.command_rect(symbol) if _responsive_mode() else BattleView.Classic.dream_command_rect(symbol,battle.party.size())
 		button.reference_size = rect.size.x; button.custom_minimum_size = rect.size
 		button.position = rect.position; button.size = rect.size
+		if _responsive_mode(): responsive_hud.style_command(button)
 		if symbol == "cooperative": button.disabled = true; button.tooltip_text = "当前内容没有合击命令。"
 		if symbol == "skills":
 			button.disabled = Session.Progression.skill_ids(session.package,actor).is_empty() or not Statuses.blocking(session.package,session.state,actor.instance_id,"block_skills").is_empty()

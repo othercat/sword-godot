@@ -5,6 +5,9 @@ extends Button
 var symbol: String = ""
 var reference_size: int = 68
 var skin: Dictionary = {}
+var image_fit: String = "stretch"
+var state_tints: Dictionary = {}
+var authored_layout: bool = false
 
 func skin_state() -> String:
 	if disabled: return "disabled"
@@ -24,11 +27,24 @@ func _draw() -> void:
 	var texture: Texture2D = skin.get(key, skin.get("command." + symbol + ".normal"))
 	if texture != null:
 		var fallback: bool = not skin.has(key)
-		draw_texture_rect(texture,Rect2(Vector2.ZERO,size),false,Color(.45,.45,.45) if fallback and disabled else Color.WHITE)
-		if fallback and state == "focus": draw_rect(Rect2(Vector2.ONE,size-Vector2(2,2)),Color("ead296"),false,1)
+		var rect = Rect2(Vector2.ZERO,size)
+		if image_fit == "contain":
+			var extent: Vector2 = texture.get_size()*minf(size.x/texture.get_width(),size.y/texture.get_height())
+			rect = Rect2((size-extent)/2,extent)
+		var color = Color(state_tints.get(state,"#ffffffff"))
+		if fallback and disabled: color *= Color(.45,.45,.45)
+		draw_texture_rect(texture,rect,false,color)
+		if fallback and state == "focus":
+			var line: float = minf(1,minf(size.x,size.y)/3)
+			draw_rect(Rect2(Vector2.ONE*line,size-Vector2.ONE*line*2),Color("ead296"),false,line)
 		return
-	var center = size / 2.0
-	var radius: float = minf(size.x, size.y) / 2.0 - 3.0
+	var paint_size = size
+	if authored_layout:
+		var factor: float = minf(size.x/68,size.y/68)
+		paint_size = Vector2(68,68)
+		draw_set_transform((size-paint_size*factor)/2,0,Vector2.ONE*factor)
+	var center = paint_size / 2.0
+	var radius: float = minf(paint_size.x, paint_size.y) / 2.0 - 3.0
 	var tint = Color("d9b978") if has_focus() or is_hovered() else Color("6ca9a4")
 	if disabled: tint = Color("62706d")
 	var polygon = PackedVector2Array()
@@ -42,11 +58,11 @@ func _draw() -> void:
 			var at = center + direction * radius * ring
 			draw_line(at-tangent*3.5, at+tangent*3.5, tint.darkened(0.2), 1.0, true)
 	var font = get_theme_font("font")
-	if reference_size == 30:
+	if reference_size == 30 and not authored_layout:
 		var glyph: String = {"attack":"攻","skills":"术","cooperative":"合","misc":"杂"}.get(symbol, "")
 		draw_string(font,center+Vector2(-6,4),glyph,HORIZONTAL_ALIGNMENT_LEFT,14,12,tint)
 		return
 	var mark: String = {"attack":"剑", "skills":"术", "items":"药", "cooperative":"合", "misc":"策"}.get(symbol, "")
-	var label = tr(text)
+	var label = tr(str(get_meta("command_label",text)))
 	draw_string(font, center + Vector2(-font.get_string_size(mark,HORIZONTAL_ALIGNMENT_LEFT,-1,22).x/2.0,1), mark,HORIZONTAL_ALIGNMENT_LEFT,-1,22,tint)
 	draw_string(font, center + Vector2(-font.get_string_size(label,HORIZONTAL_ALIGNMENT_LEFT,-1,12).x/2.0,17),label,HORIZONTAL_ALIGNMENT_LEFT,-1,12,tint)
