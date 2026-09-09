@@ -35,13 +35,38 @@ the shared contract's wide-integer base curve: party attacks request twice the
 base, enemies once; guarding doubles defense before an enemy ordinary hit.
 Zero damage still consumes the action, without damage-triggered status removal.
 Progression, equipment and Native status modifiers feed effective attack/defense.
-Skills and items retain their existing calculations. Random/critical/resistance,
-cover, legacy status and extra-script semantics remain future work; this is not
-complete PAL98 combat. Packages without the component retain their old results.
+Skills and items retain their existing calculations. This component alone has
+no randomness or critical hits. Resistance, cover, legacy status mapping and
+extra-script semantics remain future work; this is not complete PAL98 combat.
+Packages without the component retain their old results.
 Its capability/schema hash and rules version 0.15.0 are checked on admission;
 changing the choice changes content and rules locks, not existing player saves.
 `tests/test_attack_formula.gd` consumes independently specified arithmetic vectors
 and an actual Studio-authored package; it labels synthetic cases separately.
+
+An additional optional `pal.native.attack-random.v1` component selects the
+partial `pal98.player-hit.v1` profile, capability `battle.attack-random.v1` and
+rules version 0.16.0. Its author seed, explicit critical-status binding and
+bonus actor-definition list are part of content/rule identity. Each party
+ordinary hit consumes exactly four `pal.native.lcg24.v1` draws for additive
+variation, critical, proportional variation and an optional actor bonus.
+The arithmetic follows the new contract's exact rational, nearest-even rules;
+it does not copy recovered procedural code or reproduce legacy I2 overflow.
+
+The existing state RNG object saves a canonical seed and draw cursor. Loading
+resumes that cursor even if the live session has advanced; validation checks
+the authored seed/algorithm/cursor using logarithmic jump-ahead. Cancelled or
+failed commands preserve the complete state and RNG. Rendering, save IDs and
+wall-clock time do not advance this gameplay stream. New runs deliberately use
+the author's chosen seed. The generator is deterministic, not tamper protection.
+
+This increment excludes full physical resistance, double/all attacks, hidden
+experience, enemy random/block/cover, attached scripts and original rendering
+random consumption. It cannot claim full original per-seed combat parity.
+`tests/test_attack_random.gd` covers the real author package, 3/4/5 party variants,
+replay, failed callbacks, exhausted cursors, status/definition bindings and
+separate synthetic 60/100 display steps; physical high-refresh output is not
+certified. Removing this optional component restores the fixed formula.
 
 Native packages now open from a local directory or its exact `manifest.json`,
 as well as the existing ZIP. The player picker offers both entries; Studio's

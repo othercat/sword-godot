@@ -12,6 +12,7 @@ const EnemyActions = preload("res://src/native_enemy_actions.gd")
 const Progression = preload("res://src/native_progression.gd")
 const Classic = preload("res://src/native_classic_battle.gd")
 const AttackFormula = preload("res://src/native_attack_formula.gd")
+const AttackRandom = preload("res://src/native_attack_random.gd")
 
 static func used(content: Dictionary) -> bool:
 	return not content.get("encounters", []).is_empty() or content.nodes.any(func(n): return n.op == "battle")
@@ -110,7 +111,8 @@ static func validate_state(package, state: Dictionary) -> String:
 	return Statuses.validate_state(package, state) if issue.is_empty() else issue
 
 static func command(package, state: Dictionary, action: String, target: String = "", skill_id: String = "", item_id: String = "") -> Dictionary:
-	var issue: String = Progression.validate_state(package, state)
+	var issue: String = AttackRandom.validate_state(package.world, state)
+	if issue.is_empty(): issue = Progression.validate_state(package, state)
 	if issue.is_empty(): issue = validate_state(package, state)
 	if not issue.is_empty(): return {"error": issue}
 	if not state.extensions.has(KEY): return {"error": "no active battle"}
@@ -152,7 +154,9 @@ static func command(package, state: Dictionary, action: String, target: String =
 	elif action == "item":
 		issue = Inventory.apply(package, state, source, prepared)
 		if not issue.is_empty(): return {"error": issue}
-	else: _hit(package, state, source, enemy, false, battle.events)
+	else:
+		issue = _hit(package, state, source, enemy, false, battle.events)
+		if not issue.is_empty(): return {"error":issue}
 	if _living_turn(state, battle.party, 0) < 0: return {"outcome": "loss"}
 	if battle.enemies.all(func(row): return row.hp == 0): return {"outcome": "win"}
 	var next: int = _living_turn(state, battle.party, battle.turn + 1)
@@ -172,7 +176,8 @@ static func command(package, state: Dictionary, action: String, target: String =
 			if not issue.is_empty(): return {"error": issue} # Apply failure rolls back the whole command.
 		else:
 			var defender: Dictionary = actor(state, battle.party[_living_turn(state, battle.party, 0)])
-			_hit(package, state, row, defender, defender.instance_id in battle.guarding, battle.events)
+			issue = _hit(package, state, row, defender, defender.instance_id in battle.guarding, battle.events)
+			if not issue.is_empty(): return {"error":issue}
 		if _living_turn(state, battle.party, 0) < 0: return {"outcome": "loss"}
 		if battle.enemies.all(func(e): return e.hp == 0): return {"outcome": "win"}
 	Statuses.end_round(package, state)
@@ -182,10 +187,15 @@ static func command(package, state: Dictionary, action: String, target: String =
 	battle.round += 1; battle.turn = _living_turn(state, battle.party, 0); battle.guarding = []
 	return {}
 
-static func _hit(package, state: Dictionary, source: Dictionary, target: Dictionary, guarded: bool, events: Array) -> void:
+static func _hit(package, state: Dictionary, source: Dictionary, target: Dictionary, guarded: bool, events: Array) -> String:
 	var attack: int = Statuses.stat(package, state, source, "attack")
 	var defense: int = Statuses.stat(package, state, target, "defense")
 	var damage: int = AttackFormula.ordinary(package.world, attack, defense, source.instance_id in state.extensions[KEY].party, guarded)
+	if source.instance_id in state.extensions[KEY].party:
+		var result: Dictionary = AttackRandom.apply(package, state, source, damage)
+		if result.has("error"): return result.error
+		damage = result.damage
 	damage = mini(damage, int(target.hp)); target.hp -= damage
 	events.append({"kind": "attack", "source": source.instance_id, "target": target.instance_id, "amount": damage})
 	Statuses.after_damage(package, state, source.instance_id, target, damage)
+	return ""

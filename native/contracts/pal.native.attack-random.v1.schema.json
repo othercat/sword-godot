@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "pal.native.attack-random.v1",
+  "title": "Native player ordinary-hit variation and saved random stream",
+  "x-status": "draft",
+  "type": "object",
+  "required": ["schema", "kind", "profile", "seed", "critical_status_id", "bonus_actor_definitions", "provenance"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "pal.native.attack-random.v1"},
+    "kind": {"const": "content"},
+    "profile": {"const": "pal98.player-hit.v1"},
+    "seed": {"type": "integer", "minimum": 0, "maximum": 16777215},
+    "critical_status_id": {"oneOf": [{"type": "null"}, {"$ref": "#/definitions/id"}]},
+    "bonus_actor_definitions": {"type": "array", "maxItems": 1024, "uniqueItems": true, "items": {"$ref": "#/definitions/id"}},
+    "provenance": {
+      "type": "object", "required": ["status"], "additionalProperties": false,
+      "properties": {
+        "status": {"enum": ["synthetic", "author-choice", "draft-adaptation", "approved"]},
+        "source_id": {"$ref": "#/definitions/id"},
+        "source_revision": {"type": "string", "maxLength": 128},
+        "source_beat_ids": {"type": "array", "maxItems": 100, "uniqueItems": true, "items": {"$ref": "#/definitions/id"}}
+      }
+    }
+  },
+  "definitions": {"id": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"}}
+}

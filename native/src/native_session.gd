@@ -6,6 +6,7 @@ const Regions = preload("res://src/native_regions.gd")
 const Condition = preload("res://src/native_condition.gd")
 const Equipment = preload("res://src/native_equipment.gd")
 const Progression = preload("res://src/native_progression.gd")
+const AttackRandom = preload("res://src/native_attack_random.gd")
 signal changed
 signal battle_committed(before: Dictionary, result: Dictionary, outcome: String)
 const Package = preload("res://src/native_package.gd")
@@ -38,7 +39,7 @@ func activate(candidate, now_usec: int = -1) -> bool:
 	state = {"schema": "pal.native.state.v1", "runtime_id": "pal.wanxiang", "runtime_version": "0.1.0", "build_id": "native.preview.1", "session_id": unique("session"), "timeline_epoch": 0, "state_revision": 0, "profile_id": "profile.local.preview", "run_id": unique("run"), "package_id": world.package_id, "content_lock": package.content_lock, "ruleset_id": package.manifest.ruleset_id, "ruleset_hash": package.manifest.ruleset_hash,
 		"clock": {"logic_tick": 0, "ticks_per_second": 60, "rta_usec": 0, "active_game_usec": 0, "continuity": "continuous", "timing_ruleset": "timing.native.practice.v1", "logic_paused": false, "timing_state": "running", "reason": "playing", "timing_ruleset_hash": Schema.digest(TIMING_RULES.to_utf8_buffer())},
 		"entities": [], "roster": world.roster.duplicate(), "active_party": world.active_party.duplicate(), "narrative_cast": world.narrative_cast.duplicate(), "scopes": {"profile": {}, "run": {}, "chapter": {}},
-		"cursor": {"scene_id": world.entry_scene, "node_id": world.entry_node, "safe_point_id": null, "phase": "before_node"}, "rng": {"algorithm": "pal.native.unused.v1", "state": "unused"}, "committed_effect_ids": [],
+		"cursor": {"scene_id": world.entry_scene, "node_id": world.entry_node, "safe_point_id": null, "phase": "before_node"}, "rng": AttackRandom.initial(world), "committed_effect_ids": [],
 		"extensions": {"pal.native.executor": {"activation": unique("activation"), "step": 0}, "pal.native.timing": {"eligible": false, "reason": "preview-practice"}}}
 	for source in world.entities:
 		var definition: Dictionary = package.index.actor_definitions[source.definition_id]
@@ -401,7 +402,9 @@ func validate_saved(candidate: Dictionary) -> String:
 	if candidate.cursor.safe_point_id == null: return "live cursor is not a save boundary"
 	for key in ["runtime_id", "package_id", "profile_id", "content_lock", "ruleset_id", "ruleset_hash"]:
 		if candidate[key] != state[key]: return "save identity mismatch: " + key
-	if candidate.clock.ticks_per_second != 60 or candidate.clock.timing_ruleset_hash != state.clock.timing_ruleset_hash or candidate.rng != state.rng: return "unsupported save clock/RNG"
+	if candidate.clock.ticks_per_second != 60 or candidate.clock.timing_ruleset_hash != state.clock.timing_ruleset_hash: return "unsupported save clock"
+	issue = AttackRandom.validate_state(package.world, candidate)
+	if not issue.is_empty(): return issue
 	var safe = package.index.safe_points.get(candidate.cursor.safe_point_id)
 	if safe == null or safe.scene_id != candidate.cursor.scene_id or safe.node_id != candidate.cursor.node_id: return "save cursor/safe-point mismatch"
 	if package.index.nodes[candidate.cursor.node_id].op not in ["dialogue", "choice", "end", "battle"]: return "save cursor is not a waiting boundary"
