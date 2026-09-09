@@ -1,5 +1,19 @@
 # PAL Wanxiang Native preview
 
+An explicitly authored `pal.native.attack-formula.v1` component selects the
+deterministic `pal98.base-physical.v1` ordinary-attack adaptation. Native uses
+the shared contract's wide-integer base curve: party attacks request twice the
+base, enemies once; guarding doubles defense before an enemy ordinary hit.
+Zero damage still consumes the action, without damage-triggered status removal.
+Progression, equipment and Native status modifiers feed effective attack/defense.
+Skills and items retain their existing calculations. Random/critical/resistance,
+cover, legacy status and extra-script semantics remain future work; this is not
+complete PAL98 combat. Packages without the component retain their old results.
+Its capability/schema hash and rules version 0.15.0 are checked on admission;
+changing the choice changes content and rules locks, not existing player saves.
+`tests/test_attack_formula.gd` consumes independently specified arithmetic vectors
+and an actual Studio-authored package; it labels synthetic cases separately.
+
 Native packages now open from a local directory or its exact `manifest.json`,
 as well as the existing ZIP. The player picker offers both entries; Studio's
 default preview selects its emitted `content.palmod/manifest.json`. The same

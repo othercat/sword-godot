@@ -19,6 +19,7 @@ if origin not in ("https://github.com/othercat/pal98-runtime-contracts.git", "gi
 files = {f"pal.native.{kind}.v1.schema.json": source / "schemas" / f"pal.native.{kind}.v1.schema.json" for kind in ("content", "package", "state", "save", "enemy-actions", "progression", "equipment", "battle-layout")}
 files["pal.native.battle-layout.v2.schema.json"] = source / "schemas/pal.native.battle-layout.v2.schema.json"
 files["pal.native.battle-ui.v1.schema.json"] = source / "schemas/pal.native.battle-ui.v1.schema.json"
+files["pal.native.attack-formula.v1.schema.json"] = source / "schemas/pal.native.attack-formula.v1.schema.json"
 files["LICENSE"] = source / "LICENSE"
 committed = all(subprocess.run(["git", "show", "HEAD:" + path.relative_to(source).as_posix()], cwd=source, capture_output=True).stdout == path.read_bytes().replace(b"\r\n", b"\n") for path in files.values())
 receipt = {"owner": origin, "base_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=source, text=True).strip(),

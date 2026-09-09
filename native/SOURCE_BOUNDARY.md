@@ -12,6 +12,13 @@ No parent game code, translated implementation, autoload, resource, binary helpe
 font, shader or test was copied into this directory. `contracts/receipt.json`
 records the allowlisted draft schema snapshot, exact hashes and owner commit.
 
+The optional ordinary-attack base curve also uses recovered mathematical
+behavior recorded by the product's source review, expressed as a new public
+contract and fixed arithmetic vectors. Its short integer implementation is
+independently written; no PALDLL hook, recovered procedural source or GPL game
+implementation is included. The profile explicitly documents its adaptation
+boundaries, rather than claiming full original combat or legacy overflow parity.
+
 Build with this directory as the project root. Parent root exports are not Native
 releases. `.gdignore` prevents the parent editor from scanning this nested project.
 The Native rendering path uses its own TileMapLayer adapter; the parent's

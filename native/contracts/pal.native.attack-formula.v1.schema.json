@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "pal.native.attack-formula.v1",
+  "title": "Native ordinary attack formula selection",
+  "x-status": "draft",
+  "type": "object",
+  "required": ["schema", "kind", "profile", "provenance"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "pal.native.attack-formula.v1"},
+    "kind": {"const": "content"},
+    "profile": {"const": "pal98.base-physical.v1"},
+    "provenance": {
+      "type": "object", "required": ["status"], "additionalProperties": false,
+      "properties": {
+        "status": {"enum": ["synthetic", "author-choice", "draft-adaptation", "approved"]},
+        "source_id": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"},
+        "source_revision": {"type": "string", "maxLength": 128},
+        "source_beat_ids": {"type": "array", "maxItems": 100, "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"}}
+      }
+    }
+  }
+}

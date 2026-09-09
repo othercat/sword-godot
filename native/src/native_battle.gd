@@ -11,6 +11,7 @@ const Statuses = preload("res://src/native_statuses.gd")
 const EnemyActions = preload("res://src/native_enemy_actions.gd")
 const Progression = preload("res://src/native_progression.gd")
 const Classic = preload("res://src/native_classic_battle.gd")
+const AttackFormula = preload("res://src/native_attack_formula.gd")
 
 static func used(content: Dictionary) -> bool:
 	return not content.get("encounters", []).is_empty() or content.nodes.any(func(n): return n.op == "battle")
@@ -184,8 +185,7 @@ static func command(package, state: Dictionary, action: String, target: String =
 static func _hit(package, state: Dictionary, source: Dictionary, target: Dictionary, guarded: bool, events: Array) -> void:
 	var attack: int = Statuses.stat(package, state, source, "attack")
 	var defense: int = Statuses.stat(package, state, target, "defense")
-	var damage: int = maxi(1, attack - defense)
-	if guarded: damage = (damage + 1) >> 1
+	var damage: int = AttackFormula.ordinary(package.world, attack, defense, source.instance_id in state.extensions[KEY].party, guarded)
 	damage = mini(damage, int(target.hp)); target.hp -= damage
 	events.append({"kind": "attack", "source": source.instance_id, "target": target.instance_id, "amount": damage})
 	Statuses.after_damage(package, state, source.instance_id, target, damage)
