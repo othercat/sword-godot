@@ -1,0 +1,80 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "pal.native.player-physical.v1",
+  "title": "Native complete player physical action and battle practice ledger",
+  "x-status": "draft",
+  "properties": {"schema": {"const": "pal.native.player-physical.v1"}},
+  "oneOf": [{"$ref": "#/definitions/content"}, {"$ref": "#/definitions/state"}],
+  "definitions": {
+    "id": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"},
+    "ids": {"type": "array", "maxItems": 32, "uniqueItems": true, "items": {"$ref": "#/definitions/id"}},
+    "count": {"type": "integer", "minimum": 0, "maximum": 4294967292},
+    "stat": {"type": "integer", "minimum": 0, "maximum": 1000000000},
+    "content": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "kind", "profile", "double_attack_status_id", "all_target_actor_definitions", "enemy_stats", "target_orders", "provenance"],
+      "properties": {
+        "schema": {"const": "pal.native.player-physical.v1"}, "kind": {"const": "content"},
+        "profile": {"const": "pal98.player-physical.v1"},
+        "double_attack_status_id": {"oneOf": [{"type": "null"}, {"$ref": "#/definitions/id"}]},
+        "all_target_actor_definitions": {"type": "array", "maxItems": 1024, "uniqueItems": true, "items": {"$ref": "#/definitions/id"}},
+        "enemy_stats": {
+          "type": "array", "minItems": 1, "maxItems": 1024,
+          "items": {
+            "type": "object", "additionalProperties": false, "required": ["definition_id", "level", "physical_resistance"],
+            "properties": {"definition_id": {"$ref": "#/definitions/id"}, "level": {"type": "integer", "minimum": 0, "maximum": 1000000}, "physical_resistance": {"type": "integer", "minimum": 0, "maximum": 1000000}}
+          }
+        },
+        "target_orders": {
+          "type": "array", "minItems": 1, "maxItems": 1024,
+          "items": {
+            "type": "object", "additionalProperties": false, "required": ["encounter_id", "enemy_ids"],
+            "properties": {"encounter_id": {"$ref": "#/definitions/id"}, "enemy_ids": {"$ref": "#/definitions/ids"}}
+          }
+        },
+        "provenance": {
+          "type": "object", "additionalProperties": false, "required": ["status"],
+          "properties": {
+            "status": {"enum": ["synthetic", "author-choice", "draft-adaptation", "approved"]},
+            "source_id": {"$ref": "#/definitions/id"}, "source_revision": {"type": "string", "maxLength": 128},
+            "source_beat_ids": {"type": "array", "maxItems": 100, "uniqueItems": true, "items": {"$ref": "#/definitions/id"}}
+          }
+        }
+      }
+    },
+    "target": {
+      "type": "object", "additionalProperties": false, "required": ["instance_id", "definition_id", "hp", "defense"],
+      "properties": {"instance_id": {"$ref": "#/definitions/id"}, "definition_id": {"$ref": "#/definitions/id"}, "hp": {"type": "integer", "minimum": 1, "maximum": 1000000000}, "defense": {"$ref": "#/definitions/stat"}}
+    },
+    "action": {
+      "type": "object", "additionalProperties": false,
+      "required": ["step", "source", "attack", "forced_critical", "double_attack", "rng_before", "rng_after", "targets", "hits", "health_count", "attack_count"],
+      "properties": {
+        "step": {"type": "integer", "minimum": 1, "maximum": 100000}, "source": {"$ref": "#/definitions/id"},
+        "attack": {"$ref": "#/definitions/stat"}, "forced_critical": {"type": "boolean"}, "double_attack": {"type": "boolean"},
+        "rng_before": {"$ref": "#/definitions/count"}, "rng_after": {"$ref": "#/definitions/count"},
+        "targets": {"type": "array", "minItems": 1, "maxItems": 32, "items": {"$ref": "#/definitions/target"}},
+        "hits": {"type": "array", "minItems": 1, "maxItems": 2, "items": {"type": "array", "minItems": 1, "maxItems": 32, "items": {"type": "integer", "minimum": 0, "maximum": 1000000000000}}},
+        "health_count": {"type": "integer", "minimum": 0, "maximum": 200000},
+        "attack_count": {"type": "integer", "minimum": 1, "maximum": 100000}
+      }
+    },
+    "battle": {
+      "type": "object", "additionalProperties": false,
+      "required": ["execution_id", "encounter_id", "party", "rng_start", "actions", "outcome"],
+      "properties": {
+        "execution_id": {"$ref": "#/definitions/id"}, "encounter_id": {"$ref": "#/definitions/id"}, "party": {"$ref": "#/definitions/ids"},
+        "rng_start": {"$ref": "#/definitions/count"}, "actions": {"type": "array", "maxItems": 100000, "items": {"$ref": "#/definitions/action"}},
+        "outcome": {"enum": ["", "win", "loss", "escape"]}
+      }
+    },
+    "state": {
+      "type": "object", "additionalProperties": false, "required": ["schema", "kind", "pending", "last_battle"],
+      "properties": {
+        "schema": {"const": "pal.native.player-physical.v1"}, "kind": {"const": "state"},
+        "pending": {"oneOf": [{"type": "null"}, {"$ref": "#/definitions/battle"}]},
+        "last_battle": {"oneOf": [{"type": "null"}, {"$ref": "#/definitions/battle"}]}
+      }
+    }
+  }
+}

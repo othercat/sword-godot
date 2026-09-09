@@ -359,6 +359,29 @@ func _set_classic_mode(enabled: bool) -> void:
 func _classic_select_attack(value: bool) -> void:
 	classic_attack = value; _refresh()
 
+func _render_attack_targets(battle: Dictionary, actor: Dictionary) -> void:
+	if Battle.PlayerPhysical.all_targets(session.package.world,actor.definition_id):
+		options.columns = 1
+		var ids: Array = Battle.PlayerPhysical.order(session.package.world,battle.encounter_id).filter(func(id): return battle.enemies.any(func(e): return e.instance_id == id and e.hp > 0))
+		var button = _button(options,"攻击全体",_battle_action.bind("attack",""))
+		button.disabled = ids.is_empty(); _bind_battle_target(button,ids)
+		return
+	var start: int = battle_view.enemy_page * BattleView.PAGE_SIZE
+	options.columns = 2 if battle.enemies.size() > 1 else 1
+	if battle_view.page_count() > 1:
+		target_pages.visible = true
+		_button(target_pages, "上一组敌人", _change_enemy_page.bind(-1)).disabled = battle_view.enemy_page == 0
+		var page_label = Label.new(); page_label.text = "%d / %d" % [battle_view.enemy_page + 1, battle_view.page_count()]; target_pages.add_child(page_label)
+		_button(target_pages, "下一组敌人", _change_enemy_page.bind(1)).disabled = battle_view.enemy_page == battle_view.page_count() - 1
+	for i in range(start, mini(start + BattleView.PAGE_SIZE, battle.enemies.size())):
+		var enemy: Dictionary = battle.enemies[i]
+		var definition: Dictionary = session.package.index.actor_definitions[enemy.definition_id]
+		var label: String = "攻击 " + BattleView.enemy_label(session.package,enemy,i) + "\n气血 %d / %d" % [enemy.hp,definition.max_hp]
+		var target_button = _button(options,label,_battle_action.bind("attack",enemy.instance_id))
+		target_button.tooltip_text = _battle_target_detail(enemy)
+		target_button.disabled = enemy.hp == 0
+		_bind_battle_target(target_button,[enemy.instance_id])
+
 func _classic_select_misc(value: bool) -> void:
 	classic_misc = value; _refresh()
 
@@ -508,21 +531,7 @@ func _refresh() -> void:
 					skill_menu.render(self,battle,actor,"skills"); _classic_spacer(); item_menu.render(self,battle,actor,"items")
 					_classic_spacer(); _button(options,"其他",_classic_select_misc.bind(true),"misc"); _classic_spacer()
 		else:
-			var start: int = battle_view.enemy_page * BattleView.PAGE_SIZE
-			options.columns = 2 if battle.enemies.size() > 1 else 1
-			if battle_view.page_count() > 1:
-				target_pages.visible = true
-				_button(target_pages, "上一组敌人", _change_enemy_page.bind(-1)).disabled = battle_view.enemy_page == 0
-				var page_label = Label.new(); page_label.text = "%d / %d" % [battle_view.enemy_page + 1, battle_view.page_count()]; target_pages.add_child(page_label)
-				_button(target_pages, "下一组敌人", _change_enemy_page.bind(1)).disabled = battle_view.enemy_page == battle_view.page_count() - 1
-			for i in range(start, mini(start + BattleView.PAGE_SIZE, battle.enemies.size())):
-				var enemy: Dictionary = battle.enemies[i]
-				var definition: Dictionary = session.package.index.actor_definitions[enemy.definition_id]
-				var label: String = "攻击 " + BattleView.enemy_label(session.package,enemy,i) + "\n气血 %d / %d" % [enemy.hp,definition.max_hp]
-				var target_button = _button(options,label,_battle_action.bind("attack",enemy.instance_id))
-				target_button.tooltip_text = _battle_target_detail(enemy)
-				target_button.disabled = enemy.hp == 0
-				_bind_battle_target(target_button,[enemy.instance_id])
+			_render_attack_targets(battle,actor)
 			if classic_mode and classic_attack: _button(options,"返回命令",_classic_select_attack.bind(false))
 			if not classic_mode:
 				_button(options, "防御", _battle_action.bind("guard", ""))

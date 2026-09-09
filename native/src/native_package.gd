@@ -19,6 +19,7 @@ const Classic = preload("res://src/native_classic_battle.gd")
 const BattleUi = preload("res://src/native_battle_ui.gd")
 const AttackFormula = preload("res://src/native_attack_formula.gd")
 const AttackRandom = preload("res://src/native_attack_random.gd")
+const PlayerPhysical = preload("res://src/native_player_physical.gd")
 const Progression = preload("res://src/native_progression.gd")
 const Regions = preload("res://src/native_regions.gd")
 const PartyTrail = preload("res://src/native_party_trail.gd")
@@ -53,7 +54,7 @@ func load_package(path: String) -> bool:
 	content_lock = Schema.digest(bytes)
 	if not manifest.dependencies.is_empty(): return _fail("package dependencies not implemented")
 	for capability in manifest.required_capabilities:
-		if capability not in CAPABILITIES and capability not in [EnemyActions.CAPABILITY, Progression.CAPABILITY, Equipment.CAPABILITY, Classic.CAPABILITY, Classic.CAPABILITY_V2, BattleUi.CAPABILITY, AttackFormula.CAPABILITY, AttackRandom.CAPABILITY]: return _fail("unsupported capability: " + capability)
+		if capability not in CAPABILITIES and capability not in [EnemyActions.CAPABILITY, Progression.CAPABILITY, Equipment.CAPABILITY, Classic.CAPABILITY, Classic.CAPABILITY_V2, BattleUi.CAPABILITY, AttackFormula.CAPABILITY, AttackRandom.CAPABILITY, PlayerPhysical.CAPABILITY]: return _fail("unsupported capability: " + capability)
 	for key in ["pal.native.package.v1", "pal.native.content.v1"]:
 		if manifest.contract_hashes.get(key) != schema.hashes.get(key): return _fail("contract hash mismatch: " + key)
 	if manifest.contract_hashes.size() != 2: return _fail("unknown contract hash")
@@ -89,6 +90,9 @@ func load_package(path: String) -> bool:
 	var random_used: bool = AttackRandom.used(world)
 	if random_used != (AttackRandom.CAPABILITY in manifest.required_capabilities): return _fail("attack random capability/component mismatch")
 	if random_used: component_hashes[AttackRandom.SCHEMA] = schema.hashes.get(AttackRandom.SCHEMA)
+	var physical_used: bool = PlayerPhysical.used(world)
+	if physical_used != (PlayerPhysical.CAPABILITY in manifest.required_capabilities): return _fail("player physical capability/component mismatch")
+	if physical_used: component_hashes[PlayerPhysical.SCHEMA] = schema.hashes.get(PlayerPhysical.SCHEMA)
 	var ui_used: bool = BattleUi.used(world)
 	if ui_used != (BattleUi.CAPABILITY in manifest.required_capabilities): return _fail("battle UI capability/component mismatch")
 	if ui_used: component_hashes[BattleUi.SCHEMA] = schema.hashes.get(BattleUi.SCHEMA)
@@ -286,6 +290,8 @@ func _references() -> bool:
 	if not formula_issue.is_empty(): return _fail(formula_issue)
 	var random_issue: String = AttackRandom.validate_content(self)
 	if not random_issue.is_empty(): return _fail(random_issue)
+	var physical_issue: String = PlayerPhysical.validate_content(self)
+	if not physical_issue.is_empty(): return _fail(physical_issue)
 	var enemy_issue: String = EnemyActions.validate_content(self)
 	if not enemy_issue.is_empty(): return _fail(enemy_issue)
 	var equipment_issue: String = Equipment.validate_content(self)
@@ -376,4 +382,6 @@ static func expected_rules(content: Dictionary) -> Dictionary:
 		result.version = "0.15.0"; result.normal_attack = AttackFormula.PROFILE
 	if AttackRandom.used(content):
 		result.version = "0.16.0"; result.attack_random = AttackRandom.rule(content)
+	if PlayerPhysical.used(content):
+		result.version = "0.17.0"; result.player_physical = PlayerPhysical.rule(content)
 	return result

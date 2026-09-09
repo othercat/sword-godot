@@ -22,9 +22,16 @@ func begin(value, before: Dictionary, result: Dictionary, ending: String) -> voi
 	battle = before.extensions[Battle.KEY].duplicate(true)
 	for id in battle.party: actors[id] = Battle.actor(before, id).duplicate(true)
 	for enemy in battle.enemies: actors[enemy.instance_id] = enemy
+	var physical: Dictionary = result.get("physical_action", {})
+	var expanded: bool = false
 	for i in range(result.events.size()):
 		var event: Dictionary = result.events[i]
-		if event.kind == "attack":
+		var physical_event: bool = event.kind == "attack" and not physical.is_empty() and event.source == physical.source
+		if physical_event:
+			if not expanded: _physical_phases(physical); expanded = true
+			var receipt: Dictionary = event.duplicate(true); receipt.kind = "physical_commit"; receipt.amount = 0
+			_add(event.target, "", receipt, i); phases[-1].duration_us = 1
+		elif event.kind == "attack":
 			_add(event.source, "attack", {}, -1)
 			_add(event.target, "hit", event, i)
 		elif event.kind == "cast": _add(event.source, "cast", event, i)
@@ -34,7 +41,7 @@ func begin(value, before: Dictionary, result: Dictionary, ending: String) -> voi
 		elif event.kind == "escape": _add(event.source, "escape", event, i)
 		elif event.kind == "status_skip": _add(event.source, "sleep", event, i)
 		else: _add(event.target, "", event, i) # Metadata/healing keep the HP-derived base pose.
-		if event.kind in ["attack", "damage", "status_damage"] and _final_hp(event.target, result.events.slice(0, i + 1)) == 0:
+		if not physical_event and event.kind in ["attack", "damage", "status_damage"] and _final_hp(event.target, result.events.slice(0, i + 1)) == 0:
 			_add(event.target, "dead", {}, -1)
 	if not ending.is_empty():
 		for id in battle.party:
@@ -42,6 +49,18 @@ func begin(value, before: Dictionary, result: Dictionary, ending: String) -> voi
 				_add(id, "victory" if ending == "win" else ("escape" if ending == "escape" else "idle"), {}, -1)
 	active = not phases.is_empty()
 	if active: _enter()
+
+func _physical_phases(action: Dictionary) -> void:
+	# The authoritative per-target settlement is aggregated. Display each already
+	# calculated bout, then consume its original event indices exactly once.
+	var remaining: Array = action.targets.map(func(t): return int(t.hp))
+	for bout in range(action.hits.size()):
+		_add(action.source,"attack",{},-1)
+		for i in range(action.targets.size()):
+			var id: String = action.targets[i].instance_id
+			var amount: int = mini(remaining[i],int(action.hits[bout][i])); remaining[i] -= amount
+			_add(id,"hit",{"kind":"attack","source":action.source,"target":id,"amount":amount},-1)
+			if bout == action.hits.size()-1 and remaining[i] == 0: _add(id,"dead",{},-1)
 
 func _final_hp(id: String, events: Array) -> int:
 	var hp: int = actors[id].hp
@@ -69,7 +88,7 @@ func _enter() -> void:
 	var phase: Dictionary = phases[phase_index]
 	var event: Dictionary = phase.event
 	if event.is_empty(): return
-	consumed.append(phase.event_index)
+	if phase.event_index >= 0: consumed.append(phase.event_index)
 	var target: Dictionary = actors[event.target]
 	if event.kind in ["attack", "damage", "status_damage"]: target.hp -= int(event.amount)
 	elif event.kind in ["heal", "revive", "status_heal"]: target.hp += int(event.amount)

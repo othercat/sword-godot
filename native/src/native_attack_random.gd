@@ -32,7 +32,7 @@ static func initial(content: Dictionary) -> Dictionary:
 
 static func validate_state(content: Dictionary, state: Dictionary) -> String:
 	if not used(content): return "" if state.rng == initial(content) else "unsupported unused random state"
-	return Rng.validate(state.rng, int(content.extensions[KEY].seed))
+	return Rng.validate(state.rng, int(content.extensions[KEY].seed), 1 if content.extensions.has("pal.native.player-physical") else 4)
 
 static func nearest_even(numerator: int, denominator: int) -> int:
 	var whole: int = numerator / denominator

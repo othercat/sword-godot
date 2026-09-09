@@ -13,6 +13,7 @@ const Progression = preload("res://src/native_progression.gd")
 const Classic = preload("res://src/native_classic_battle.gd")
 const AttackFormula = preload("res://src/native_attack_formula.gd")
 const AttackRandom = preload("res://src/native_attack_random.gd")
+const PlayerPhysical = preload("res://src/native_player_physical.gd")
 
 static func used(content: Dictionary) -> bool:
 	return not content.get("encounters", []).is_empty() or content.nodes.any(func(n): return n.op == "battle")
@@ -60,6 +61,7 @@ static func begin(package, state: Dictionary, node: Dictionary, execution_id: St
 	state.extensions[KEY] = {"version": 1, "node_id": node.id, "encounter_id": node.encounter_id, "execution_id": execution_id, "round": 1, "step": 0, "turn": turn, "party": state.active_party.duplicate(), "enemies": enemies, "guarding": [], "events": []}
 	if Statuses.used(package.world): state.extensions[KEY].statuses = []
 	Progression.begin(package, state)
+	PlayerPhysical.begin(package.world, state)
 	state.cursor.phase = "battle_command"
 	return ""
 
@@ -114,6 +116,7 @@ static func command(package, state: Dictionary, action: String, target: String =
 	var issue: String = AttackRandom.validate_state(package.world, state)
 	if issue.is_empty(): issue = Progression.validate_state(package, state)
 	if issue.is_empty(): issue = validate_state(package, state)
+	if issue.is_empty(): issue = PlayerPhysical.validate_state(package, state)
 	if not issue.is_empty(): return {"error": issue}
 	if not state.extensions.has(KEY): return {"error": "no active battle"}
 	var battle: Dictionary = state.extensions[KEY]
@@ -133,9 +136,12 @@ static func command(package, state: Dictionary, action: String, target: String =
 		prepared = Inventory.plan(package, state, item_id, target)
 		if prepared.has("error"): return prepared
 	elif action == "attack":
-		for row in battle.enemies:
-			if row.instance_id == target and row.hp > 0: enemy = row
-		if enemy.is_empty(): return {"error": "choose a living enemy"}
+		if PlayerPhysical.all_targets(package.world,source.definition_id):
+			if not target.is_empty(): return {"error":"全体普攻不能指定单个敌人。"}
+		else:
+			for row in battle.enemies:
+				if row.instance_id == target and row.hp > 0: enemy = row
+			if enemy.is_empty(): return {"error": "choose a living enemy"}
 	elif action == "escape":
 		if not encounter(package.world, battle.encounter_id).allow_escape: return {"error": "此战不能撤离。"}
 	elif action not in ["guard", "wait"]: return {"error": "unsupported battle action"}
@@ -155,7 +161,7 @@ static func command(package, state: Dictionary, action: String, target: String =
 		issue = Inventory.apply(package, state, source, prepared)
 		if not issue.is_empty(): return {"error": issue}
 	else:
-		issue = _hit(package, state, source, enemy, false, battle.events)
+		issue = PlayerPhysical.apply(package,state,source,target) if PlayerPhysical.used(package.world) else _hit(package, state, source, enemy, false, battle.events)
 		if not issue.is_empty(): return {"error":issue}
 	if _living_turn(state, battle.party, 0) < 0: return {"outcome": "loss"}
 	if battle.enemies.all(func(row): return row.hp == 0): return {"outcome": "win"}

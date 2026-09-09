@@ -65,6 +65,10 @@ static func action_blocks(state: Dictionary) -> Dictionary:
 			if not periodic: blocks[-1].append(event)
 			continue # Statuses validates the immediate damage cause, including the periodic tail.
 		if periodic: return {"error": "action/effect after round-end tail"}
+		if event.kind == "attack" and state.extensions.has("pal.native.player-physical") and blocks.size() == 1 and last_enemy < 0 and blocks[0][0].kind == "attack" and event.source == blocks[0][0].source:
+			if event.target not in enemies: return {"error":"physical target in wrong faction"}
+			blocks[0].append(event)
+			continue # The player physical validator owns the exact aggregate sequence.
 		if event.kind in ["attack", "guard", "escape", "cast", "item_use", "status_skip"]:
 			if blocks.is_empty():
 				if event.source not in battle.party: return {"error": "first command must belong to party"}

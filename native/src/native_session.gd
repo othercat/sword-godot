@@ -7,6 +7,7 @@ const Condition = preload("res://src/native_condition.gd")
 const Equipment = preload("res://src/native_equipment.gd")
 const Progression = preload("res://src/native_progression.gd")
 const AttackRandom = preload("res://src/native_attack_random.gd")
+const PlayerPhysical = preload("res://src/native_player_physical.gd")
 signal changed
 signal battle_committed(before: Dictionary, result: Dictionary, outcome: String)
 const Package = preload("res://src/native_package.gd")
@@ -47,6 +48,7 @@ func activate(candidate, now_usec: int = -1) -> bool:
 	for variable in world.variables: state.scopes[variable.scope][variable.id] = variable.initial
 	var equipment_costs: Array = Equipment.initialize(package, state)
 	Progression.initialize(package, state)
+	PlayerPhysical.initialize(package.world,state)
 	Inventory.initialize(world, state)
 	if Equipment.used(world):
 		error = Inventory.change(package, state, equipment_costs)
@@ -84,6 +86,9 @@ func battle_command(action: String, target: String = "", skill_id: String = "", 
 		error = "本次行动超过保存事件预算（8192条），全部行动已撤回。请调整敌方技能或目标数量。"
 		return false
 	var presentation_result: Dictionary = candidate.extensions[Battle.KEY].duplicate(true)
+	var physical_action: Dictionary = PlayerPhysical.latest(candidate)
+	if not physical_action.is_empty() and physical_action.step == presentation_result.step:
+		presentation_result.physical_action = physical_action.duplicate(true)
 	if result.has("outcome"):
 		var battle: Dictionary = candidate.extensions[Battle.KEY]
 		var node: Dictionary = package.index.nodes[battle.node_id]
@@ -95,6 +100,7 @@ func battle_command(action: String, target: String = "", skill_id: String = "", 
 			error = "effect history limit; state retained"
 			return false
 		candidate.committed_effect_ids.append(battle.execution_id)
+		PlayerPhysical.settle(package.world,candidate,result.outcome)
 		candidate.extensions.erase(Battle.KEY)
 		candidate.cursor.phase = "before_node"
 		var budget: Dictionary = {"remaining": 1024, "planning": {"remaining": PartyTrail.MAX_VISITS}}
@@ -441,6 +447,8 @@ func validate_saved(candidate: Dictionary) -> String:
 	if not issue.is_empty(): return issue
 	var battle_issue: String = Battle.validate_state(package, candidate)
 	if not battle_issue.is_empty(): return battle_issue
+	issue = PlayerPhysical.validate_state(package,candidate)
+	if not issue.is_empty(): return issue
 	var executor = candidate.extensions.get("pal.native.executor")
 	if not executor is Dictionary or not executor.get("activation") is String or not Schema.is_type(executor.get("step"), "integer") or executor.step < 0: return "missing executor resume state"
 	return ""

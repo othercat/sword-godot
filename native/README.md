@@ -60,7 +60,7 @@ failed commands preserve the complete state and RNG. Rendering, save IDs and
 wall-clock time do not advance this gameplay stream. New runs deliberately use
 the author's chosen seed. The generator is deterministic, not tamper protection.
 
-This increment excludes full physical resistance, double/all attacks, hidden
+The standalone 0.16 profile excludes full physical resistance, double/all attacks, hidden
 experience, enemy random/block/cover, attached scripts and original rendering
 random consumption. It cannot claim full original per-seed combat parity.
 `tests/test_attack_random.gd` covers the real author package, 3/4/5 party variants,
@@ -482,3 +482,15 @@ output directory. The product runner builds the private variants through Studio,
 drives real author controls and runtime window input, and inspects emitted saves
 through the contract owner. This is not physical user acceptance or cross-platform
 proof. No original portraits or game assets are included in this repository.
+
+## Optional player physical actions
+
+The subsequent `pal.native.player-physical.v1` component selects rules version
+0.17.0. It adds authored enemy level/resistance, single/double/all-target ordinary
+actions, explicit instance order, and saved per-battle action counters. Single
+actions use 5 or 9 draws; all-target actions use 2 or 3. Bouts calculate before
+aggregate HP settlement; presentation plays recorded hits without another RNG
+call. The previous four-draw profile remains unchanged when used without this
+component. Counters do not yet implement secondary experience or stat growth.
+`tests/test_player_physical.gd` covers the author-built package, commands,
+status-triggered double hits, save replay and separate synthetic cases.

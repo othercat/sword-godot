@@ -19,7 +19,7 @@ static func advance(seed: int, count: int) -> int:
 		count >>= 1
 	return seed
 
-static func validate(value: Variant, initial_seed: int) -> String:
+static func validate(value: Variant, initial_seed: int, quantum: int = 4) -> String:
 	if not value is Dictionary or value.size() != 2 or value.get("algorithm") != ALGORITHM or not value.get("state") is String:
 		return "unsupported gameplay random algorithm"
 	var pattern = RegEx.new(); pattern.compile("^[0-9a-f]{6}:(0|[1-9][0-9]{0,9})$")
@@ -27,19 +27,22 @@ static func validate(value: Variant, initial_seed: int) -> String:
 	if pattern.search(cursor) == null or cursor.ends_with("\n"): return "noncanonical random cursor"
 	var parts: PackedStringArray = cursor.split(":")
 	var count: int = parts[1].to_int()
-	if count > MAX_DRAWS or count % 4 != 0: return "random draw count outside profile boundary"
+	if count > MAX_DRAWS or count % quantum != 0: return "random draw count outside profile boundary"
 	if parts[0].hex_to_int() != advance(initial_seed, count): return "random seed does not match authored seed and cursor"
 	return ""
 
 static func draw_four(value: Dictionary) -> Dictionary:
+	return draw(value, 4)
+
+static func draw(value: Dictionary, amount: int) -> Dictionary:
 	# Caller has validated the stream and owns a transactional state candidate.
 	var parts: PackedStringArray = value.state.split(":")
 	var seed: int = parts[0].hex_to_int()
 	var count: int = parts[1].to_int()
-	if count > MAX_DRAWS - 4: return {"error": "随机序列已达到当前规则上限；本次行动保留原状态。"}
+	if amount < 1 or amount > 129 or count > MAX_DRAWS - amount: return {"error": "随机序列已达到当前规则上限；本次行动保留原状态。"}
 	var rolls: Array = []
-	for i in range(4):
+	for i in range(amount):
 		seed = (seed * 0xfd43fd + 0xc39ec3) & MASK
 		rolls.append(seed)
-	value.state = "%06x:%d" % [seed, count + 4]
+	value.state = "%06x:%d" % [seed, count + amount]
 	return {"rolls": rolls}

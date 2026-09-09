@@ -21,6 +21,7 @@ files["pal.native.battle-layout.v2.schema.json"] = source / "schemas/pal.native.
 files["pal.native.battle-ui.v1.schema.json"] = source / "schemas/pal.native.battle-ui.v1.schema.json"
 files["pal.native.attack-formula.v1.schema.json"] = source / "schemas/pal.native.attack-formula.v1.schema.json"
 files["pal.native.attack-random.v1.schema.json"] = source / "schemas/pal.native.attack-random.v1.schema.json"
+files["pal.native.player-physical.v1.schema.json"] = source / "schemas/pal.native.player-physical.v1.schema.json"
 files["LICENSE"] = source / "LICENSE"
 committed = all(subprocess.run(["git", "show", "HEAD:" + path.relative_to(source).as_posix()], cwd=source, capture_output=True).stdout == path.read_bytes().replace(b"\r\n", b"\n") for path in files.values())
 receipt = {"owner": origin, "base_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=source, text=True).strip(),
