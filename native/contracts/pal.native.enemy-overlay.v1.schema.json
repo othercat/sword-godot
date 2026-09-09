@@ -1,0 +1,268 @@
+{
+  "type": "object",
+  "required": [
+    "schema",
+    "kind",
+    "encounters"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": "pal.native.enemy-overlay.v1"
+    },
+    "kind": {
+      "const": "content"
+    },
+    "encounters": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 10000,
+      "items": {
+        "type": "object",
+        "required": [
+          "encounter_id",
+          "template",
+          "visibility",
+          "placement",
+          "offset",
+          "bar_width",
+          "bar_height",
+          "font_size",
+          "show_name",
+          "value_format",
+          "colors",
+          "provenance",
+          "clamp_to_canvas"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "encounter_id": {
+            "$ref": "#/definitions/id"
+          },
+          "template": {
+            "const": "enemy-hp.v1"
+          },
+          "visibility": {
+            "enum": [
+              "always",
+              "targeted",
+              "hidden"
+            ]
+          },
+          "placement": {
+            "enum": [
+              "above-body",
+              "below-body"
+            ]
+          },
+          "offset": {
+            "$ref": "#/definitions/offset"
+          },
+          "bar_width": {
+            "type": "number",
+            "minimum": 8,
+            "maximum": 128
+          },
+          "bar_height": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 16
+          },
+          "font_size": {
+            "type": "integer",
+            "minimum": 3,
+            "maximum": 24
+          },
+          "show_name": {
+            "type": "boolean"
+          },
+          "value_format": {
+            "enum": [
+              "current",
+              "current-max",
+              "none"
+            ]
+          },
+          "colors": {
+            "type": "object",
+            "required": [
+              "hp",
+              "empty",
+              "border",
+              "text"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "hp": {
+                "$ref": "#/definitions/color"
+              },
+              "empty": {
+                "$ref": "#/definitions/color"
+              },
+              "border": {
+                "$ref": "#/definitions/color"
+              },
+              "text": {
+                "$ref": "#/definitions/color"
+              }
+            }
+          },
+          "provenance": {
+            "$ref": "#/definitions/provenance"
+          },
+          "clamp_to_canvas": {
+            "type": "boolean"
+          },
+          "overrides": {
+            "type": "array",
+            "maxItems": 32,
+            "items": {
+              "type": "object",
+              "required": [
+                "instance_id",
+                "offset",
+                "bar_width"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "instance_id": {
+                  "$ref": "#/definitions/id"
+                },
+                "offset": {
+                  "$ref": "#/definitions/offset"
+                },
+                "bar_width": {
+                  "type": "number",
+                  "minimum": 8,
+                  "maximum": 128
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "pal.native.enemy-overlay.v1",
+  "title": "pal.native.enemy-overlay.v1",
+  "x-status": "draft",
+  "definitions": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+    },
+    "color": {
+      "type": "string",
+      "minLength": 9,
+      "maxLength": 9,
+      "pattern": "^#[0-9a-fA-F]{8}$"
+    },
+    "provenance": {
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": [
+            "synthetic",
+            "author-choice",
+            "draft-adaptation",
+            "approved"
+          ]
+        },
+        "source_id": {
+          "$ref": "#/definitions/id"
+        },
+        "source_revision": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "source_beat_ids": {
+          "type": "array",
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/definitions/id"
+          }
+        }
+      }
+    },
+    "region": {
+      "type": "object",
+      "required": [
+        "x",
+        "y",
+        "width",
+        "height"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "x": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "y": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "width": {
+          "type": "number",
+          "minimum": 0.01,
+          "maximum": 100
+        },
+        "height": {
+          "type": "number",
+          "minimum": 0.01,
+          "maximum": 100
+        }
+      }
+    },
+    "point": {
+      "type": "object",
+      "required": [
+        "x",
+        "y"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "x": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "y": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        }
+      }
+    },
+    "offset": {
+      "type": "object",
+      "required": [
+        "x",
+        "y"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "x": {
+          "type": "number",
+          "minimum": -320,
+          "maximum": 320
+        },
+        "y": {
+          "type": "number",
+          "minimum": -200,
+          "maximum": 200
+        }
+      }
+    }
+  }
+}

@@ -544,3 +544,25 @@ verifies author controls, package admission and old packages. Costs/caps are
 explicit author choices, not an included original table. No original code or
 assets, Legacy save migration, unchanged original RNG sequence, full original
 battle parity or cross-platform acceptance is claimed by this increment.
+
+## Authored formation, ground shadows and enemy HP widgets
+
+Optional `graphics.battle-formation.v1` maps per-encounter party/enemy regions,
+manual stable-instance/party-slot points, group scale, offsets and shared fitting
+to the complete actor canvas. `native_battle_formation.gd` owns disposable geometry;
+`native_battle_view.gd` shares resolved anchors with ordinary targeting and playback.
+All-action alpha bounds include static fallback, target markers, shadows and HP.
+Contain-mode cover/attack movement uses the moving actor's own extent.
+
+Group and individual shadow settings draw translucent ellipses attached either
+to the current PNG's bottom occupied pixels or to the authored ground anchor.
+Original PNGs are unchanged. Source contact may need author correction for long
+weapons/tails or flying creatures; this is not a physical lighting model.
+
+`graphics.enemy-overlay.v1` renders a bounded HP widget with per-instance offset
+and width overrides, display-state values and whole-widget canvas clamping.
+Font measurement and paint use one local layout and uniform transform. No new
+network, original-game dependency, combat authority, save or timer fields are
+introduced. Old packages without these components retain their existing behavior.
+The contract owner documents precise defaults and limits in
+`docs/native-battle-formation-v1.md`. New draft content locks require matching saves.

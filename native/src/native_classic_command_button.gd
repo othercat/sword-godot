@@ -46,7 +46,7 @@ func _draw() -> void:
 		var glyph: String = {"attack":"攻","skills":"术","cooperative":"合","misc":"杂"}.get(symbol, "")
 		draw_string(font,center+Vector2(-6,4),glyph,HORIZONTAL_ALIGNMENT_LEFT,14,12,tint)
 		return
-	var mark: String = {"attack":"剑", "skills":"术", "items":"药", "misc":"策"}.get(symbol, "")
+	var mark: String = {"attack":"剑", "skills":"术", "items":"药", "cooperative":"合", "misc":"策"}.get(symbol, "")
 	var label = tr(text)
 	draw_string(font, center + Vector2(-font.get_string_size(mark,HORIZONTAL_ALIGNMENT_LEFT,-1,22).x/2.0,1), mark,HORIZONTAL_ALIGNMENT_LEFT,-1,22,tint)
 	draw_string(font, center + Vector2(-font.get_string_size(label,HORIZONTAL_ALIGNMENT_LEFT,-1,12).x/2.0,17),label,HORIZONTAL_ALIGNMENT_LEFT,-1,12,tint)
