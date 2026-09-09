@@ -503,8 +503,9 @@ Studio authors seven caps, a cost table, initial per-definition secondary values
 and enemy dexterity. `native_training.gd` owns command counts, final-living
 encounter rewards, seven-category growth, recovery and saved receipts. Ordinary
 physical attacks, casts, guarding and failed escape supply the relevant counts.
-Ordinary dexterity does not gain a count; magic/dexterity growth is not yet used
-by skill damage or scheduling. Flee rate checks one logical RNG draw against the
+Magic strength can grow through casts. Dexterity has authored initial values
+and persistent fields but no normal action count, so normal play cannot advance
+it. Neither stat yet affects skill damage or scheduling. Flee rate checks one logical RNG draw against the
 sum of living enemy-instance difficulties. Failed escape spends a command.
 
 At the maximum secondary level, remaining XP consumes full thresholds without
