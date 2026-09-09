@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: MIT
 extends Control
 ## Authored action playback consumes committed results; geometry is explicit fallback.
+const Sampling = preload("res://src/native_sampling.gd")
+const DrawLayer = preload("res://src/native_draw_layer.gd")
 const Frames = preload("res://src/native_map_animation.gd")
 const Presentation = preload("res://src/native_battle_presentation.gd")
 const Layout = preload("res://src/native_battle_layout.gd")
@@ -40,8 +42,23 @@ var _battle_key: String = ""
 var enemy_page: int = 0
 var display_font: Font
 var _status_regions: Array = []
+var background_layer: Control
+
+func _init() -> void:
+	background_layer = DrawLayer.new(_paint_background)
+	background_layer.show_behind_parent = true
+	add_child(background_layer)
+
+func _paint_background(canvas: CanvasItem) -> void:
+	if session == null or (not session.battle_open() and not playing()):
+		background_asset = ""; background_rect = Rect2(); background_canvas = Rect2(); background_source = Rect2()
+		return
+	_draw_background(display_battle(), Vector2(get_viewport_rect().size), canvas)
+
 func bind(value) -> void:
 	session = value
+	texture_filter = Sampling.resolve(session.package.world, "battle_actor")
+	background_layer.texture_filter = Sampling.resolve(session.package.world, "battle_background")
 	if _extent_package != session.package:
 		_extent_package = session.package; _frame_extents.clear()
 	if not presentation.context.is_empty() and presentation.context != Presentation.state_context(session.state): presentation.clear()
@@ -102,6 +119,7 @@ func _process(delta: float) -> void:
 	if previous_phase != presentation.phase_index: display_changed.emit()
 	queue_redraw()
 func _draw() -> void:
+	background_layer.queue_redraw()
 	_status_regions.clear(); displayed_frames.clear(); displayed_bodies.clear(); displayed_markers.clear()
 	displayed_enemy_overlays.clear(); formation_diagnostics.clear()
 	if session == null or (not session.battle_open() and not playing()): return
@@ -127,13 +145,13 @@ func _classic_stage(bounds: Vector2) -> Rect2:
 	result.position += region.position
 	return result
 
-func _draw_background(battle: Dictionary, bounds: Vector2) -> void:
+func _draw_background(battle: Dictionary, bounds: Vector2, canvas: CanvasItem) -> void:
 	background_asset = ""; background_rect = Rect2()
 	background_canvas = Rect2(Vector2.ZERO,bounds); background_source = Rect2()
 	var profile: Dictionary = Canvas.for_encounter(session.package.world,battle.encounter_id)
 	if profile.is_empty() and not Hud.for_encounter(session.package.world,battle.encounter_id).is_empty(): profile = Canvas.default_profile()
 	if not profile.is_empty(): background_canvas = Canvas.placement(profile,bounds,Vector2.ZERO).canvas
-	draw_rect(Rect2(Vector2.ZERO, bounds), Color(profile.get("matte","#18232bff")))
+	canvas.draw_rect(Rect2(Vector2.ZERO, bounds), Color(profile.get("matte","#18232bff")))
 	var encounter: Dictionary = Battle.encounter(session.package.world, battle.encounter_id)
 	if encounter.get("background_asset") == null: return
 	background_asset = encounter.background_asset
@@ -141,14 +159,14 @@ func _draw_background(battle: Dictionary, bounds: Vector2) -> void:
 	if not profile.is_empty():
 		var placed: Dictionary = Canvas.placement(profile,bounds,texture.get_size())
 		background_rect = placed.destination; background_canvas = placed.canvas; background_source = placed.source
-		if background_rect.has_area(): draw_texture_rect_region(texture,background_rect,background_source)
+		if background_rect.has_area(): canvas.draw_texture_rect_region(texture,background_rect,background_source)
 		return
 	background_rect = cover_rect(texture.get_size(), bounds)
 	if not classic_layout().is_empty():
 		var stage: Rect2 = _classic_stage(bounds)
 		var rendered: Vector2 = texture.get_size() * minf(stage.size.x/texture.get_width(),stage.size.y/texture.get_height())
 		background_rect = Rect2(stage.get_center()-rendered/2.0,rendered)
-	draw_texture_rect(texture, background_rect, false)
+	canvas.draw_texture_rect(texture, background_rect, false)
 
 static func party_anchor(index: int, count: int, bounds: Vector2) -> Vector2:
 	return Layout.party_anchor(index, count, bounds)
@@ -224,7 +242,6 @@ func _frame_contact(frame: Dictionary) -> Vector2:
 
 func _draw_battle(battle: Dictionary, bounds: Vector2) -> void:
 	displayed_shadows.clear()
-	_draw_background(battle, bounds)
 	var classic: Dictionary = classic_layout()
 	var dream: bool = Classic.is_dream(classic)
 	var formation: Dictionary = Formation.for_encounter(session.package.world,battle.encounter_id)

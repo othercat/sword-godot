@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: MIT
 extends Node2D
+const Sampling = preload("res://src/native_sampling.gd")
 const ActorVisual = preload("res://src/native_actor_visual.gd")
 const MapProjection = preload("res://src/native_map_projection.gd")
 const Terrain = preload("res://src/native_terrain.gd")
@@ -54,6 +55,7 @@ func _build_diagnostic_tiles() -> void:
 	# Keep the diagnostic handle for callers, without building invisible cells
 	# or textures when an authored terrain layer already provides the map.
 	tiles = TileMapLayer.new()
+	tiles.texture_filter = Sampling.resolve(session.package.world, "map_terrain")
 	add_child(tiles)
 	if map_data.has("terrain"):
 		tiles.visible = false
@@ -94,6 +96,7 @@ func _build_map() -> void:
 	backdrop = null
 	if map_data.background_asset != null:
 		backdrop = Sprite2D.new()
+		backdrop.texture_filter = Sampling.resolve(session.package.world, "map_background")
 		backdrop.texture = session.package.textures[map_data.background_asset]
 		backdrop.centered = false
 		var rect: Rect2 = MapProjection.bounds(map_data)
@@ -110,8 +113,11 @@ func _build_map() -> void:
 				depth_tiles.append_array(Terrain.add_depth(map_data, layer, session.package.textures, _actor_layer))
 			else:
 				var drawn = Terrain.make_flat(map_data, layer, session.package.textures, atlas_cache)
+				drawn.texture_filter = Sampling.resolve(session.package.world, "map_terrain")
 				add_child(drawn)
 				terrain_layers.append(drawn)
+
+	for tile in depth_tiles: tile.texture_filter = Sampling.resolve(session.package.world, "map_terrain")
 
 func _build_portals_and_actors(scene: Dictionary, height: int) -> void:
 	for portal in scene.get("portals", []):

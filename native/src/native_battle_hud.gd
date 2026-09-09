@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 extends HBoxContainer
 ## Bottom party cards use the same disposable snapshot as the battle sprites.
+const Sampling = preload("res://src/native_sampling.gd")
 const Classic = preload("res://src/native_classic_battle.gd")
 const Progression = preload("res://src/native_progression.gd")
 var cards: Dictionary = {}
@@ -40,6 +41,7 @@ func bind(view) -> void:
 		var portrait: Dictionary = Classic.portrait(_package.world,actor.definition_id)
 		var card: Dictionary = cards[id]
 		card.face.texture = null if portrait.is_empty() else _package.textures[portrait.asset_id]
+		card.face.texture_filter = Sampling.resolve(_package.world, "portrait")
 		card.face.visible = not portrait.is_empty()
 		card.face.modulate = Color(.4,.4,.4,1) if actor.hp == 0 else Color.WHITE
 		card.text.text = "%s\n气血 %d/%d\n真气 %d/%d" % [definition.display_name,actor.hp,stats.max_hp,actor.mp,stats.max_mp]

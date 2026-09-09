@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: MIT
 extends TextureRect
+const Sampling = preload("res://src/native_sampling.gd")
+
 ## Keep world coordinates independent of the root window's render pixel density.
 ## Input commands stay in the root GUI; only battle hover descriptions cross here.
 var viewport: SubViewport
@@ -16,6 +18,9 @@ func configure(target: SubViewport) -> void:
 	resized.connect(sync_size)
 	get_viewport().size_changed.connect(sync_size)
 	sync_size.call_deferred()
+
+func bind_content(content: Dictionary) -> void:
+	texture_filter = Sampling.resolve(content, "surface")
 
 func sync_size() -> void:
 	if not is_instance_valid(viewport) or size.x < 2 or size.y < 2: return

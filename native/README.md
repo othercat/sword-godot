@@ -1,5 +1,26 @@
 # PAL Wanxiang Native preview
 
+The optional `pal.native.sampling.v1` presentation component now requires the exact
+owner schema hash and `graphics.sampling.v1`. ClassicLowRes and PixelHD default to
+nearest filtering; IllustratedHD defaults to linear. Explicit scope choices take
+precedence over existing widget filters, which precede profile defaults. Packages
+without the component retain their previous filters, including inherited values.
+
+The runtime applies the nine scopes to map sprites (including performances), flat
+and depth terrain, map background, battle sprites/background, HUD portraits and
+bitmap imagery, command images and final surface. Separate CanvasItems keep battle
+background and HUD portraits independent of neighboring imagery. A successful new
+package load resets the surface policy; a rejected load preserves the active session.
+This does not upscale source detail, quantize RGBA, implement integer display scaling,
+change combat or provide cross-content save migration.
+
+`tests/test_sampling.gd` accepts a fixture manifest and isolated output directory for
+windowed checks; `--baseline` restricts it to old-content screenshot comparisons.
+The product workspace owns fixture derivation from local author art. The current
+verification covers three HUD layouts, profile and mixed overrides, old reloads,
+invalid admissions and same-package saves on Windows/OpenGL. Studio GUI filtering,
+formal artwork acceptance, sustained high-refresh and other platforms remain pending.
+
 Desktop input defaults to classic arrows and the traditional left-hand actions:
 F skills, E battle items, D guard, Q escape, S effective party status, W map
 equipment. Enter/Space/Ctrl confirm; Esc/Alt cancel. The player can select the

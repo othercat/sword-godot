@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: MIT
 extends RefCounted
+const Sampling = preload("res://src/native_sampling.gd")
+
 ## Presentation-only rectangles/images; the existing Button owns input and rules.
 const KEY = "pal.native.command-panel"
 const SCHEMA = KEY + ".v1"
@@ -69,5 +71,6 @@ static func apply_button(button, profile: Dictionary, package) -> void:
 			for sprite in entry.sprites: button.skin["command."+entry.command+"."+sprite.state] = package.textures[sprite.asset_id]
 		button.image_fit = profile.fit
 		button.state_tints = profile.tints
-		button.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST if profile.filter == "nearest" else CanvasItem.TEXTURE_FILTER_LINEAR
+		var legacy: int = CanvasItem.TEXTURE_FILTER_NEAREST if profile.filter == "nearest" else CanvasItem.TEXTURE_FILTER_LINEAR
+		button.texture_filter = Sampling.resolve(package.world, "command_ui", legacy, profile.filter)
 		button.queue_redraw()

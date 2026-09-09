@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: MIT
 extends Node2D
+const Sampling = preload("res://src/native_sampling.gd")
 const MapAnimation = preload("res://src/native_map_animation.gd")
 var sprite: Sprite2D
 var fallback: Node2D
@@ -16,11 +17,12 @@ func bind(actor: Dictionary, package, tile_height: int, color: Color) -> void:
 	if actor.get("map_sprite_set") != null: sprite_set = package.index.sprite_sets[actor.map_sprite_set]
 	sprite = Sprite2D.new()
 	sprite.centered = false
-	sprite.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	sprite.texture_filter = Sampling.resolve(package.world, "map_actor", CanvasItem.TEXTURE_FILTER_LINEAR)
 	add_child(sprite)
 	if actor.sprite_asset != null:
 		var image = Sprite2D.new()
 		image.texture = textures[actor.sprite_asset]
+		image.texture_filter = Sampling.resolve(package.world, "map_actor")
 		image.scale = Vector2.ONE * (tile_height * 1.3 / image.texture.get_height())
 		image.position.y = -tile_height * 0.65
 		fallback = image

@@ -452,6 +452,7 @@ func open_package(path: String) -> bool:
 	saves.envelope_extensions = {}
 	saves.source_origin = "normal"
 	saves.migrations = []
+	render_surface.bind_content(candidate.world)
 	title_label.text = candidate.manifest.display_name
 	if candidate.manifest.extensions.has("pal.native.distribution"): title_label.text += " · 本地素材试玩"
 	world_view.bind(session)
