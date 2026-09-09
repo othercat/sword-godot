@@ -5,6 +5,7 @@ const Frames = preload("res://src/native_map_animation.gd")
 const Presentation = preload("res://src/native_battle_presentation.gd")
 const Layout = preload("res://src/native_battle_layout.gd")
 const Classic = preload("res://src/native_classic_battle.gd")
+const Hud = preload("res://src/native_battle_hud_config.gd")
 const Progression = preload("res://src/native_progression.gd")
 signal playback_finished
 signal display_changed
@@ -106,6 +107,17 @@ static func cover_rect(source: Vector2, bounds: Vector2) -> Rect2:
 	var scaled = source * maxf(bounds.x/source.x, bounds.y/source.y)
 	return Rect2((bounds-scaled)/2, scaled)
 
+func presentation_rect(bounds: Vector2) -> Rect2:
+	var battle: Dictionary = display_battle()
+	var profile: Dictionary = Hud.for_encounter(session.package.world,battle.encounter_id) if not battle.is_empty() else {}
+	return Rect2(Vector2.ZERO,bounds) if profile.is_empty() else Hud.geometry(profile.layout,bounds,battle.party.size()).content
+
+func _classic_stage(bounds: Vector2) -> Rect2:
+	var region: Rect2 = presentation_rect(bounds)
+	var result: Rect2 = Classic.stage_rect(region.size)
+	result.position += region.position
+	return result
+
 func _draw_background(battle: Dictionary, bounds: Vector2) -> void:
 	background_asset = ""; background_rect = Rect2()
 	draw_rect(Rect2(Vector2.ZERO, bounds), Color("18232b"))
@@ -115,7 +127,7 @@ func _draw_background(battle: Dictionary, bounds: Vector2) -> void:
 	var texture: Texture2D = session.package.textures[background_asset]
 	background_rect = cover_rect(texture.get_size(), bounds)
 	if not classic_layout().is_empty():
-		var stage: Rect2 = Classic.stage_rect(bounds)
+		var stage: Rect2 = _classic_stage(bounds)
 		var rendered: Vector2 = texture.get_size() * minf(stage.size.x/texture.get_width(),stage.size.y/texture.get_height())
 		background_rect = Rect2(stage.get_center()-rendered/2.0,rendered)
 	draw_texture_rect(texture, background_rect, false)
@@ -180,7 +192,7 @@ func _draw_battle(battle: Dictionary, bounds: Vector2) -> void:
 		for body in bodies: body.position *= layout_spacing
 		projection = Layout.fit(bodies,bounds)
 	else:
-		layout_spacing = 1.0; classic_stage = Classic.stage_rect(bounds)
+		layout_spacing = 1.0; classic_stage = _classic_stage(bounds)
 		var zoom: float = classic_stage.size.x / Classic.SIZE.x
 		projection = Transform2D(Vector2(zoom,0),Vector2(0,zoom),classic_stage.position)
 	var scale_value: float = projection.x.x * (float(classic.sprite_scale_milli)/1000.0 if not classic.is_empty() else 1.0)

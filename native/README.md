@@ -85,7 +85,28 @@ This does not implement direct MKF loading or player release packaging. Other
 OS filesystem behavior, hostile concurrent replacements and physical file-picker
 input require separate verification. See the contract owner's `docs/native-v1.md`.
 
-The first battle presentation milestone now has an explicit Dream preset,
+An encounter can now opt into `pal.native.battle-hud.v1` with the paired
+`graphics.battle-hud.v1` capability and exact component schema hash. Studio's
+status-bar layout section authors bottom 3/4/5 presets or a right stack,
+geometry, RGBA colors, font/filter and registered portrait bindings separately.
+`native_box_layout.gd` only computes rectangles; `native_responsive_battle_hud.gd`
+renders the supported HP/MP widget from stable actor identities and the current
+playback snapshot. Reserving HUD space fits battle presentation into the
+remaining area. Source PNG sizes do not force card dimensions. No stat, timer,
+rule, save identity or action direction is defined by this layout component.
+
+This v1 component still requires an explicit classic/Dream presentation layout.
+It cannot coexist with the fixed-slot PNG UI skin on the same encounter; remove
+that binding explicitly first. No component means the previous behavior.
+The generic rectangle helper does not yet implement new enemy formations or
+side-view cameras. Large-party geometric fit is not a readability verdict.
+Contract details: `pal98-runtime-contracts/docs/native-battle-hud-v1.md`.
+Run `tests/test_box_layout.gd` for synthetic geometry and
+`tests/test_responsive_hud.gd <fixtures.json> <fresh-output>` for authored
+packages with routed window input. Screenshots/art acceptance, physical input,
+full gameplay and cross-platform verification remain separate evidence.
+
+The first battle presentation milestone has an explicit Dream preset,
 `pal.dream-oblique.v1`, carried by optional `pal.native.battle-layout.v2` and
 `graphics.battle-layout.v2`. Studio selects it through its existing battle page.
 It uses the named Dream source's 1–5 party feet, four bottom status boxes plus

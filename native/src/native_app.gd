@@ -11,7 +11,9 @@ const Statuses = preload("res://src/native_statuses.gd")
 const BattleView = preload("res://src/native_battle_view.gd")
 var battle_view
 var classic_hud = preload("res://src/native_battle_hud.gd").new()
-var dream_hud = preload("res://src/native_dream_battle_hud.gd").new()
+var legacy_dream_hud = preload("res://src/native_dream_battle_hud.gd").new()
+var responsive_hud = preload("res://src/native_responsive_battle_hud.gd").new()
+var dream_hud = legacy_dream_hud
 var sidebar: VBoxContainer
 var center: VBoxContainer
 var stage: Control
@@ -141,7 +143,8 @@ func _ready() -> void:
 	world_view = World.new()
 	viewport.add_child(world_view)
 	render_surface.logical_size_changed.connect(_fit_world)
-	dream_hud.visible = false; stage.add_child(dream_hud)
+	legacy_dream_hud.visible = false; stage.add_child(legacy_dream_hud)
+	responsive_hud.visible = false; stage.add_child(responsive_hud)
 	classic_commands = PanelContainer.new(); classic_commands.visible = false; stage.add_child(classic_commands)
 	classic_scroll = ScrollContainer.new(); classic_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	classic_scroll.follow_focus = true
@@ -276,6 +279,8 @@ func _fit_battle_commands() -> void:
 
 func _fit_classic_controls() -> void:
 	if not is_instance_valid(classic_commands): return
+	if _responsive_mode():
+		_fit_responsive_controls(); return
 	if _dream_mode():
 		var frame: Rect2 = BattleView.Classic.stage_rect(stage.size)
 		var zoom: float = frame.size.x/320.0
@@ -312,8 +317,34 @@ func _refresh_classic_hud() -> void:
 		if _dream_mode(): dream_hud.bind(battle_view)
 		else: classic_hud.bind(battle_view)
 
+func _responsive_mode() -> bool:
+	if not is_instance_valid(battle_view) or not battle_view.visible: return false
+	var battle: Dictionary = battle_view.display_battle()
+	return not battle.is_empty() and not Package.BattleHud.for_encounter(session.package.world,battle.encounter_id).is_empty()
+
 func _dream_mode() -> bool:
-	return is_instance_valid(battle_view) and BattleView.Classic.is_dream(battle_view.classic_layout()) and battle_view.visible
+	return _responsive_mode() or (is_instance_valid(battle_view) and BattleView.Classic.is_dream(battle_view.classic_layout()) and battle_view.visible)
+
+func _fit_responsive_controls() -> void:
+	responsive_hud.position = Vector2.ZERO; responsive_hud.scale = Vector2.ONE
+	responsive_hud.bind(battle_view); responsive_hud.fit(stage.size)
+	responsive_hud.visible = true; responsive_hud.commands.visible = classic_root and not battle_view.playing()
+	classic_commands.visible = not classic_root
+	classic_commands.scale = Vector2.ONE
+	var content: Rect2 = responsive_hud.boxes.content
+	var panel_size = Vector2(minf(420,content.size.x*.48),minf(280,content.size.y*.48))
+	if battle_view.playing(): panel_size = Vector2(minf(270,content.size.x*.48),84)
+	classic_commands.position = content.position+Vector2(12,maxf(0,content.size.y-panel_size.y-12))
+	classic_commands.size = panel_size
+	classic_commands.remove_theme_stylebox_override("panel")
+	options.add_theme_constant_override("v_separation",5); options.add_theme_constant_override("h_separation",6)
+	dialogue.add_theme_constant_override("separation",5)
+	dialogue_text.add_theme_font_size_override("font_size",14)
+	dialogue_text.visible = not classic_root and not _dream_misc()
+	for control in options.get_children()+target_pages.get_children():
+		if control is Button:
+			control.custom_minimum_size.y = 28; control.add_theme_font_size_override("font_size",14)
+	options.columns = 1 if _dream_misc() else 2
 
 func _dream_misc() -> bool:
 	return classic_misc and skill_menu.mode == "closed" and item_menu.mode == "closed"
@@ -331,11 +362,12 @@ func _dream_root(battle: Dictionary, actor: Dictionary) -> void:
 			_: action = func(): pass
 		var labels = {"attack":"攻击","skills":"技能","cooperative":"合击","misc":"其他"}
 		var button: Button = _button(dream_hud.commands,labels[symbol],action,symbol)
+		button.set_meta("battle_focus_key",symbol)
 		button.skin = Session.Package.BattleUi.for_encounter(session.package,battle.encounter_id)
 		# Invisible Button text still contributes to its minimum hit size.
 		button.clip_text = true; button.add_theme_font_size_override("font_size",8)
-		button.reference_size = 30; button.custom_minimum_size = Vector2(30,30)
-		var rect: Rect2 = BattleView.Classic.dream_command_rect(symbol,battle.party.size())
+		var rect: Rect2 = responsive_hud.command_rect(symbol) if _responsive_mode() else BattleView.Classic.dream_command_rect(symbol,battle.party.size())
+		button.reference_size = rect.size.x; button.custom_minimum_size = rect.size
 		button.position = rect.position; button.size = rect.size
 		if symbol == "cooperative": button.disabled = true; button.tooltip_text = "当前内容没有合击命令。"
 		if symbol == "skills":
@@ -343,6 +375,9 @@ func _dream_root(battle: Dictionary, actor: Dictionary) -> void:
 		button.queue_redraw()
 
 func _set_classic_mode(enabled: bool) -> void:
+	var selected = responsive_hud if _responsive_mode() else legacy_dream_hud
+	if dream_hud != selected:
+		dream_hud.clear(); dream_hud.visible = false; dream_hud = selected
 	if classic_mode != enabled:
 		classic_mode = enabled; classic_attack = false; classic_misc = false
 		dialogue.reparent(classic_scroll if enabled else center)

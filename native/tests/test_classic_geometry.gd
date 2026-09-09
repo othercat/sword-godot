@@ -22,7 +22,9 @@ func run() -> void:
 		var app = App.instantiate(); root.add_child(app); await settle()
 		app.set_process(false); app.set_physics_process(false); app.battle_view.set_process(false)
 		app.saves = Save.new(output.path_join("saves"))
-		check(app.open_package(fixture.path),fixture.name+" package loads"); app.session.set_focus(true,app.session._last_usec); await settle()
+		check(app.open_package(fixture.path),fixture.name+" package loads")
+		root.grab_focus(); await settle()
+		app.session.set_focus(true,app.session._last_usec); await settle()
 		await click(option(app,"继续")); await click(option(app,"五人")); await click(option(app,"继续"))
 		var s = app.session; var view = app.battle_view
 		check(s.battle_open() and s.state.active_party.size() == fixture.party,fixture.name+" authored party enters classic battle")

@@ -15,6 +15,7 @@ func run() -> void:
 		app.saves = Save.new(output.path_join("saves-"+str(fixture.count)))
 		check(app.open_package(package_path),"open Dream authored variant "+str(fixture.count))
 		if app.session.package == null: finish(); return
+		root.grab_focus(); await settle()
 		app.session.set_focus(true,app.session._last_usec); await settle()
 		await click(option(app,"继续")); await click(option(app,"五人")); await click(option(app,"继续"))
 		var s = app.session; var view = app.battle_view
