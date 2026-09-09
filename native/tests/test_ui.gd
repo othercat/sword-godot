@@ -25,6 +25,7 @@ func _run() -> void:
 	root.size = Vector2i(1280, 800)
 	app = AppScene.instantiate()
 	root.add_child(app)
+	app.key_bindings.apply(app.key_bindings.preset("wasd"))
 	await process_frame
 	output_dir = ProjectSettings.globalize_path("res://generated/pal/visual_tests").path_join(Session.unique("native-ui"))
 	DirAccess.make_dir_recursive_absolute(output_dir)

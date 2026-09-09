@@ -46,6 +46,14 @@ var save_list: VBoxContainer
 var viewport: SubViewport
 var fps_label: Label
 var walk_input = WalkInput.new()
+var key_bindings = preload("res://src/native_key_bindings.gd").new()
+var input_router = preload("res://src/native_input_router.gd").new()
+var input_settings = preload("res://src/native_input_settings.gd").new()
+var input_profile_path: String = "user://input.json"
+var input_profile_notice: String = ""
+var status_picker: AcceptDialog
+var status_text: Label
+var frame_selector: OptionButton
 var _last_physics_usec: int = 0
 var _gap_frame: int = -1
 var _movement_frame: int = -1
@@ -84,7 +92,10 @@ func _ready() -> void:
 	pause_button = _button(header, "暂停", _pause)
 	save_button = _button(header, "保存", _save)
 	_button(header, "读档", _show_saves)
+	_button(header, "状态", _show_status)
+	_button(header, "按键", func(): input_settings.open())
 	var frames = OptionButton.new()
+	frame_selector = frames
 	for rate in [60, 100, 120, 144, 240]: frames.add_item("%d 帧" % rate, rate)
 	frames.add_item("不限帧率", 0)
 	frames.item_selected.connect(func(i): Engine.max_fps = frames.get_item_id(i))
@@ -176,11 +187,21 @@ func _ready() -> void:
 	save_picker.visibility_changed.connect(_modal_changed)
 	equipment_menu.setup(self); add_child(equipment_menu)
 	equipment_menu.visibility_changed.connect(_modal_changed)
+	input_settings.setup(self); add_child(input_settings)
+	input_settings.visibility_changed.connect(_modal_changed)
+	status_picker = AcceptDialog.new(); status_picker.title = "伙伴状态"; status_picker.min_size = Vector2i(620,340)
+	var status_scroll = ScrollContainer.new(); status_scroll.custom_minimum_size = Vector2(600,280)
+	status_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	status_text = Label.new(); status_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	status_text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	status_scroll.add_child(status_text); status_picker.add_child(status_scroll)
+	add_child(status_picker); status_picker.visibility_changed.connect(_modal_changed)
+	frame_selector.get_popup().visibility_changed.connect(_modal_changed)
 	session.changed.connect(_refresh)
 	battle_view = BattleView.new(); battle_view.display_font = font; battle_view.visible = false; viewport.add_child(battle_view)
 	render_surface.battle_view = battle_view
 	get_window().focus_entered.connect(func(): session.set_focus(true))
-	get_window().focus_exited.connect(func(): walk_input.clear(); session.set_focus(false))
+	get_window().focus_exited.connect(func(): _clear_input(); input_router.clear(); session.set_focus(false))
 	session.battle_committed.connect(battle_view.present_committed)
 	battle_view.playback_finished.connect(_refresh)
 	battle_view.display_changed.connect(_refresh_classic_hud)
@@ -189,6 +210,10 @@ func _ready() -> void:
 	for i in range(args.size() - 1):
 		if args[i] == "--save-root": saves = Save.new(args[i + 1])
 		if args[i] == "--preview-stop-file": _preview_stop_file = args[i + 1]
+		if args[i] == "--input-profile": input_profile_path = args[i + 1]
+	if not key_bindings.load_profile(input_profile_path):
+		input_profile_notice = "本地按键配置无法读取，已使用传统默认键。"
+		message.text = input_profile_notice
 	for i in range(args.size() - 1):
 		if args[i] == "--package": open_package(args[i + 1])
 
@@ -364,7 +389,7 @@ func open_package(path: String) -> bool:
 		message.text = "无法打开 MOD：" + (candidate.error if not candidate.error.is_empty() else session.error)
 		if not _preview_stop_file.is_empty(): printerr("[Native preview] " + message.text)
 		return false
-	walk_input.clear()
+	_clear_input()
 	saves.envelope_extensions = {}
 	saves.source_origin = "normal"
 	saves.migrations = []
@@ -373,7 +398,7 @@ func open_package(path: String) -> bool:
 	world_view.bind(session)
 	_fit_world()
 	_refresh()
-	message.text = "已打开内容包"
+	message.text = "已打开内容包" + (" · " + input_profile_notice if not input_profile_notice.is_empty() else "")
 	if not _preview_stop_file.is_empty(): print("[Native preview] package loaded: " + candidate.manifest.package_id + " node=" + session.state.cursor.node_id)
 	return true
 
@@ -414,16 +439,16 @@ func _refresh() -> void:
 	var restore_focus: bool = focus == null or focus.get_parent() in [options,target_pages,dream_hud.commands]
 	var focus_key: String = str(focus.get_meta("battle_focus_key",focus.text.get_slice("\n",0))) if restore_focus and focus is Button else ""
 	_hover_target = null; _focus_target = null; battle_view.preview_targets([])
-	if session.dialogue_open or session.battle_open(): walk_input.clear()
+	if session.dialogue_open or session.battle_open(): _clear_input()
 	var key: String = world_view._history_key(session) + ":battle=" + str(session.battle_open())
 	world_view.visible = not session.battle_open() and not battle_view.playing()
-	instructions.text = ("选择下方命令行动\n轮到的伙伴以金框标出\nEsc 暂停\nF5 保存 · F9 读档" if session.battle_open() else "方向键 / WASD 行走\n空格 / Enter 交谈\nEsc 暂停\nF5 保存 · F9 读档")
+	instructions.text = "按键方案：" + {"classic":"传统方向键","wasd":"WASD 行走","key_ini":"已导入 key.ini"}[key_bindings.profile.preset] + "\n在“按键”中查看或更改\n鼠标选择命令与目标"
 	battle_view.bind(session); battle_view.visible = session.battle_open() or battle_view.playing()
 	_set_classic_mode(battle_view.visible and not battle_view.classic_layout().is_empty())
 	world_view.visible = not battle_view.visible
 	if key != _presentation_key:
 		_presentation_key = key
-		walk_input.clear()
+		_clear_input()
 		world_view.bind(session)
 		_fit_world()
 	for child in roster.get_children():
@@ -541,18 +566,33 @@ func _continue(choice_id: String = "") -> void:
 		if not _preview_stop_file.is_empty(): printerr("[Native preview] node=" + session.state.cursor.node_id + " " + session.error)
 
 func _show_picker() -> void:
-	walk_input.clear()
+	_clear_input()
 	picker.popup_centered_ratio(0.8)
 
 func _show_equipment() -> void:
-	walk_input.clear(); equipment_menu.open()
+	_clear_input(); equipment_menu.open()
 
 func _modal_changed() -> void:
-	walk_input.clear()
-	session.set_modal(picker.visible or save_picker.visible or equipment_menu.visible)
+	_clear_input()
+	input_router.clear()
+	session.set_modal(picker.visible or save_picker.visible or equipment_menu.visible or input_settings.visible or status_picker.visible or frame_selector.get_popup().visible)
+
+func _show_status() -> void:
+	if session.state.is_empty() or session.paused or session.modal or battle_view.playing(): return
+	var lines: PackedStringArray = []
+	for id in session.state.active_party:
+		var actor: Dictionary = session.entity(id)
+		var stats: Dictionary = Session.Progression.stats(session.package,actor)
+		lines.append("%s · 气血 %d/%d · 真气 %d/%d · 攻击 %d · 防御 %d" % [session.package.index.actor_definitions[actor.definition_id].display_name,actor.hp,stats.max_hp,actor.mp,stats.max_mp,stats.attack,stats.defense])
+		var statuses: PackedStringArray = Statuses.describe(session.package,session.state,id)
+		if not statuses.is_empty(): lines.append("；".join(statuses))
+	status_text.text = "\n\n".join(lines); status_picker.popup_centered()
+
+func _clear_input() -> void:
+	walk_input.clear(); input_router.release_movement()
 
 func _pause() -> void:
-	walk_input.clear()
+	_clear_input()
 	session.set_pause(not session.paused)
 
 func _save() -> void:
@@ -562,7 +602,7 @@ func _save() -> void:
 
 func _show_saves() -> void:
 	if session.state.is_empty(): return
-	walk_input.clear()
+	_clear_input()
 	for child in save_list.get_children():
 		save_list.remove_child(child)
 		child.queue_free()
@@ -582,35 +622,18 @@ func _show_saves() -> void:
 	save_picker.popup_centered()
 
 func _input(event: InputEvent) -> void:
-	# A GUI may consume a release after focus changes; never leave movement held.
-	if event is InputEventKey and not event.pressed: walk_input.key_event(event.keycode, false)
+	input_router.handle(self,event)
 
 func _unhandled_key_input(event: InputEvent) -> void:
-	if not event is InputEventKey: return
-	if picker.visible or save_picker.visible or equipment_menu.visible: return
-	if battle_view.playing() and event.keycode in [KEY_ENTER, KEY_SPACE, KEY_W, KEY_A, KEY_S, KEY_D, KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT]:
-		walk_input.clear(); return
-	if event.keycode in [KEY_W, KEY_A, KEY_S, KEY_D, KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT]:
-		walk_input.key_event(event.keycode, event.pressed, event.echo)
-	if not event.pressed or event.echo: return
-	if event.keycode in [KEY_ENTER, KEY_SPACE]:
-		if session.interact(): message.text = ""
-		elif not session.error.is_empty(): message.text = session.error
-	elif event.keycode == KEY_ESCAPE:
-		if battle_view.playing(): _pause()
-		elif session.battle_open() and skill_menu.mode != "closed": skill_menu.cancel(self)
-		elif session.battle_open() and item_menu.mode != "closed": item_menu.cancel(self)
-		elif session.battle_open() and classic_mode and classic_attack: _classic_select_attack(false)
-		elif session.battle_open() and classic_mode and classic_misc: _classic_select_misc(false)
-		else: _pause()
-	elif event.keycode == KEY_F5: _save()
-	elif event.keycode == KEY_F9: _show_saves()
+	# Also usable by diagnostic harnesses. A routed event is already consumed by
+	# _input in the real viewport; the held-key guard prevents a duplicate call.
+	input_router.handle(self,event)
 
 func _physics_process(_delta: float) -> void:
-	if picker.visible or save_picker.visible or equipment_menu.visible: return
+	if session.modal: return
 	session.tick()
 	if battle_view.playing():
-		walk_input.clear(); return
+		_clear_input(); return
 	var now: int = Time.get_ticks_usec()
 	var render_frame: int = Engine.get_process_frames()
 	if movement_frame_allowed(now, render_frame):

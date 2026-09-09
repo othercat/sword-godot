@@ -1,5 +1,34 @@
 # PAL Wanxiang Native preview
 
+Desktop input defaults to classic arrows and the traditional left-hand actions:
+F skills, E battle items, D guard, Q escape, S effective party status, W map
+equipment. Enter/Space/Ctrl confirm; Esc/Alt cancel. The player can select the
+earlier WASD movement preset or preview and apply a local PALDLL `key.ini` in
+the header's key settings. Only `[Remap]` is imported; sparse rows retain missing
+classic bindings, explicit zero disables a key, duplicate scans keep the first
+row with a notice. Unknown/malformed rows reject the whole import. Original
+configuration, package files and saves are not edited. Local `user://input.json`
+is saved with a unique backup; `--input-profile <path>` isolates preview tests.
+
+This independently written adapter uses Godot physical key positions and key
+location, not Windows hooks or DirectInput polling. Left/right modifier and
+keypad fixtures are covered by injected events; physical NumLock/layout/AltGr,
+OS focus behavior and Mac/ARM hardware are not yet verified. Native adds keypad
+Enter as a default confirm alias. Row order is retained in preferences; this
+does not reproduce CKey simultaneous-key priority, 16 Hz polling or PALDLL's
+optional action buffering. Confirmation is edge-triggered; movement retains the
+existing named cadence, and arrow/page keys navigate current enabled controls.
+Embedded dialogs retain normal text and UI keys. Mouse input remains available.
+
+Repeat, surround/auto attack and battle throwing are explicitly unavailable;
+map spells/items and cooperative rules are still separate work. They are not
+silently translated into other commands. Existing skill/item targets, defense,
+escape eligibility, animation playback and immutable save transactions remain
+the authority. `tests/test_input.gd` covers import/configuration, actual window
+key/mouse events, command and target selection, modal/focus guards, persistence
+and retained original-art author packages. Test reports separate synthetic
+signals and injected events from physical keyboard or complete-play evidence.
+
 An explicitly authored `pal.native.attack-formula.v1` component selects the
 deterministic `pal98.base-physical.v1` ordinary-attack adaptation. Native uses
 the shared contract's wide-integer base curve: party attacks request twice the

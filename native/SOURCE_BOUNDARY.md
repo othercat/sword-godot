@@ -12,6 +12,13 @@ No parent game code, translated implementation, autoload, resource, binary helpe
 font, shader or test was copied into this directory. `contracts/receipt.json`
 records the allowlisted draft schema snapshot, exact hashes and owner commit.
 
+The desktop key.ini adapter independently implements the public scan/action
+format and observed sparse-default/explicit-disable/first-row semantics. The
+product review records exact PALDLL source hashes and consumers. No PALDLL hook,
+polling code, key buffer or Windows message injection is included. Godot's
+physical_keycode and left/right location API provide portable identities; this
+does not claim hardware scan or original polling parity.
+
 The optional ordinary-attack base curve also uses recovered mathematical
 behavior recorded by the product's source review, expressed as a new public
 contract and fixed arithmetic vectors. Its short integer implementation is

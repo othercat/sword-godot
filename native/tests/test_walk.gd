@@ -143,10 +143,10 @@ func _run() -> void:
 	app._movement_frame = 11
 	check(not app.movement_frame_allowed(1516777, 11), "short-gap catch-up cannot commit a second step in one rendered frame")
 	var app_start: Dictionary = app.session.entity(leader_id).position.duplicate()
-	var press = InputEventKey.new(); press.keycode = KEY_S; press.pressed = true
+	var press = InputEventKey.new(); press.keycode = KEY_DOWN; press.pressed = true
 	root.push_input(press, true); await process_frame
 	app.session.tick(); app.session.sample_movement(app.walk_input)
-	var release = InputEventKey.new(); release.keycode = KEY_S; release.pressed = false
+	var release = InputEventKey.new(); release.keycode = KEY_DOWN; release.pressed = false
 	root.push_input(release, true); await process_frame
 	check(app.session.entity(leader_id).position.y == app_start.y + 1, "window input routes through application named movement")
 	await RenderingServer.frame_post_draw
