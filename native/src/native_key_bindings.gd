@@ -89,6 +89,7 @@ func describe() -> String:
 	return text
 
 static func import_file(path: String) -> Dictionary:
+	if not local_path(path): return {"error":"按键配置必须是本地文件；不访问网络路径。"}
 	var file = FileAccess.open(path,FileAccess.READ)
 	if file == null: return {"error":"无法读取所选 key.ini。"}
 	if file.get_length() > LIMIT: return {"error":"key.ini 超过 1 MiB 限制。"}
@@ -128,6 +129,7 @@ static func parse_ini(bytes: PackedByteArray) -> Dictionary:
 
 func load_profile(path: String) -> bool:
 	error = ""
+	if not local_path(path): error = "按键配置必须是本地文件；不访问网络路径。"; return false
 	if not FileAccess.file_exists(path): return true
 	var file = FileAccess.open(path,FileAccess.READ)
 	if file == null or file.get_length() > LIMIT: error = "无法读取本地按键配置；使用传统默认键。"; return false
@@ -140,6 +142,7 @@ func load_profile(path: String) -> bool:
 func save_profile(path: String, candidate: Dictionary) -> bool:
 	error = issue(candidate)
 	if not error.is_empty(): return false
+	if not local_path(path): error = "按键配置必须是本地文件；不访问网络路径。"; return false
 	var absolute: String = ProjectSettings.globalize_path(path)
 	if DirAccess.dir_exists_absolute(absolute): error = "按键配置路径是目录；当前配置保留。"; return false
 	if DirAccess.make_dir_recursive_absolute(absolute.get_base_dir()) != OK: error = "无法创建按键配置目录。"; return false
@@ -154,3 +157,11 @@ func save_profile(path: String, candidate: Dictionary) -> bool:
 		error = "无法备份旧按键配置；当前配置保留。"; return false
 	if DirAccess.rename_absolute(pending,absolute) != OK: error = "无法替换按键配置；当前配置保留。"; return false
 	return apply(candidate)
+
+static func local_path(path: String) -> bool:
+	# Match package admission before any existence query or filesystem access.
+	# Check the expansion as well, including redirected Godot user directories.
+	for value in [path,ProjectSettings.globalize_path(path)]:
+		var normalized: String = value.replace("\\","/")
+		if normalized.begins_with("//") or (normalized.contains("://") and not normalized.begins_with("res://") and not normalized.begins_with("user://")): return false
+	return not path.is_empty()

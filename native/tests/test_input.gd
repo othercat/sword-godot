@@ -163,6 +163,8 @@ func paged_checks() -> void:
 
 func parser_checks() -> void:
 	var model = Keys.new(); var parsed: Dictionary = Keys.import_file(spec.key_ini)
+	for path in ["//not-a-host.invalid/share/key.ini","\\\\not-a-host.invalid\\share\\key.ini","https://not-a-host.invalid/key.ini","file://not-a-host.invalid/share/input.json"]:
+		check(Keys.import_file(path).get("error","").contains("本地") and not model.load_profile(path) and not model.save_profile(path,Keys.preset("classic")),"strict-offline config paths rejected before I/O " + path)
 	check(not parsed.has("error") and model.apply(parsed.profile),"actual PALDLL key.ini parses without any Config side effect")
 	check(model.bindings[0x21] == 16 and model.bindings[0x9c] == 2,"real UTF-8 sample includes F magic and extended keypad confirm")
 	check(not parsed.notices.is_empty(),"ignored Config section is disclosed")
