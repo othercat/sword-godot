@@ -23,6 +23,8 @@ func begin(value, before: Dictionary, result: Dictionary, ending: String) -> voi
 	for id in battle.party: actors[id] = Battle.actor(before, id).duplicate(true)
 	for enemy in battle.enemies: actors[enemy.instance_id] = enemy
 	var physical: Dictionary = result.get("physical_action", {})
+	var enemy_receipts: Dictionary = {}
+	for action in result.get("enemy_physical_actions", []): enemy_receipts[int(action.event_start)] = action
 	var expanded: bool = false
 	for i in range(result.events.size()):
 		var event: Dictionary = result.events[i]
@@ -31,6 +33,8 @@ func begin(value, before: Dictionary, result: Dictionary, ending: String) -> voi
 			if not expanded: _physical_phases(physical); expanded = true
 			var receipt: Dictionary = event.duplicate(true); receipt.kind = "physical_commit"; receipt.amount = 0
 			_add(event.target, "", receipt, i); phases[-1].duration_us = 1
+		elif enemy_receipts.has(i) and enemy_receipts[i].outcome in ["block","cover"]:
+			_enemy_defense_phases(enemy_receipts[i],event,i)
 		elif event.kind == "attack":
 			_add(event.source, "attack", {}, -1)
 			_add(event.target, "hit", event, i)
@@ -51,6 +55,44 @@ func begin(value, before: Dictionary, result: Dictionary, ending: String) -> voi
 				_add(id, "victory" if ending == "win" else ("escape" if ending == "escape" else "idle"), {}, -1)
 	active = not phases.is_empty()
 	if active: _enter()
+
+func _enemy_defense_phases(action: Dictionary, event: Dictionary, index: int) -> void:
+	var cover: bool = action.outcome == "cover"
+	var defender: String = action.coverer if cover else action.target
+	if cover:
+		_add(defender,"defend",{},-1)
+		phases[-1].duration_us = 180000
+		_defense_metadata(action,"in")
+	_add(action.source,"attack",{},-1)
+	_defense_metadata(action,"hold")
+	_add(defender,"defend",event,index) # The original zero-damage result is consumed once.
+	_defense_metadata(action,"hold")
+	if cover:
+		_add(defender,"defend",{},-1)
+		phases[-1].duration_us = 180000
+		_defense_metadata(action,"out")
+
+func _defense_metadata(action: Dictionary, motion: String) -> void:
+	phases[-1].reaction = action.outcome
+	phases[-1].defender_id = action.coverer if action.outcome == "cover" else action.target
+	if action.outcome == "cover": phases[-1].cover = {"actor_id":action.coverer,"target_id":action.target,"attacker_id":action.source,"motion":motion}
+
+func pose_for(id: String) -> String:
+	var phase: Dictionary = current()
+	if phase.get("defender_id") == id: return "defend"
+	return str(phase.get("action","")) if phase.get("actor_id") == id else ""
+
+func position_for(id: String, anchors: Dictionary) -> Vector2:
+	var origin: Vector2 = anchors[id]; var phase: Dictionary = current()
+	var cover: Dictionary = phase.get("cover",{})
+	if cover.get("actor_id") != id: return origin
+	var target: Vector2 = anchors[cover.target_id]
+	var toward: Vector2 = anchors[cover.attacker_id]-target
+	# A temporary display offset; the static formation, fitting and authority stay fixed.
+	var destination: Vector2 = target+toward.normalized()*minf(8.0,toward.length()/4.0)
+	var progress: float = clampf(elapsed_us/float(phase.duration_us),0.0,1.0)
+	if cover.motion == "hold": return destination
+	return origin.lerp(destination,1.0-progress if cover.motion == "out" else progress)
 
 func _physical_phases(action: Dictionary) -> void:
 	# The authoritative per-target settlement is aggregated. Display each already

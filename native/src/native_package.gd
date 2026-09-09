@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: MIT
 extends RefCounted
+const EnemyPhysical = preload("res://src/native_enemy_physical.gd")
 const Zip = preload("res://src/native_zip.gd")
 const Directory = preload("res://src/native_directory.gd")
 const Reader = preload("res://src/native_json.gd")
@@ -55,7 +56,7 @@ func load_package(path: String) -> bool:
 	content_lock = Schema.digest(bytes)
 	if not manifest.dependencies.is_empty(): return _fail("package dependencies not implemented")
 	for capability in manifest.required_capabilities:
-		if capability not in CAPABILITIES and capability not in [EnemyActions.CAPABILITY, Progression.CAPABILITY, Equipment.CAPABILITY, Classic.CAPABILITY, Classic.CAPABILITY_V2, BattleUi.CAPABILITY, AttackFormula.CAPABILITY, AttackRandom.CAPABILITY, PlayerPhysical.CAPABILITY, Training.CAPABILITY, Training.ESCAPE_CAPABILITY]: return _fail("unsupported capability: " + capability)
+		if capability not in CAPABILITIES and capability not in [EnemyActions.CAPABILITY, Progression.CAPABILITY, Equipment.CAPABILITY, Classic.CAPABILITY, Classic.CAPABILITY_V2, BattleUi.CAPABILITY, AttackFormula.CAPABILITY, AttackRandom.CAPABILITY, PlayerPhysical.CAPABILITY, Training.CAPABILITY, Training.ESCAPE_CAPABILITY, EnemyPhysical.CAPABILITY]: return _fail("unsupported capability: " + capability)
 	for key in ["pal.native.package.v1", "pal.native.content.v1"]:
 		if manifest.contract_hashes.get(key) != schema.hashes.get(key): return _fail("contract hash mismatch: " + key)
 	if manifest.contract_hashes.size() != 2: return _fail("unknown contract hash")
@@ -97,6 +98,8 @@ func load_package(path: String) -> bool:
 	for capability in [Training.CAPABILITY,Training.ESCAPE_CAPABILITY]:
 		if Training.used(world) != (capability in manifest.required_capabilities): return _fail("training capability/component mismatch")
 	if Training.used(world): component_hashes[Training.SCHEMA] = schema.hashes.get(Training.SCHEMA)
+	if EnemyPhysical.used(world) != (EnemyPhysical.CAPABILITY in manifest.required_capabilities): return _fail("enemy physical capability/component mismatch")
+	if EnemyPhysical.used(world): component_hashes[EnemyPhysical.SCHEMA] = schema.hashes.get(EnemyPhysical.SCHEMA)
 	var ui_used: bool = BattleUi.used(world)
 	if ui_used != (BattleUi.CAPABILITY in manifest.required_capabilities): return _fail("battle UI capability/component mismatch")
 	if ui_used: component_hashes[BattleUi.SCHEMA] = schema.hashes.get(BattleUi.SCHEMA)
@@ -308,6 +311,8 @@ func _references() -> bool:
 	if not growth_issue.is_empty(): return _fail(growth_issue)
 	var training_issue: String = Training.validate_content(self)
 	if not training_issue.is_empty(): return _fail(training_issue)
+	var enemy_physical_issue: String = EnemyPhysical.validate_content(self)
+	if not enemy_physical_issue.is_empty(): return _fail(enemy_physical_issue)
 	if SceneTravel.used(world) and SceneTravel.CAPABILITY not in manifest.required_capabilities: return _fail("missing scene travel capability")
 	if PartyTrail.used(world):
 		if PartyTrail.CAPABILITY not in manifest.required_capabilities: return _fail("missing party trail capability")
@@ -392,4 +397,6 @@ static func expected_rules(content: Dictionary) -> Dictionary:
 		result.version = "0.17.0"; result.player_physical = PlayerPhysical.rule(content)
 	if Training.used(content):
 		result.version = "0.18.0"; result.training = Training.rule(content)
+	if EnemyPhysical.used(content):
+		result.version = "0.19.0"; result.enemy_physical = EnemyPhysical.rule(content)
 	return result

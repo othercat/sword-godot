@@ -82,7 +82,7 @@ static func action_blocks(state: Dictionary) -> Dictionary:
 			elif event.target != event.source: return {"error": "command must target its source identity"}
 			blocks.append([event])
 		else:
-			if event.kind not in ["damage", "heal", "revive", "status_add", "status_remove"] or blocks.is_empty() or blocks[-1][0].kind not in ["cast", "item_use"]: return {"error": "orphan effect"}
+			if event.kind not in ["damage", "heal", "revive", "status_add", "status_remove"] or blocks.is_empty() or not (blocks[-1][0].kind in ["cast", "item_use"] or (state.extensions.has("pal.native.enemy-physical") and blocks[-1][0].kind == "attack" and blocks[-1][0].source in enemies)): return {"error": "orphan effect"}
 			blocks[-1].append(event)
 	return {"blocks": blocks}
 

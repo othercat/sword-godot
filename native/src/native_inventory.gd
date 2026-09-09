@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: MIT
 extends RefCounted
+const EnemyPhysicalValidator = preload("res://src/native_enemy_physical_validator.gd")
 ## String identities and bounded stacks; mutations belong to the session candidate.
 const CAPABILITY = "inventory.items.v1"
 const RULE = "native.inventory-items.v1"
@@ -95,6 +96,8 @@ static func validate_state(package, state: Dictionary) -> String:
 		if not issue.is_empty(): return issue
 	var battle: Dictionary = state.extensions.get(Effects.KEY, {})
 	if battle.is_empty() or not battle.events.any(func(e): return e.has("item_id")): return ""
+	if battle.events[0].kind != "item_use" and package.world.extensions.has("pal.native.enemy-physical"):
+		return EnemyPhysicalValidator.validate(package,state,func(a): return Effects.Statuses.Progression.stats(package,a))
 	var item: Dictionary = definition(package, battle.events[0].get("item_id", ""))
 	if item.is_empty() or item.battle_use == null: return "unknown or unusable item result"
 	var remaining: int = count(state, item.id)

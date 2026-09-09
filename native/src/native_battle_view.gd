@@ -52,7 +52,11 @@ func playing() -> bool:
 
 func action_caption() -> String:
 	if not playing(): return ""
-	var event: Dictionary = presentation.current().event
+	var phase: Dictionary = presentation.current()
+	if phase.get("reaction") in ["block","cover"]:
+		var defender: Dictionary = presentation.actors[phase.defender_id]
+		return session.package.index.actor_definitions[defender.definition_id].display_name + (" · 援护" if phase.reaction == "cover" else " · 格挡")
+	var event: Dictionary = phase.event
 	if event.get("kind") != "cast": return ""
 	var actor: Dictionary = presentation.actors[event.source]
 	var skills: Array = session.package.world.get("skill_definitions", []).filter(func(s): return s.id == event.skill_id)
@@ -180,6 +184,9 @@ func _draw_battle(battle: Dictionary, bounds: Vector2) -> void:
 		var zoom: float = classic_stage.size.x / Classic.SIZE.x
 		projection = Transform2D(Vector2(zoom,0),Vector2(0,zoom),classic_stage.position)
 	var scale_value: float = projection.x.x * (float(classic.sprite_scale_milli)/1000.0 if not classic.is_empty() else 1.0)
+	var anchors: Dictionary = {}
+	for body in bodies: anchors[body.row.instance_id] = body.position
+	for body in bodies: body.position = presentation.position_for(body.row.instance_id,anchors)
 	bodies.sort_custom(func(a,b): return a.position.y < b.position.y)
 	for body in bodies:
 		if body.side == 0 and body.index / PAGE_SIZE != enemy_page: continue
@@ -200,8 +207,9 @@ func _draw_battle(battle: Dictionary, bounds: Vector2) -> void:
 		elif row.instance_id in battle.guarding: action = "defend"
 		elif row.hp * 5 <= Progression.stats(session.package, row).max_hp: action = "dying"
 		var elapsed: int = roundi(idle_elapsed * 1000000.0)
-		if phase.get("actor_id") == row.instance_id and not phase.action.is_empty():
-			action = phase.action; elapsed = roundi(presentation.elapsed_us)
+		var override: String = presentation.pose_for(row.instance_id)
+		if not override.is_empty():
+			action = override; elapsed = roundi(presentation.elapsed_us)
 			if action == "attack": pos += Vector2(-18,-8) * (1 if body.side == 1 else -1) * sin(PI * elapsed / phase.duration_us)
 		pos = projection * pos
 		var set_id = definition.get("battle_sprite_set")
@@ -253,7 +261,8 @@ func _draw_battle(battle: Dictionary, bounds: Vector2) -> void:
 			var event: Dictionary = phase.event
 			if event.kind in ["attack","damage","status_damage","heal","revive","status_heal"]:
 				var healing: bool = event.kind in ["heal","revive","status_heal"]
-				draw_string(display_font,body.effect_origin,("+" if healing else "-")+str(event.amount),HORIZONTAL_ALIGNMENT_LEFT,90,22,Color("80d8a1") if healing else Color("ffc7a0"))
+				var result_text: String = ("援护" if phase.reaction == "cover" else "格挡") if phase.get("reaction") in ["block","cover"] else ("+" if healing else "-")+str(event.amount)
+				draw_string(display_font,body.effect_origin,result_text,HORIZONTAL_ALIGNMENT_LEFT,90,22,Color("80d8a1") if healing else Color("ffc7a0"))
 	var caption: String = action_caption()
 	if not caption.is_empty():
 		var width: float = maxf(24, bounds.x - 40)

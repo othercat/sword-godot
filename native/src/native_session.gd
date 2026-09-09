@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: MIT
 extends RefCounted
+const EnemyPhysical = preload("res://src/native_enemy_physical.gd")
 const Battle = preload("res://src/native_battle.gd")
 const Inventory = preload("res://src/native_inventory.gd")
 const Regions = preload("res://src/native_regions.gd")
@@ -51,6 +52,7 @@ func activate(candidate, now_usec: int = -1) -> bool:
 	Training.initialize(package,state)
 	Progression.initialize(package, state)
 	PlayerPhysical.initialize(package.world,state)
+	EnemyPhysical.initialize(package.world,state)
 	Inventory.initialize(world, state)
 	if Equipment.used(world):
 		error = Inventory.change(package, state, equipment_costs)
@@ -85,11 +87,13 @@ func battle_command(action: String, target: String = "", skill_id: String = "", 
 		error = result.error
 		return false
 	Training.finish_command(package.world,candidate)
+	EnemyPhysical.finish_command(package.world,candidate)
 	if candidate.extensions[Battle.KEY].events.size() > 8192:
 		error = "本次行动超过保存事件预算（8192条），全部行动已撤回。请调整敌方技能或目标数量。"
 		return false
 	var presentation_result: Dictionary = candidate.extensions[Battle.KEY].duplicate(true)
 	if Training.used(package.world): presentation_result.training_action = candidate.extensions[Training.KEY].pending.actions[-1].duplicate(true)
+	if EnemyPhysical.used(package.world): presentation_result.enemy_physical_actions = candidate.extensions[EnemyPhysical.KEY].pending.commands[-1].enemy_actions.duplicate(true)
 	var physical_action: Dictionary = PlayerPhysical.latest(candidate)
 	if not physical_action.is_empty() and physical_action.step == presentation_result.step:
 		presentation_result.physical_action = physical_action.duplicate(true)
@@ -106,6 +110,7 @@ func battle_command(action: String, target: String = "", skill_id: String = "", 
 			return false
 		candidate.committed_effect_ids.append(battle.execution_id)
 		PlayerPhysical.settle(package.world,candidate,result.outcome)
+		EnemyPhysical.settle(package.world,candidate,result.outcome)
 		candidate.extensions.erase(Battle.KEY)
 		candidate.cursor.phase = "before_node"
 		var budget: Dictionary = {"remaining": 1024, "planning": {"remaining": PartyTrail.MAX_VISITS}}

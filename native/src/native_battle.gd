@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: MIT
 extends RefCounted
+const EnemyPhysical = preload("res://src/native_enemy_physical.gd")
 ## Deterministic Native foundation; deliberately not PAL.EXE damage parity.
 const CAPABILITY = "battle.turn-core.v1"
 const RULE = "native.battle-turn-core.v1"
@@ -64,6 +65,8 @@ static func begin(package, state: Dictionary, node: Dictionary, execution_id: St
 	Progression.begin(package, state)
 	PlayerPhysical.begin(package.world, state)
 	Training.begin(package.world, state)
+	var physical_issue: String = EnemyPhysical.begin(package.world,state)
+	if not physical_issue.is_empty(): return physical_issue
 	state.cursor.phase = "battle_command"
 	return ""
 
@@ -149,7 +152,8 @@ static func command(package, state: Dictionary, action: String, target: String =
 	elif action == "escape":
 		if not encounter(package.world, battle.encounter_id).allow_escape: return {"error": "此战不能撤离。"}
 	elif action not in ["guard", "wait"]: return {"error": "unsupported battle action"}
-	var random_before: int = Training.cursor(state) if Training.used(package.world) else 0
+	var random_before: int = Training.cursor(state) if Training.used(package.world) or EnemyPhysical.used(package.world) else 0
+	var hp_before: Array = EnemyPhysical.health(state) if EnemyPhysical.used(package.world) else []
 	var escaped: Variant = null
 	battle.events = []; battle.step += 1
 	if action == "escape":
@@ -173,6 +177,7 @@ static func command(package, state: Dictionary, action: String, target: String =
 		if not issue.is_empty(): return {"error":issue}
 	issue = Training.note(package.world,state,action,source,skill_id,item_id,random_before,escaped)
 	if not issue.is_empty(): return {"error":issue}
+	EnemyPhysical.note_player(package.world,state,action,source.instance_id,skill_id,item_id,random_before,hp_before)
 	if action == "escape" and (escaped == null or escaped.success): return {"outcome":"escape"}
 	if _living_turn(state, battle.party, 0) < 0: return {"outcome": "loss"}
 	if battle.enemies.all(func(row): return row.hp == 0): return {"outcome": "win"}
@@ -191,6 +196,10 @@ static func command(package, state: Dictionary, action: String, target: String =
 		if not enemy_plan.is_empty():
 			issue = Skills.apply(package, state, row, enemy_plan)
 			if not issue.is_empty(): return {"error": issue} # Apply failure rolls back the whole command.
+		elif EnemyPhysical.used(package.world):
+			var party: Array = EnemyPhysical.snapshot(package,state,func(a): return Progression.stats(package,a),func(a): return Statuses.stat(package,state,a,"defense"))
+			issue = EnemyPhysical.apply(package,state,row,Statuses.stat(package,state,row,"attack"),party,func(s,t,amount): Statuses.after_damage(package,state,s,t,amount),func(s,id,t): return Inventory.Effects.apply(package,state,s,Inventory.definition(package,id).battle_use,[t],"item_id",id))
+			if not issue.is_empty(): return {"error":issue}
 		else:
 			var defender: Dictionary = actor(state, battle.party[_living_turn(state, battle.party, 0)])
 			issue = _hit(package, state, row, defender, defender.instance_id in battle.guarding, battle.events)

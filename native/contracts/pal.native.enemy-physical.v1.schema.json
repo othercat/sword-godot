@@ -1,0 +1,1070 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "pal.native.enemy-physical.v1",
+  "title": "Optional Native enemy single physical action and ordered random receipts",
+  "x-status": "draft",
+  "properties": {
+    "schema": {
+      "const": "pal.native.enemy-physical.v1"
+    }
+  },
+  "oneOf": [
+    {
+      "$ref": "#/definitions/content"
+    },
+    {
+      "$ref": "#/definitions/state"
+    }
+  ],
+  "definitions": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+    },
+    "cursor": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4294967292
+    },
+    "stat": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1000000000
+    },
+    "event": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "source",
+            "target",
+            "amount"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "attack",
+                "guard",
+                "escape"
+              ]
+            },
+            "source": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+            },
+            "target": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+            },
+            "amount": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000000
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "source",
+            "target",
+            "amount",
+            "skill_id"
+          ],
+          "properties": {
+            "kind": {
+              "const": "cast"
+            },
+            "source": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+            },
+            "target": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+            },
+            "amount": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000000
+            },
+            "skill_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "source",
+            "target",
+            "amount",
+            "skill_id",
+            "effect_index"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "damage",
+                "heal",
+                "revive"
+              ]
+            },
+            "source": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+            },
+            "target": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+            },
+            "amount": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000000
+            },
+            "skill_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+            },
+            "effect_index": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 7
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "source",
+            "target",
+            "amount",
+            "item_id"
+          ],
+          "properties": {
+            "kind": {
+              "const": "item_use"
+            },
+            "source": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+            },
+            "target": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+            },
+            "amount": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "item_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "source",
+            "target",
+            "amount",
+            "item_id",
+            "effect_index"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "damage",
+                "heal",
+                "revive"
+              ]
+            },
+            "source": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+            },
+            "target": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+            },
+            "amount": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000000
+            },
+            "effect_index": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 7
+            },
+            "item_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "source",
+            "target",
+            "amount",
+            "skill_id",
+            "effect_index",
+            "status_id"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "status_add",
+                "status_remove"
+              ]
+            },
+            "source": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+            },
+            "target": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+            },
+            "amount": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000000
+            },
+            "skill_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+            },
+            "effect_index": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 7
+            },
+            "status_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "source",
+            "target",
+            "amount",
+            "item_id",
+            "effect_index",
+            "status_id"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "status_add",
+                "status_remove"
+              ]
+            },
+            "source": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+            },
+            "target": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+            },
+            "amount": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000000
+            },
+            "item_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+            },
+            "effect_index": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 7
+            },
+            "status_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "source",
+            "target",
+            "amount",
+            "status_id",
+            "reason"
+          ],
+          "properties": {
+            "kind": {
+              "const": "status_clear"
+            },
+            "source": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+            },
+            "target": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+            },
+            "amount": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000000
+            },
+            "status_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+            },
+            "reason": {
+              "type": "string",
+              "enum": [
+                "damage",
+                "death",
+                "expired"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "source",
+            "target",
+            "amount",
+            "status_id",
+            "tick_index"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "status_damage",
+                "status_heal"
+              ]
+            },
+            "source": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+            },
+            "target": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+            },
+            "amount": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000000
+            },
+            "status_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+            },
+            "tick_index": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 3
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "source",
+            "target",
+            "amount",
+            "status_id"
+          ],
+          "properties": {
+            "kind": {
+              "const": "status_skip"
+            },
+            "source": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+            },
+            "target": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+            },
+            "amount": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000000
+            },
+            "status_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "content": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "kind",
+        "profile",
+        "weak_hp_below",
+        "weak_hp_percent",
+        "ineligible_status_ids",
+        "protect_status_id",
+        "actors",
+        "resistance_modifiers",
+        "enemy_effects",
+        "provenance"
+      ],
+      "properties": {
+        "schema": {
+          "const": "pal.native.enemy-physical.v1"
+        },
+        "kind": {
+          "const": "content"
+        },
+        "profile": {
+          "const": "pal98.enemy-single-physical.v1"
+        },
+        "weak_hp_below": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "weak_hp_percent": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "ineligible_status_ids": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 128,
+          "items": {
+            "$ref": "#/definitions/id"
+          },
+          "uniqueItems": true
+        },
+        "protect_status_id": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/definitions/id"
+            }
+          ]
+        },
+        "actors": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 10000,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "instance_id",
+              "effect_resistance",
+              "coverer_id"
+            ],
+            "properties": {
+              "instance_id": {
+                "$ref": "#/definitions/id"
+              },
+              "effect_resistance": {
+                "type": "integer",
+                "minimum": -1000000,
+                "maximum": 1000000
+              },
+              "coverer_id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/definitions/id"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "resistance_modifiers": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 1024,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "id",
+              "delta"
+            ],
+            "properties": {
+              "kind": {
+                "enum": [
+                  "status",
+                  "equipment"
+                ]
+              },
+              "id": {
+                "$ref": "#/definitions/id"
+              },
+              "delta": {
+                "type": "integer",
+                "minimum": -1000000,
+                "maximum": 1000000
+              }
+            }
+          }
+        },
+        "enemy_effects": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1024,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "definition_id",
+              "item_id",
+              "rate"
+            ],
+            "properties": {
+              "definition_id": {
+                "$ref": "#/definitions/id"
+              },
+              "item_id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/definitions/id"
+                  }
+                ]
+              },
+              "rate": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 10
+              }
+            }
+          }
+        },
+        "provenance": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "source_revision"
+          ],
+          "properties": {
+            "status": {
+              "const": "author-choice"
+            },
+            "source_revision": {
+              "type": "string",
+              "maxLength": 128
+            }
+          }
+        }
+      }
+    },
+    "actor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "instance_id",
+        "definition_id",
+        "hp",
+        "max_hp",
+        "defense",
+        "guarding",
+        "statuses",
+        "equipment"
+      ],
+      "properties": {
+        "instance_id": {
+          "$ref": "#/definitions/id"
+        },
+        "definition_id": {
+          "$ref": "#/definitions/id"
+        },
+        "hp": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "max_hp": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000
+        },
+        "defense": {
+          "$ref": "#/definitions/stat"
+        },
+        "guarding": {
+          "type": "boolean"
+        },
+        "statuses": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 16,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "status_id",
+              "stacks"
+            ],
+            "properties": {
+              "status_id": {
+                "$ref": "#/definitions/id"
+              },
+              "stacks": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000000
+              }
+            }
+          }
+        },
+        "equipment": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 32,
+          "items": {
+            "$ref": "#/definitions/id"
+          }
+        }
+      }
+    },
+    "action": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "attack",
+        "party",
+        "rng_before",
+        "rng_after",
+        "target",
+        "coverer",
+        "outcome",
+        "amount",
+        "effect_pass",
+        "effect_resistance",
+        "sampled_slots",
+        "event_start",
+        "event_count"
+      ],
+      "properties": {
+        "source": {
+          "$ref": "#/definitions/id"
+        },
+        "attack": {
+          "$ref": "#/definitions/stat"
+        },
+        "party": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "items": {
+            "$ref": "#/definitions/actor"
+          }
+        },
+        "rng_before": {
+          "$ref": "#/definitions/cursor"
+        },
+        "rng_after": {
+          "$ref": "#/definitions/cursor"
+        },
+        "target": {
+          "$ref": "#/definitions/id"
+        },
+        "coverer": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/definitions/id"
+            }
+          ]
+        },
+        "outcome": {
+          "enum": [
+            "hit",
+            "block",
+            "cover"
+          ]
+        },
+        "amount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "effect_pass": {
+          "type": "boolean"
+        },
+        "effect_resistance": {
+          "type": "integer",
+          "minimum": -1000000000,
+          "maximum": 1000000000
+        },
+        "sampled_slots": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 128,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 31
+          }
+        },
+        "event_start": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 8191
+        },
+        "event_count": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8192
+        }
+      }
+    },
+    "health": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "instance_id",
+          "hp"
+        ],
+        "properties": {
+          "instance_id": {
+            "$ref": "#/definitions/id"
+          },
+          "hp": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000
+          }
+        }
+      }
+    },
+    "command": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "step",
+        "round",
+        "source",
+        "action",
+        "skill_id",
+        "item_id",
+        "physical_draws",
+        "rng_before",
+        "rng_after_player",
+        "rng_after",
+        "hp_before",
+        "hp_after",
+        "enemy_actions",
+        "events"
+      ],
+      "properties": {
+        "step": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000
+        },
+        "round": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        },
+        "source": {
+          "$ref": "#/definitions/id"
+        },
+        "action": {
+          "enum": [
+            "attack",
+            "skill",
+            "item",
+            "guard",
+            "wait",
+            "escape"
+          ]
+        },
+        "skill_id": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/definitions/id"
+            }
+          ]
+        },
+        "item_id": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/definitions/id"
+            }
+          ]
+        },
+        "physical_draws": {
+          "enum": [
+            0,
+            2,
+            3,
+            5,
+            9
+          ]
+        },
+        "rng_before": {
+          "$ref": "#/definitions/cursor"
+        },
+        "rng_after_player": {
+          "$ref": "#/definitions/cursor"
+        },
+        "rng_after": {
+          "$ref": "#/definitions/cursor"
+        },
+        "hp_before": {
+          "$ref": "#/definitions/health"
+        },
+        "hp_after": {
+          "$ref": "#/definitions/health"
+        },
+        "enemy_actions": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 32,
+          "items": {
+            "$ref": "#/definitions/action"
+          }
+        },
+        "events": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8192,
+          "items": {
+            "$ref": "#/definitions/event"
+          }
+        }
+      }
+    },
+    "battle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "execution_id",
+        "encounter_id",
+        "node_id",
+        "activation",
+        "executor_step",
+        "party",
+        "rng_start",
+        "rng_end",
+        "outcome",
+        "commands"
+      ],
+      "properties": {
+        "execution_id": {
+          "$ref": "#/definitions/id"
+        },
+        "encounter_id": {
+          "$ref": "#/definitions/id"
+        },
+        "node_id": {
+          "$ref": "#/definitions/id"
+        },
+        "activation": {
+          "$ref": "#/definitions/id"
+        },
+        "executor_step": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000000
+        },
+        "party": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "items": {
+            "$ref": "#/definitions/id"
+          },
+          "uniqueItems": true
+        },
+        "rng_start": {
+          "$ref": "#/definitions/cursor"
+        },
+        "rng_end": {
+          "$ref": "#/definitions/cursor"
+        },
+        "outcome": {
+          "enum": [
+            "",
+            "win",
+            "loss",
+            "escape"
+          ]
+        },
+        "commands": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 100000,
+          "items": {
+            "$ref": "#/definitions/command"
+          }
+        }
+      }
+    },
+    "state": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "kind",
+        "pending",
+        "completed"
+      ],
+      "properties": {
+        "schema": {
+          "const": "pal.native.enemy-physical.v1"
+        },
+        "kind": {
+          "const": "state"
+        },
+        "pending": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/definitions/battle"
+            }
+          ]
+        },
+        "completed": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 10000,
+          "items": {
+            "$ref": "#/definitions/battle"
+          }
+        }
+      }
+    }
+  }
+}

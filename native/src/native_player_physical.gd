@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: MIT
 extends RefCounted
+const EnemyPhysicalValidator = preload("res://src/native_enemy_physical_validator.gd")
 ## Player action orchestration. Enemy actions and the existing growth rules remain separate.
 const KEY = "pal.native.player-physical"
 const SCHEMA = "pal.native.player-physical.v1"
@@ -136,6 +137,10 @@ static func validate_state(package, state: Dictionary) -> String:
 	var issue: String = package.schema.validate(SCHEMA,component)
 	if not issue.is_empty(): return issue
 	if component.kind != "state": return "wrong player physical state kind"
+	var merged: bool = package.world.extensions.has("pal.native.enemy-physical")
+	if merged:
+		issue = EnemyPhysicalValidator.validate(package,state,func(a): return Statuses.Progression.stats(package,a))
+		if not issue.is_empty(): return issue
 	var value: Dictionary = package.world.extensions[KEY]; var hit_rule: Dictionary = package.world.extensions[RandomHit.KEY]
 	var end: int = 0
 	for key in ["last_battle","pending"]:
@@ -145,12 +150,12 @@ static func validate_state(package, state: Dictionary) -> String:
 		if encounters.is_empty() or ledger.party.is_empty() or not ledger.party.all(func(id): return package.index.entities.has(id)): return "physical ledger encounter or party mismatch"
 		if key == "last_battle":
 			if ledger.outcome not in ["win","loss","escape"] or ledger.execution_id not in state.committed_effect_ids: return "uncommitted physical battle ledger"
-		elif not ledger.outcome.is_empty() or (ledger.rng_start != end and not package.world.extensions.has("pal.native.training")): return "physical pending random continuation mismatch"
+		elif not ledger.outcome.is_empty() or (ledger.rng_start != end and not (package.world.extensions.has("pal.native.training") or merged)): return "physical pending random continuation mismatch"
 		var enemies: Dictionary = {}
 		for enemy in encounters[0].enemies: enemies[enemy.instance_id] = enemy.definition_id
 		var previous_step: int = 0; var rng_cursor: int = ledger.rng_start; var practice: Dictionary = {}
 		for action in ledger.actions:
-			if action.step <= previous_step or action.source not in ledger.party or (action.rng_before != rng_cursor and (not package.world.extensions.has("pal.native.training") or action.rng_before < rng_cursor)): return "physical action source, step or random gap"
+			if action.step <= previous_step or action.source not in ledger.party or (action.rng_before != rng_cursor and (not (package.world.extensions.has("pal.native.training") or merged) or action.rng_before < rng_cursor)): return "physical action source, step or random gap"
 			var definition_id: String = package.index.entities[action.source].definition_id
 			var targets: Array = []
 			for target in action.targets:
@@ -169,7 +174,7 @@ static func validate_state(package, state: Dictionary) -> String:
 			practice[action.source] = [action.health_count,action.attack_count]
 			rng_cursor = action.rng_after; previous_step = action.step
 		end = rng_cursor
-	if cursor(state.rng) != end and not package.world.extensions.has("pal.native.training"): return "physical random cursor differs from action ledger"
+	if cursor(state.rng) != end and not (package.world.extensions.has("pal.native.training") or merged): return "physical random cursor differs from action ledger"
 	var pending = component.pending; var battle = state.extensions.get(BATTLE)
 	if (pending != null) != (battle != null): return "physical pending battle presence mismatch"
 	if pending != null:

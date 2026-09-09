@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: MIT
 extends RefCounted
+const EnemyPhysical = preload("res://src/native_enemy_physical.gd")
 ## Authored seven-track practice. Gameplay RNG and growth are transaction-owned.
 const Rng = preload("res://src/native_rng.gd")
 const Contract = preload("res://src/native_schema.gd")
@@ -260,6 +261,9 @@ static func _trace(package, state: Dictionary, row: Dictionary, start: int, expe
 		if changed.has("error"): return changed
 		if not Contract.equal(action.counts,changed.counts) or action.rng_after != changed.rng_after: return {"error": "training practice or random receipt mismatch"}
 		counts[action.source] = changed.counts; end = changed.rng_after
+		var merged: Dictionary = EnemyPhysical.consume(package.world,state,row.execution_id,int(action.step),end)
+		if merged.has("error"): return merged
+		end = merged.end
 		for event in action.enemy_health_events:
 			if not hp.has(event.target) or (not hp.has(event.source) and not counts.has(event.source)): return {"error": "unknown health event actor"}
 			hp[event.target] += -int(event.amount) if event.kind in ["attack","damage","status_damage"] else int(event.amount)
