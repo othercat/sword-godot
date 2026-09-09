@@ -6,6 +6,7 @@ const Presentation = preload("res://src/native_battle_presentation.gd")
 const Layout = preload("res://src/native_battle_layout.gd")
 const Classic = preload("res://src/native_classic_battle.gd")
 const Hud = preload("res://src/native_battle_hud_config.gd")
+const Canvas = preload("res://src/native_battle_canvas.gd")
 const Progression = preload("res://src/native_progression.gd")
 signal playback_finished
 signal display_changed
@@ -21,6 +22,8 @@ var _frame_extents: Dictionary = {}
 var _extent_package
 var background_asset: String = ""
 var background_rect: Rect2
+var background_canvas: Rect2
+var background_source: Rect2
 var classic_stage: Rect2
 const Battle = preload("res://src/native_battle.gd")
 const Statuses = preload("res://src/native_statuses.gd")
@@ -120,11 +123,20 @@ func _classic_stage(bounds: Vector2) -> Rect2:
 
 func _draw_background(battle: Dictionary, bounds: Vector2) -> void:
 	background_asset = ""; background_rect = Rect2()
-	draw_rect(Rect2(Vector2.ZERO, bounds), Color("18232b"))
+	background_canvas = Rect2(Vector2.ZERO,bounds); background_source = Rect2()
+	var profile: Dictionary = Canvas.for_encounter(session.package.world,battle.encounter_id)
+	if profile.is_empty() and not Hud.for_encounter(session.package.world,battle.encounter_id).is_empty(): profile = Canvas.default_profile()
+	if not profile.is_empty(): background_canvas = Canvas.placement(profile,bounds,Vector2.ZERO).canvas
+	draw_rect(Rect2(Vector2.ZERO, bounds), Color(profile.get("matte","#18232bff")))
 	var encounter: Dictionary = Battle.encounter(session.package.world, battle.encounter_id)
 	if encounter.get("background_asset") == null: return
 	background_asset = encounter.background_asset
 	var texture: Texture2D = session.package.textures[background_asset]
+	if not profile.is_empty():
+		var placed: Dictionary = Canvas.placement(profile,bounds,texture.get_size())
+		background_rect = placed.destination; background_canvas = placed.canvas; background_source = placed.source
+		if background_rect.has_area(): draw_texture_rect_region(texture,background_rect,background_source)
+		return
 	background_rect = cover_rect(texture.get_size(), bounds)
 	if not classic_layout().is_empty():
 		var stage: Rect2 = _classic_stage(bounds)

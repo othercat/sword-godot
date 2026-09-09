@@ -148,3 +148,20 @@ and first-failure logs are retained by the product evidence runner.
 Status probability/resistance, equipment, enemy skill AI, Legacy parity, formal
 hero action sets, physical-user and cross-platform release acceptance remain
 outside this increment. Existing external RGBA/alpha-edge rendering is retained.
+# Background canvas placement (2026-09-10)
+
+Optional `pal.native.battle-canvas.v1` controls per-encounter background region,
+cover/contain/stretch, alignment and RGBA matte. It uses the entire battle canvas,
+independently of the HUD-reserved actor rectangle. Responsive HUD encounters
+default to full centered cover. Other existing classic/Dream packages retain
+their contained background unless an explicit canvas binding is present.
+
+`native_battle_canvas.gd` calculates source cropping and destination rectangles;
+`native_battle_view.gd` renders them without changing body projection or authority.
+Existing encounter asset references, offline package validation and rules/save
+identity remain in force. Old readers reject the optional required capability.
+
+Tests: `test_battle_canvas_geometry.gd` for synthetic rectangles and
+`test_battle_canvas.gd` for compiled author fixtures, GPU pixels at three window
+sizes, retained actor anchors and same-package save/restore. This does not
+implement a configurable enemy formation or enemy health overlay.
