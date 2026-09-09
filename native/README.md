@@ -15,7 +15,7 @@ location, not Windows hooks or DirectInput polling. Left/right modifier and
 keypad fixtures are covered by injected events; physical NumLock/layout/AltGr,
 OS focus behavior and Mac/ARM hardware are not yet verified. Native adds keypad
 Enter as a default confirm alias. Row order is retained in preferences; this
-does not reproduce CKey simultaneous-key priority, 16 Hz polling or PALDLL's
+does not reproduce CKey simultaneous-key priority, legacy polling cadence or PALDLL's
 optional action buffering. Confirmation is edge-triggered; movement retains the
 existing named cadence, and arrow/page keys navigate current enabled controls.
 Embedded dialogs retain normal text and UI keys. Mouse input remains available.
