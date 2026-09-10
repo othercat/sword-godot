@@ -78,6 +78,7 @@ func small_rectangles(profile: Dictionary, package) -> void:
 			check(button.get_combined_minimum_size().x<=requested.x+.001 and button.get_combined_minimum_size().y<=requested.y+.001,"minimum size respects small non-square authored button")
 			root.remove_child(button);button.queue_free();await process_frame
 func artwork_sheet(app, profile: Dictionary, name: String) -> void:
+	await cooperative_state_transition(app,profile,name=="original-default-states")
 	var viewport=SubViewport.new();viewport.size=Vector2i(600,680);viewport.render_target_update_mode=SubViewport.UPDATE_ALWAYS;root.add_child(viewport)
 	var background=ColorRect.new();background.color=Color("161b16");background.size=viewport.size;viewport.add_child(background)
 	var font: Font=app.battle_view.display_font
@@ -94,6 +95,25 @@ func artwork_sheet(app, profile: Dictionary, name: String) -> void:
 	var foot=Label.new();foot.text="原图造型与RGBA显示调色；素材对照不代表指令已可用。";foot.position=Vector2(18,636);foot.add_theme_font_override("font",font);foot.add_theme_font_size_override("font_size",16);background.add_child(foot)
 	await settle();await RenderingServer.frame_post_draw
 	viewport.get_texture().get_image().save_png(output.path_join(name+"-three-states.png"))
+	root.remove_child(viewport);viewport.queue_free();await process_frame
+func cooperative_state_transition(app, profile: Dictionary, distinct_disabled_art: bool) -> void:
+	# Render the real button, without overriding skin_state or enabling a battle rule.
+	var viewport=SubViewport.new();viewport.size=Vector2i(120,120);viewport.render_target_update_mode=SubViewport.UPDATE_ALWAYS;root.add_child(viewport)
+	var button=CommandButton.new();button.symbol="cooperative";button.mouse_filter=Control.MOUSE_FILTER_IGNORE;button.focus_mode=Control.FOCUS_NONE
+	viewport.add_child(button);CommandPanel.apply_button(button,profile,app.session.package)
+	button.custom_minimum_size=Vector2(120,120);button.size=Vector2(120,120)
+	await settle();await RenderingServer.frame_post_draw
+	check(button.skin_state()=="normal","available cooperative button selects normal artwork")
+	var normal=viewport.get_texture().get_image().get_data()
+	button.disabled=true
+	await settle();await RenderingServer.frame_post_draw
+	check(button.skin_state()=="disabled","unavailable cooperative button selects disabled artwork")
+	if distinct_disabled_art:
+		check(viewport.get_texture().get_image().get_data()!=normal,"original dark-red disabled artwork differs from available artwork on GPU")
+	button.disabled=false
+	await settle();await RenderingServer.frame_post_draw
+	check(button.skin_state()=="normal","reenabled cooperative button returns to normal state")
+	check(viewport.get_texture().get_image().get_data()==normal,"reenabled cooperative button restores identical normal pixels")
 	root.remove_child(viewport);viewport.queue_free();await process_frame
 func finish() -> void:
 	FileAccess.open(output.path_join("results.json"),FileAccess.WRITE).store_string(JSON.stringify({"success":failed==0,"failed":failed,"checks":checks,"windows":windows,"saves":saves,"physical_input":false,"full_playthrough":false,"art_acceptance":false},"\t"))
