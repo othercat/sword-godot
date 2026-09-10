@@ -1,0 +1,544 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "pal.native.party-card.v1",
+  "title": "Optional independently authored card elements and texture bindings",
+  "x-status": "draft",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "kind",
+    "encounters"
+  ],
+  "properties": {
+    "schema": {
+      "const": "pal.native.party-card.v1"
+    },
+    "kind": {
+      "const": "content"
+    },
+    "encounters": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 10000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "encounter_id",
+          "elements",
+          "overrides",
+          "provenance"
+        ],
+        "properties": {
+          "encounter_id": {
+            "$ref": "#/definitions/id"
+          },
+          "elements": {
+            "$ref": "#/definitions/elements"
+          },
+          "overrides": {
+            "type": "array",
+            "maxItems": 128,
+            "items": {
+              "$ref": "#/definitions/override"
+            }
+          },
+          "provenance": {
+            "$ref": "#/definitions/provenance"
+          }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+    },
+    "rect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "x",
+        "y",
+        "width",
+        "height"
+      ],
+      "properties": {
+        "x": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "y": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "width": {
+          "type": "number",
+          "minimum": 0.01,
+          "maximum": 100
+        },
+        "height": {
+          "type": "number",
+          "minimum": 0.01,
+          "maximum": 100
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "synthetic",
+            "author-choice",
+            "draft-adaptation",
+            "approved"
+          ]
+        },
+        "source_id": {
+          "$ref": "#/definitions/id"
+        },
+        "source_revision": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "source_beat_ids": {
+          "type": "array",
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/definitions/id"
+          }
+        }
+      }
+    },
+    "color": {
+      "type": "string",
+      "pattern": "^#[0-9a-fA-F]{8}$",
+      "minLength": 9,
+      "maxLength": 9
+    },
+    "sprite": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "asset_id",
+        "width",
+        "height"
+      ],
+      "properties": {
+        "asset_id": {
+          "$ref": "#/definitions/id"
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8192
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8192
+        }
+      }
+    },
+    "panel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "rect",
+        "visible",
+        "fill",
+        "border",
+        "active_border",
+        "border_width",
+        "rounding",
+        "image",
+        "filter",
+        "fit",
+        "tint"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/id"
+        },
+        "kind": {
+          "const": "panel"
+        },
+        "rect": {
+          "$ref": "#/definitions/rect"
+        },
+        "visible": {
+          "type": "boolean"
+        },
+        "fill": {
+          "$ref": "#/definitions/color"
+        },
+        "border": {
+          "$ref": "#/definitions/color"
+        },
+        "active_border": {
+          "$ref": "#/definitions/color"
+        },
+        "border_width": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "rounding": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 50
+        },
+        "image": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/definitions/sprite"
+            }
+          ]
+        },
+        "filter": {
+          "enum": [
+            "inherit",
+            "nearest",
+            "linear"
+          ]
+        },
+        "fit": {
+          "enum": [
+            "contain",
+            "stretch"
+          ]
+        },
+        "tint": {
+          "$ref": "#/definitions/color"
+        }
+      }
+    },
+    "portrait": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "rect",
+        "visible",
+        "dim_on_death",
+        "image",
+        "filter",
+        "fit",
+        "tint"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/id"
+        },
+        "kind": {
+          "const": "portrait"
+        },
+        "rect": {
+          "$ref": "#/definitions/rect"
+        },
+        "visible": {
+          "type": "boolean"
+        },
+        "dim_on_death": {
+          "type": "boolean"
+        },
+        "image": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/definitions/sprite"
+            }
+          ]
+        },
+        "filter": {
+          "enum": [
+            "inherit",
+            "nearest",
+            "linear"
+          ]
+        },
+        "fit": {
+          "enum": [
+            "contain",
+            "stretch"
+          ]
+        },
+        "tint": {
+          "$ref": "#/definitions/color"
+        }
+      }
+    },
+    "image": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "rect",
+        "visible",
+        "image",
+        "filter",
+        "fit",
+        "tint"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/id"
+        },
+        "kind": {
+          "const": "image"
+        },
+        "rect": {
+          "$ref": "#/definitions/rect"
+        },
+        "visible": {
+          "type": "boolean"
+        },
+        "image": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/definitions/sprite"
+            }
+          ]
+        },
+        "filter": {
+          "enum": [
+            "inherit",
+            "nearest",
+            "linear"
+          ]
+        },
+        "fit": {
+          "enum": [
+            "contain",
+            "stretch"
+          ]
+        },
+        "tint": {
+          "$ref": "#/definitions/color"
+        }
+      }
+    },
+    "text": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "rect",
+        "visible",
+        "source",
+        "label",
+        "format",
+        "text",
+        "color",
+        "font_height",
+        "align",
+        "overflow"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/id"
+        },
+        "kind": {
+          "const": "text"
+        },
+        "rect": {
+          "$ref": "#/definitions/rect"
+        },
+        "visible": {
+          "type": "boolean"
+        },
+        "source": {
+          "enum": [
+            "name",
+            "hp",
+            "mp",
+            "literal"
+          ]
+        },
+        "label": {
+          "type": "string",
+          "maxLength": 32
+        },
+        "format": {
+          "enum": [
+            "current",
+            "current-max",
+            "labeled",
+            "percent"
+          ]
+        },
+        "text": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "color": {
+          "$ref": "#/definitions/color"
+        },
+        "font_height": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "align": {
+          "enum": [
+            "left",
+            "center",
+            "right"
+          ]
+        },
+        "overflow": {
+          "enum": [
+            "ellipsis",
+            "shrink"
+          ]
+        }
+      }
+    },
+    "bar": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "rect",
+        "visible",
+        "source",
+        "fill",
+        "track",
+        "direction",
+        "fill_image",
+        "track_image",
+        "filter"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/id"
+        },
+        "kind": {
+          "const": "bar"
+        },
+        "rect": {
+          "$ref": "#/definitions/rect"
+        },
+        "visible": {
+          "type": "boolean"
+        },
+        "source": {
+          "enum": [
+            "hp",
+            "mp"
+          ]
+        },
+        "fill": {
+          "$ref": "#/definitions/color"
+        },
+        "track": {
+          "$ref": "#/definitions/color"
+        },
+        "direction": {
+          "enum": [
+            "left-to-right",
+            "right-to-left",
+            "bottom-to-top",
+            "top-to-bottom"
+          ]
+        },
+        "fill_image": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/definitions/sprite"
+            }
+          ]
+        },
+        "track_image": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/definitions/sprite"
+            }
+          ]
+        },
+        "filter": {
+          "enum": [
+            "inherit",
+            "nearest",
+            "linear"
+          ]
+        }
+      }
+    },
+    "element": {
+      "oneOf": [
+        {
+          "$ref": "#/definitions/panel"
+        },
+        {
+          "$ref": "#/definitions/portrait"
+        },
+        {
+          "$ref": "#/definitions/image"
+        },
+        {
+          "$ref": "#/definitions/text"
+        },
+        {
+          "$ref": "#/definitions/bar"
+        }
+      ]
+    },
+    "elements": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "items": {
+        "$ref": "#/definitions/element"
+      }
+    },
+    "override": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "definition_id",
+        "elements"
+      ],
+      "properties": {
+        "definition_id": {
+          "$ref": "#/definitions/id"
+        },
+        "elements": {
+          "$ref": "#/definitions/elements"
+        }
+      }
+    }
+  }
+}

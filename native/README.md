@@ -1,5 +1,28 @@
 # PAL Wanxiang Native preview
 
+Optional `pal.native.party-card.v1` separates internal panel, portrait, text,
+HP/MP bars and decorative images from the outer HUD layout. Encounter templates
+contain ordered, individually clipped percentage rectangles; actor-definition
+overrides replace the list for that character, independently of battle seats.
+Absence/removal keeps the old card renderer. Bars crop fill art in any of four
+directions; text measures, shrinks/ellipsizes and aligns inside its own rectangle.
+Images use registered PNG identities/dimensions, tint and the existing sampling
+precedence. There is no arbitrary script or font loading.
+
+All elements consume one displayed actor snapshot, including effective maxima,
+and never read already-settled values during playback. Decorative controls ignore
+mouse input, reuse draw nodes and remain outside save authority. Status icons
+require a separate status-playback projection and are not part of this version.
+Studio supports selection/drag/resize/nudge, list ordering, per-character copies,
+PNG decode before import, one-apply undo and restoration of the legacy template.
+The current 25-schema snapshot is `f50b3da867260a8aa0788cfcb2cc75f01bd8be8b`.
+The product repo's party-card receipt records actual-window and save evidence.
+Four production-Studio packages pass 5885 checks in 20 GPU windows and eight
+independent save checks, with 21 admission cases agreeing with the Python owner.
+The probe also renders separate synthetic long-name/large-number/zero-maximum,
+death and narrow-card cases without changing authority. Original portrait PNGs
+remain low resolution; this does not certify HD art, human or cross-platform use.
+
 Optional `pal.native.hud-placement.v2` adds independently authored aspect layouts.
 Each encounter retains default geometry and an ordered list of rational minimum
 width:height conditions. All consumers select once from the unreserved logical
@@ -9,7 +32,7 @@ in the actual-window probe; resizing never writes gameplay or save authority.
 Studio can edit names, conditions, geometry and per-count cards, preview five
 common ratios or custom dimensions, and apply/undo the entire profile at once.
 
-The current contract snapshot is `23b6c12b201657f88c0fe5eb45984f47f603327f`.
+The aspect-v2 verification pinned `23b6c12b201657f88c0fe5eb45984f47f603327f`.
 V2 requires its own exact hash/capability pair; the v1 schema bytes and old package
 behavior remain intact. Empty variant lists retain default geometry. Duplicate
 identities/equivalent ratios, unsorted conditions and invalid nested rectangles
@@ -42,7 +65,7 @@ small regions and 1/3/4/5/16 seats. Four actual Studio packages pass 366 checks 
 also agree with the independent Python owner. These Windows/Godot 4.7.2 samples
 use five actual combatants, original command artwork and private Boss sprites.
 They do not expand the Dream 1–5 gameplay gate or certify art/physical input.
-Card internals, arbitrary map UI and complete mod-editor coverage remain pending.
+Arbitrary map UI and complete mod-editor coverage remain pending.
 
 The optional `pal.native.sampling.v1` presentation component now requires the exact
 owner schema hash and `graphics.sampling.v1`. ClassicLowRes and PixelHD default to

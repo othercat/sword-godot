@@ -6,6 +6,8 @@ const DrawLayer = preload("res://src/native_draw_layer.gd")
 const Config = preload("res://src/native_battle_hud_config.gd")
 const CommandPanel = preload("res://src/native_command_panel.gd")
 const Progression = preload("res://src/native_progression.gd")
+const PartyCard = preload("res://src/native_party_card.gd")
+const CardElement = preload("res://src/native_party_card_element.gd")
 var commands = Control.new()
 var cards: Dictionary = {}
 var skin: Dictionary = {}
@@ -16,6 +18,8 @@ var command_profile: Dictionary = {}
 var _view
 var portrait_layer: Control
 var foreground_layer: Control
+var element_layer: Control = Control.new()
+var element_nodes: Dictionary = {}
 
 func _init() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -23,6 +27,7 @@ func _init() -> void:
 	portrait_layer = DrawLayer.new(func(canvas): _paint(canvas, "portrait"))
 	foreground_layer = DrawLayer.new(func(canvas): _paint(canvas, "foreground"))
 	add_child(portrait_layer); add_child(foreground_layer)
+	element_layer.mouse_filter=Control.MOUSE_FILTER_IGNORE; add_child(element_layer)
 	add_child(commands)
 
 func fit(bounds: Vector2) -> void:
@@ -37,12 +42,13 @@ func fit(bounds: Vector2) -> void:
 			if not command_profile.is_empty(): CommandPanel.apply_button(button,command_profile,_view.session.package)
 
 func bind(view) -> void:
-	_view = view; cards.clear()
+	_view = view; cards.clear(); element_layer.visible=false
 	var battle: Dictionary = view.display_battle()
 	if battle.is_empty(): queue_redraw(); return
 	profile = Config.for_encounter(view.session.package.world,battle.encounter_id)
 	if profile.is_empty(): queue_redraw(); return
 	if size.x <= 0 or size.y <= 0: queue_redraw(); return
+	element_layer.visible=true
 	var ids: Array = battle.get("party",[])
 	boxes = Config.geometry(profile.layout,size,ids.size(),profile.placement)
 	command_profile = CommandPanel.for_encounter(view.session.package.world,battle.encounter_id)
@@ -53,6 +59,8 @@ func bind(view) -> void:
 	portrait_layer.texture_filter = Sampling.resolve(content, "portrait", legacy, profile.style.portrait_filter)
 	commands.texture_filter = Sampling.resolve(content, "command_ui", legacy)
 	active_id = view.presentation.current().get("actor_id","") if view.playing() else (str(ids[battle.turn]) if not ids.is_empty() else "")
+	var element_profile: Dictionary = PartyCard.for_encounter(content,battle.encounter_id)
+	var live: Array = []
 	for i in range(ids.size()):
 		var id: String = ids[i]
 		var actor: Dictionary = view.presentation.actors[id] if view.playing() else view.session.entity(id)
@@ -68,6 +76,18 @@ func bind(view) -> void:
 		cards[id] = {"instance_id":id,"hp":actor.hp,"mp":actor.mp,"stats":Progression.stats(view.session.package,actor),
 			"name":definition.display_name,"origin":panel.position,"panel_rect":panel,"unit":unit,"text_origin_y":text_origin_y,
 			"face_rect":Rect2(panel.position+Vector2(5*unit,(panel.size.y-extent)/2),Vector2.ONE*extent),"portrait_asset":portrait.get("asset_id","")}
+		cards[id].elements=PartyCard.elements(element_profile,actor.definition_id)
+		for element in cards[id].elements:
+			var key: String = id+"|"+element.id
+			if not element_nodes.has(key):
+				element_nodes[key]=CardElement.new(); element_layer.add_child(element_nodes[key])
+			var node = element_nodes[key]
+			if node.get_index()!=live.size(): element_layer.move_child(node,live.size())
+			node.bind(view.session.package,element,cards[id],id==active_id,portrait_layer.texture_filter if element.kind=="portrait" else texture_filter)
+			live.append(key)
+	for key in element_nodes.keys():
+		if key not in live:
+			var node = element_nodes[key]; element_layer.remove_child(node); node.queue_free(); element_nodes.erase(key)
 	queue_redraw()
 
 func command_rect(symbol: String) -> Rect2:
@@ -85,6 +105,7 @@ func _paint(canvas: CanvasItem, part: String) -> void:
 	var font: Font = get_theme_font("font")
 	var colors: Dictionary = profile.style.colors
 	for id in cards:
+		if not cards[id].get("elements",[]).is_empty(): continue
 		var card: Dictionary = cards[id]; var panel: Rect2 = card.panel_rect; var unit: float = card.unit
 		if part == "panel":
 			var style = StyleBoxFlat.new(); style.bg_color = Color(colors.panel)
@@ -120,4 +141,6 @@ func clear_commands() -> void:
 	for child in commands.get_children(): commands.remove_child(child); child.queue_free()
 
 func clear() -> void:
+	for node in element_nodes.values(): element_layer.remove_child(node); node.queue_free()
+	element_nodes.clear()
 	clear_commands(); cards.clear(); profile.clear(); boxes.clear(); command_profile = {}; _view = null; active_id = ""; queue_redraw()

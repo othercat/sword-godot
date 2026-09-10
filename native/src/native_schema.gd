@@ -8,7 +8,7 @@ var hashes: Dictionary = {}
 var error: String = ""
 
 func _init() -> void:
-	for kind in ["content.v1", "package.v1", "state.v1", "save.v1", "enemy-actions.v1", "progression.v1", "equipment.v1", "battle-layout.v1", "battle-layout.v2", "battle-ui.v1", "battle-hud.v1", "hud-placement.v1", "hud-placement.v2", "battle-canvas.v1", "command-panel.v1", "enemy-overlay.v1", "battle-formation.v1", "attack-formula.v1", "attack-random.v1", "player-physical.v1", "training.v1", "enemy-physical.v1", "performance.v1", "sampling.v1"]:
+	for kind in ["content.v1", "package.v1", "state.v1", "save.v1", "enemy-actions.v1", "progression.v1", "equipment.v1", "battle-layout.v1", "battle-layout.v2", "battle-ui.v1", "battle-hud.v1", "hud-placement.v1", "hud-placement.v2", "party-card.v1", "battle-canvas.v1", "command-panel.v1", "enemy-overlay.v1", "battle-formation.v1", "attack-formula.v1", "attack-random.v1", "player-physical.v1", "training.v1", "enemy-physical.v1", "performance.v1", "sampling.v1"]:
 		var identity = "pal.native.%s" % kind
 		var bytes = FileAccess.get_file_as_bytes("res://contracts/%s.schema.json" % identity)
 		var reader = Reader.new()

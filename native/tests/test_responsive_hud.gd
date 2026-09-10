@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: MIT
 extends "res://tests/test_legacy_battle_import.gd"
 const Placement = preload("res://src/native_hud_placement.gd")
+const PartyCard = preload("res://src/native_party_card.gd")
+const CardElement = preload("res://src/native_party_card_element.gd")
 ## Authored variants and real routed GUI input. No legacy parity or art verdict.
 var windows: Array = []
 func run() -> void:
@@ -31,6 +33,7 @@ func run() -> void:
 		if not s.battle_open(): check(false,"battle entry"); finish(); return
 		check(app._responsive_mode() and app.dream_hud == app.responsive_hud,"authored HUD selected")
 		var authority: Dictionary = s.state.duplicate(true)
+		if fixture.label=="card-custom": await card_stress(app)
 		var battle: Dictionary = s.state.extensions[Battle.KEY]
 		var authored_placement: Dictionary = Placement.for_encounter(s.package.world,battle.encounter_id)
 		check(battle.party.size() == int(fixture.count),"authored party count")
@@ -66,6 +69,7 @@ func run() -> void:
 							var exact = Rect2(region.position+region.size*Vector2(authored.x,authored.y)/100,region.size*Vector2(authored.width,authored.height)/100)
 							check(card.panel_rect.is_equal_approx(exact),"manual card follows current seat rectangle")
 			var conflicts: Array = []
+			verify_card_elements(app)
 			if fixture.get("aspect_defaults",false):
 				for side in ["enemy","party"]:
 					conflicts.append_array(view.formation_diagnostics[side].conflicts)
@@ -81,6 +85,7 @@ func run() -> void:
 		root.size = Vector2i(1280,800); await settle(); root.grab_focus(); await settle()
 		var initial: String = save(app,"initial-"+fixture.label)
 		check(not s.state.extensions.has(Placement.KEY),"placement does not become saved authority")
+		check(not s.state.extensions.has(PartyCard.KEY),"card elements do not become saved authority")
 		var actor: Dictionary = s.entity(battle.party[battle.turn])
 		var all_targets: bool = Battle.PlayerPhysical.all_targets(s.package.world,actor.definition_id)
 		var target_label: String = "攻击全体" if all_targets else "攻击 2"
@@ -99,6 +104,7 @@ func run() -> void:
 		check(app.dream_hud.visible and not app.dream_hud.commands.visible,"status overlay stays visible while commands hide")
 		for delta in [1.0/60,1.0/144]: view._process(delta)
 		await settle(); check(s.state == committed,"display clocks do not recommit")
+		verify_card_elements(app)
 		for id in view.presentation.actors:
 			if app.dream_hud.cards.has(id): check(app.dream_hud.cards[id].hp == view.presentation.actors[id].hp,"HUD follows playback snapshot")
 		view.skip(); await settle(); save(app,"after-action-"+fixture.label)
@@ -112,6 +118,65 @@ func run() -> void:
 		await key(KEY_ESCAPE)
 		root.remove_child(app); app.queue_free(); await process_frame
 	finish()
+func verify_card_elements(app) -> void:
+	var hud = app.dream_hud; var view = app.battle_view
+	var profile: Dictionary = PartyCard.for_encounter(app.session.package.world,view.display_battle().encounter_id)
+	var expected_count: int = 0
+	for id in hud.cards:
+		var snapshot: Dictionary = hud.cards[id]
+		var actor: Dictionary = view.presentation.actors[id] if view.playing() else app.session.entity(id)
+		var expected: Array = PartyCard.elements(profile,actor.definition_id)
+		check(snapshot.elements==expected,"card element selection is character-bound")
+		for element in expected:
+			var node = hud.element_nodes[id+"|"+element.id]
+			check(node.get_index()==expected_count,"card draw order follows the authored list")
+			expected_count+=1
+			check(node.mouse_filter==Control.MOUSE_FILTER_IGNORE,"decorative card element never intercepts commands")
+			check(node.get_rect().is_equal_approx(PartyCard.rectangle(element,snapshot.panel_rect)),"individual rectangle follows actual card parent")
+			check(node.visible==element.visible and snapshot.panel_rect.grow(.01).encloses(node.get_rect()),"element visibility and bounds")
+			check(node.snapshot.hp==actor.hp and node.snapshot.mp==actor.mp,"element consumes the same displayed actor snapshot")
+			if not node.visible: continue
+			if element.kind=="text" and node.rendered_font_size>0:
+				var font: Font = node.get_theme_font("font")
+				check(font.get_string_size(node.rendered_text,HORIZONTAL_ALIGNMENT_LEFT,-1,node.rendered_font_size).x<=node.size.x*node.TEXT_RESOLUTION+.01,"rendered text stays within element width")
+				check(font.get_height(node.rendered_font_size)<=node.size.y*node.TEXT_RESOLUTION+.01 or node.rendered_font_size==1,"text height is bounded or minimally clipped")
+			if element.kind=="bar": check(node.rendered_fill.is_equal_approx(PartyCard.fill_rect(Rect2(Vector2.ZERO,node.size),PartyCard.fraction(element,snapshot),element.direction)),"bar fill uses displayed values and authored direction")
+	check(hud.element_nodes.size()==expected_count and hud.element_layer.get_child_count()==expected_count,"no leaked or stale card nodes")
+	var nodes: Dictionary = {}
+	for key in hud.element_nodes: nodes[key]=hud.element_nodes[key].get_instance_id()
+	for i in range(3): hud.bind(view)
+	for key in nodes: check(hud.element_nodes[key].get_instance_id()==nodes[key],"unchanged cards reuse existing draw nodes")
+func card_stress(app) -> void:
+	# Synthetic display values only, on a separate GPU surface. Never feed them to gameplay.
+	var authority: Dictionary = app.session.state.duplicate(true)
+	var profile: Dictionary = PartyCard.for_encounter(app.session.package.world,app.battle_view.display_battle().encounter_id)
+	var viewport=SubViewport.new(); viewport.size=Vector2i(640,300); viewport.render_target_update_mode=SubViewport.UPDATE_ALWAYS; root.add_child(viewport)
+	var background=ColorRect.new(); background.color=Color("161b16"); background.size=viewport.size; viewport.add_child(background)
+	var nodes: Array = []
+	var areas=[Rect2(12,30,292,75),Rect2(324,30,300,75),Rect2(12,150,100,100),Rect2(132,150,492,100)]
+	for i in range(4):
+		var snapshot: Dictionary = app.dream_hud.cards.values()[0].duplicate(true)
+		snapshot.panel_rect=areas[i]; snapshot.name="很长的人物名称与组合文字 é 中文 Long Name".repeat(4)
+		snapshot.hp=[999999999,0,100,75][i]; snapshot.mp=[0,0,100,0][i]
+		snapshot.stats={"max_hp":[3999999996,0,100,100][i],"max_mp":[0,0,100,0][i]}
+		for original in profile.elements:
+			var element: Dictionary = original.duplicate(true)
+			if element.kind=="bar": element.direction=["left-to-right","right-to-left","top-to-bottom","bottom-to-top"][i]
+			var node=CardElement.new(); background.add_child(node); node.add_theme_font_override("font",app.battle_view.display_font)
+			node.bind(app.session.package,element,snapshot,i==0,CanvasItem.TEXTURE_FILTER_NEAREST); nodes.append(node)
+	await settle(); await RenderingServer.frame_post_draw
+	for node in nodes:
+		var element: Dictionary = node.element
+		check(node.clip_contents and node.mouse_filter==Control.MOUSE_FILTER_IGNORE,"stress elements remain clipped and non-interactive")
+		if element.kind=="text":
+			var font: Font=node.get_theme_font("font")
+			check(font.get_string_size(node.rendered_text,HORIZONTAL_ALIGNMENT_LEFT,-1,node.rendered_font_size).x<=node.size.x*node.TEXT_RESOLUTION+.01,"long names and large values remain within their own text rectangle")
+			check(not "\n" in node.rendered_text,"stress text is single line")
+		if element.kind=="bar":
+			check(node.rendered_fill.is_equal_approx(PartyCard.fill_rect(Rect2(Vector2.ZERO,node.size),PartyCard.fraction(element,node.snapshot),element.direction)),"stress zero maxima and four fill directions match the displayed snapshot")
+	viewport.get_texture().get_image().save_png(output.path_join("party-card-stress.png"))
+	check(app.session.state==authority,"synthetic rendering stress cannot alter authority")
+	root.remove_child(viewport); viewport.queue_free(); await process_frame
 func key(code: int) -> void:
 	for down in [true,false]:
 		var event = InputEventKey.new(); event.keycode = code; event.physical_keycode = code; event.pressed = down; root.push_input(event,true)
