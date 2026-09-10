@@ -114,6 +114,16 @@ func _ready() -> void:
 	party_title.text = "同行伙伴"
 	party_title.add_theme_color_override("font_color", Color("d7be86"))
 	sidebar.add_child(party_title)
+	var overview = CheckButton.new()
+	overview.text = "地图总览"
+	overview.toggled.connect(func(enabled): _camera_overview = enabled; _fit_world())
+	sidebar.add_child(overview)
+	var zoom = SpinBox.new()
+	zoom.prefix = "地图缩放"
+	zoom.suffix = "倍"
+	zoom.min_value = 0.5; zoom.max_value = 4.0; zoom.step = 0.25; zoom.value = _camera_zoom
+	zoom.value_changed.connect(func(value): _camera_zoom = value; _fit_world())
+	sidebar.add_child(zoom)
 	equipment_button = _button(sidebar, "装备", _show_equipment); equipment_button.visible = false
 	var scroll = ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -470,19 +480,19 @@ func _fit_world() -> void:
 	var scale_value: float = minf((logical_size.x - 32.0) / bounds.size.x, (logical_size.y - 32.0) / bounds.size.y)
 	_camera_map = session.state.cursor.scene_id
 	_camera_bounds = bounds
-	_terrain_camera = map_data.has("terrain")
-	if _terrain_camera: scale_value = 2.0
+	if not _camera_overview: scale_value = _camera_zoom
 	world_view.scale = Vector2.ONE * scale_value
 	world_view.position = (logical_size - bounds.size * scale_value) / 2.0 - bounds.position * scale_value
 	_follow_world()
 
 var _camera_map: String = ""
 var _camera_bounds: Rect2
-var _terrain_camera: bool = false
+var _camera_overview: bool = false
+var _camera_zoom: float = 2.0
 var _presentation_key: String = ""
 
 func _follow_world() -> void:
-	if not _terrain_camera or session.state.is_empty() or not world_view.actors.has(session.state.active_party[0]): return
+	if _camera_overview or session.state.is_empty() or not world_view.actors.has(session.state.active_party[0]): return
 	var center: Vector2 = world_view.actors[session.state.active_party[0]].position
 	var logical_size: Vector2 = viewport.get_visible_rect().size
 	var half_view = logical_size / world_view.scale / 2.0

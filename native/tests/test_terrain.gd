@@ -45,7 +45,7 @@ func _run() -> void:
 	check(world.depth_tiles.size() == 932, "explicit depth approximation keeps both source height groups")
 	check(not package.can_stand(app.session.state.cursor.scene_id, {"x": 0, "y": -63}), "bounding rectangle gap is unavailable")
 	check(map_data.blocked.all(func(point): return not package.can_stand(app.session.state.cursor.scene_id, point)), "every original blocked cell rejects standing")
-	check(app._terrain_camera and world.scale == Vector2(2, 2), "real map uses a following view instead of shrinking the entire map")
+	check(not app._camera_overview and world.scale == Vector2(2, 2), "real map uses a following view instead of shrinking the entire map")
 	await RenderingServer.frame_post_draw
 	root.get_texture().get_image().save_png(output.path_join("terrain-start.png"))
 	var before: Dictionary = app.session.snapshot()
