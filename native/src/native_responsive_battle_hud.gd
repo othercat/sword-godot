@@ -77,6 +77,8 @@ func bind(view) -> void:
 			"name":definition.display_name,"origin":panel.position,"panel_rect":panel,"unit":unit,"text_origin_y":text_origin_y,
 			"face_rect":Rect2(panel.position+Vector2(5*unit,(panel.size.y-extent)/2),Vector2.ONE*extent),"portrait_asset":portrait.get("asset_id","")}
 		cards[id].elements=PartyCard.elements(element_profile,actor.definition_id)
+		cards[id].statuses=view.display_statuses(id)
+		cards[id].current_action=id==view.display_action_actor()
 		for element in cards[id].elements:
 			var key: String = id+"|"+element.id
 			if not element_nodes.has(key):

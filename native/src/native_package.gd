@@ -65,7 +65,7 @@ func load_package(path: String) -> bool:
 	content_lock = Schema.digest(bytes)
 	if not manifest.dependencies.is_empty(): return _fail("package dependencies not implemented")
 	for capability in manifest.required_capabilities:
-		if capability not in CAPABILITIES and capability not in [PartyCard.CAPABILITY, HudPlacement.CAPABILITY, HudPlacement.CAPABILITY_V2, EnemyActions.CAPABILITY, Progression.CAPABILITY, Equipment.CAPABILITY, Classic.CAPABILITY, Classic.CAPABILITY_V2, BattleUi.CAPABILITY, BattleHud.CAPABILITY, BattleCanvas.CAPABILITY, CommandPanel.CAPABILITY, EnemyOverlay.CAPABILITY, BattleFormation.CAPABILITY, AttackFormula.CAPABILITY, AttackRandom.CAPABILITY, PlayerPhysical.CAPABILITY, Training.CAPABILITY, Training.ESCAPE_CAPABILITY, EnemyPhysical.CAPABILITY, MapPerformance.CAPABILITY, Sampling.CAPABILITY]: return _fail("unsupported capability: " + capability)
+		if capability not in CAPABILITIES and capability not in [PartyCard.CAPABILITY, PartyCard.CAPABILITY_V2, HudPlacement.CAPABILITY, HudPlacement.CAPABILITY_V2, EnemyActions.CAPABILITY, Progression.CAPABILITY, Equipment.CAPABILITY, Classic.CAPABILITY, Classic.CAPABILITY_V2, BattleUi.CAPABILITY, BattleHud.CAPABILITY, BattleCanvas.CAPABILITY, CommandPanel.CAPABILITY, EnemyOverlay.CAPABILITY, BattleFormation.CAPABILITY, AttackFormula.CAPABILITY, AttackRandom.CAPABILITY, PlayerPhysical.CAPABILITY, Training.CAPABILITY, Training.ESCAPE_CAPABILITY, EnemyPhysical.CAPABILITY, MapPerformance.CAPABILITY, Sampling.CAPABILITY]: return _fail("unsupported capability: " + capability)
 	for key in ["pal.native.package.v1", "pal.native.content.v1"]:
 		if manifest.contract_hashes.get(key) != schema.hashes.get(key): return _fail("contract hash mismatch: " + key)
 	if manifest.contract_hashes.size() != 2: return _fail("unknown contract hash")
@@ -118,8 +118,9 @@ func load_package(path: String) -> bool:
 	if ui_used: component_hashes[BattleUi.SCHEMA] = schema.hashes.get(BattleUi.SCHEMA)
 	if BattleHud.used(world) != (BattleHud.CAPABILITY in manifest.required_capabilities): return _fail("battle HUD capability/component mismatch")
 	if BattleHud.used(world): component_hashes[BattleHud.SCHEMA] = schema.hashes.get(BattleHud.SCHEMA)
-	if PartyCard.used(world) != (PartyCard.CAPABILITY in manifest.required_capabilities): return _fail("party-card capability/component mismatch")
-	if PartyCard.used(world): component_hashes[PartyCard.SCHEMA] = schema.hashes.get(PartyCard.SCHEMA)
+	for capability in [PartyCard.CAPABILITY,PartyCard.CAPABILITY_V2]:
+		if (PartyCard.used(world) and PartyCard.capability(world)==capability) != (capability in manifest.required_capabilities): return _fail("party-card capability/component mismatch")
+	if PartyCard.used(world): component_hashes[PartyCard.schema_id(world)] = schema.hashes.get(PartyCard.schema_id(world))
 	for capability in [HudPlacement.CAPABILITY,HudPlacement.CAPABILITY_V2]:
 		if (HudPlacement.used(world) and HudPlacement.capability(world)==capability) != (capability in manifest.required_capabilities): return _fail("HUD placement capability/component mismatch")
 	if HudPlacement.used(world): component_hashes[HudPlacement.schema_id(world)] = schema.hashes.get(HudPlacement.schema_id(world))

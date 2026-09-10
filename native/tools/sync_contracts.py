@@ -28,6 +28,7 @@ files["pal.native.battle-hud.v1.schema.json"] = source / "schemas/pal.native.bat
 files["pal.native.hud-placement.v1.schema.json"] = source / "schemas/pal.native.hud-placement.v1.schema.json"
 files["pal.native.hud-placement.v2.schema.json"] = source / "schemas/pal.native.hud-placement.v2.schema.json"
 files["pal.native.party-card.v1.schema.json"] = source / "schemas/pal.native.party-card.v1.schema.json"
+files["pal.native.party-card.v2.schema.json"] = source / "schemas/pal.native.party-card.v2.schema.json"
 files["pal.native.battle-canvas.v1.schema.json"] = source / "schemas/pal.native.battle-canvas.v1.schema.json"
 files["pal.native.battle-formation.v1.schema.json"] = source / "schemas/pal.native.battle-formation.v1.schema.json"
 files["pal.native.enemy-overlay.v1.schema.json"] = source / "schemas/pal.native.enemy-overlay.v1.schema.json"

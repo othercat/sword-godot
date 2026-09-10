@@ -93,6 +93,11 @@ func display_battle() -> Dictionary:
 func display_statuses(id: String) -> Array:
 	# Consumers receive their own rows, never aliases into authority or playback.
 	return display_battle().get("statuses", []).filter(func(row): return row.actor_id == id).duplicate(true)
+func display_action_actor() -> String:
+	if playing(): return str(presentation.current().get("command_actor_id",""))
+	var battle: Dictionary = display_battle()
+	var party: Array = battle.get("party",[]); var turn: int = int(battle.get("turn",-1))
+	return str(party[turn]) if turn>=0 and turn<party.size() else ""
 func describe_statuses(id: String) -> PackedStringArray:
 	return Statuses.describe_rows(session.package, display_statuses(id))
 func display_blocking(id: String, flag: String) -> String:

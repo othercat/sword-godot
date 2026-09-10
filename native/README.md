@@ -1,5 +1,26 @@
 # PAL Wanxiang Native preview
 
+## Party card v2 displayed status cells and command markers (2026-09-10)
+
+The runtime now consumes the additive v2 draft from contract owner
+`44f8ea5020f33f736443e5535c5b935212734f8a` (26 pinned schemas). V1 bytes and its
+phase-focused active border remain unchanged. V2 icons bind stable status IDs,
+show displayed stacks/rounds, support text fallback and `+N` overflow, and enumerate
+nested images through package texture/dimension checks. The new action marker
+follows the command source across target reactions and clears at round-end ticks,
+silent reconciliation and terminal poses; it never changes rules or saves.
+
+The product's `run_party_card_v2_checks.py` ran the production Studio form, owner
+validator and `tests/test_party_card_v2.gd` in an actual 1280x800 window. Its final
+candidate has 54 author-control checks, 1864 Native checks across eight command
+traces, 22 v1 element checks and three independently validated saves. Status
+add/tick/clear, imported PNG drawing, command/target separation, pause/focus/modal,
+skip/load/package switch and synthetic projection/overflow probes passed. The
+authored 112-pixel card-height example improves readability over the retained
+64-pixel attempt. This is a four-person synthetic fixture, not new Miaopang art,
+physical input, a full playthrough, all aspect ratios or packaged-device acceptance.
+The prior Windows archive has not yet been rebuilt with this v2 increment.
+
 Battle status presentation now follows the existing committed event indices.
 Add uses the committed total stacks and source; remove/clear happens at its own
 event. Silent remaining-round changes reconcile from the exact pre-cleanup result

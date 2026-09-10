@@ -13,6 +13,7 @@ var elapsed_us: float = 0.0
 var active: bool = false
 var outcome: String = ""
 var consumed: Array = []
+var _command_actor: String = "" # Construction context, separate from reaction focus.
 
 static func state_context(state: Dictionary) -> String:
 	return "%s:%s:%s" % [state.content_lock, state.session_id, state.timeline_epoch]
@@ -28,6 +29,8 @@ func begin(value, before: Dictionary, result: Dictionary, ending: String) -> voi
 	var expanded: bool = false
 	for i in range(result.events.size()):
 		var event: Dictionary = result.events[i]
+		if event.kind in ["attack","cast","item_use","guard","escape","status_skip"]: _command_actor=event.source
+		elif event.kind in ["status_damage","status_heal"] or (event.kind=="status_clear" and event.get("reason")=="expired"): _command_actor=""
 		var physical_event: bool = event.kind == "attack" and not physical.is_empty() and event.source == physical.source
 		if physical_event:
 			if not expanded: _physical_phases(physical); expanded = true
@@ -49,6 +52,7 @@ func begin(value, before: Dictionary, result: Dictionary, ending: String) -> voi
 		else: _add(event.target, "", event, i) # Metadata/healing keep the HP-derived base pose.
 		if not physical_event and event.kind in ["attack", "damage", "status_damage"] and _final_hp(event.target, result.events.slice(0, i + 1)) == 0:
 			_add(event.target, "dead", {}, -1)
+	_command_actor=""
 	if result.has("statuses"):
 		# Duration decrements have no event. Reconcile only after every original
 		# event, before terminal poses; this is a display boundary, not a rule tick.
@@ -126,7 +130,7 @@ func _add(id: String, action: String, event: Dictionary, index: int) -> void:
 	var duration: int = 0
 	for frame in clip.get("frames", []): duration += int(frame.duration_us)
 	phases.append({"actor_id": id, "action": action, "event": event.duplicate(true), "event_index": index,
-		"duration_us": duration if duration > 0 else 180000})
+		"command_actor_id":_command_actor, "duration_us": duration if duration > 0 else 180000})
 
 func clip_for(id: String, action: String) -> Dictionary:
 	if not actors.has(id): return {}
@@ -186,3 +190,4 @@ func clear() -> void:
 	package = null
 	context = ""; battle = {}; actors = {}; phases = []; phase_index = 0
 	elapsed_us = 0.0; active = false; outcome = ""; consumed = []
+	_command_actor = ""

@@ -51,6 +51,7 @@ func trace_command(app, receipt: Dictionary) -> void:
 		else: check(rows == previous, "damage, healing, poses and metadata cannot silently add/remove/tick statuses")
 		if not settled: check(p.battle.round == original_round, "round label does not jump to final authority during events")
 		if kind != "": event_kinds[kind] = true
+		await check_card_projection(app, phase, rows)
 		for id in p.actors:
 			var expected: Array = rows.filter(func(row): return row.actor_id == id)
 			var exposed: Array = view.display_statuses(id)
@@ -76,6 +77,9 @@ func trace_command(app, receipt: Dictionary) -> void:
 	var jumped = Presentation.new(); jumped.begin(session.package, receipt.before, receipt.result, receipt.outcome); jumped.advance(600.0, true)
 	check(not jumped.active and jumped.battle.statuses == receipt.result.statuses and jumped.consumed == p.consumed, "one large delta preserves status order and settlement")
 	traces.append({"party":receipt.before.active_party.size(),"step":receipt.result.step,"outcome":receipt.outcome,"timeline":timeline})
+
+func check_card_projection(_app, _phase: Dictionary, _rows: Array) -> void:
+	pass # Optional consumer hook; the original status trace remains reusable.
 
 func probes(app, opening: Dictionary) -> void:
 	# Base probes include capacity/callback rollback. They are synthetic in-memory
