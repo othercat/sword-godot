@@ -29,6 +29,7 @@ var session = Session.new()
 var saves = Save.new()
 var world_view
 var map_ui = preload("res://src/native_map_ui_view.gd").new()
+var story_notice = preload("res://src/native_story_notice_view.gd").new()
 var map_overview: CheckButton
 var map_zoom: SpinBox
 var map_names: CheckButton
@@ -184,6 +185,7 @@ func _ready() -> void:
 	dialogue_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	dialogue_text.text = "打开工坊导出的 MOD，开始一段新的故事。"
 	dialogue_text.add_theme_color_override("font_color", Color("e4d5b5"))
+	story_notice.setup(self)
 	dialogue.add_child(dialogue_text)
 	target_pages = HBoxContainer.new(); target_pages.visible = false; dialogue.add_child(target_pages)
 	options = GridContainer.new(); options.columns = 1
@@ -628,6 +630,7 @@ func _refresh() -> void:
 	_fit_battle_commands()
 	_fit_classic_controls()
 	map_ui.apply(self)
+	story_notice.refresh(self)
 	if restore_focus: _restore_battle_focus.call_deferred(focus_key,_ui_generation)
 
 func _change_enemy_page(direction: int) -> void:

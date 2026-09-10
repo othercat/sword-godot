@@ -1,5 +1,28 @@
 # PAL Wanxiang Native preview
 
+## Authored story-boundary notices (2026-09-10)
+
+The optional `pal.native.story-notice.v1` component is pinned to owner
+`85658024f4a92a9845e82bd59c19e357a0d2fcc2` (28 schema snapshots). Only explicitly
+bound end nodes show authored title/body text; ordinary conversation endings
+remain free exploration. The existing interaction hint stays outside a bounded
+text scroll. Notices inherit the authored map typography, clear on leaving the
+node or changing package, and restore from the committed cursor on save load.
+They have no new command, timer, gameplay rule, state extension or save field.
+Performance boundaries cannot also bind a notice. Admission checks exact
+capability usage and the component schema hash.
+
+`tests/test_story_notice.gd` reuses only the relevant existing practice-route
+input helpers: short and 2000-character departure notices, return to camp, and
+normal defense commands until independent defeat. Product candidate-03 passed
+650 checks in the actual 1280x800 Native window and 16 independently validated
+saves. The helper uses today's default arrow keys and an isolated preferences
+path; the earlier WASD helper failure remains recorded. Package SHA256 is
+`b6c16d84cd046dff0043fae01da051c7b611e3aae6bdb04db0eaf9e14ae10fc7`.
+These are injected input and production-loader results on one Windows host,
+not physical input, system save-picker, packaged runtime, new art acceptance or
+a complete work playthrough. Private real-map sources are outside this repo.
+
 ## Party card v2 displayed status cells and command markers (2026-09-10)
 
 The runtime now consumes the additive v2 draft from contract owner
