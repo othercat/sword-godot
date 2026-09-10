@@ -36,8 +36,17 @@ The product's map-UI candidate-04 has 61 workbench checks, 52 actual Native wind
 checks and three independently verified saves on the preserved real-map source.
 Walk/collision results match a package differing only in presentation. The retained
 v2 battle-card fixture also survives a package round trip. Map portraits/internal
-widgets, full playthrough and human/device acceptance remain separate; the Windows
-archive above predates this new map implementation.
+widgets, full playthrough and human/device acceptance remain separate. This source
+(`7850630`) and Studio production `8479931` were subsequently packaged as a fresh
+321-file self-contained Windows ZIP. Its SHA256 is
+`2a611b27c295ef954d76f07623675cbe469543e8a6b7d437e94586629a71fe18`;
+PCK SHA256 is `8cfdcd7b70ddf2c36935f88836f802867c2f9cd62aa6554792a214b52069c759`.
+The actual production entrypoints and 71 published-assembly map form/preview
+checks passed, automatically loading the authored package with the bundled player
+and no Godot project. Owner admission and byte-identical GUI/CLI rebuild passed.
+The product's `map-ui-portable-results.json` records the exact closure. Source
+movement/battle/save checks remain separate from packaged route/device acceptance;
+the earlier card-v2 archive is retained and predates map UI.
 
 Battle status presentation now follows the existing committed event indices.
 Add uses the committed total stacks and source; remove/clear happens at its own
