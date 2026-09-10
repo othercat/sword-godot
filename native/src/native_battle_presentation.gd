@@ -49,6 +49,13 @@ func begin(value, before: Dictionary, result: Dictionary, ending: String) -> voi
 		else: _add(event.target, "", event, i) # Metadata/healing keep the HP-derived base pose.
 		if not physical_event and event.kind in ["attack", "damage", "status_damage"] and _final_hp(event.target, result.events.slice(0, i + 1)) == 0:
 			_add(event.target, "dead", {}, -1)
+	if result.has("statuses"):
+		# Duration decrements have no event. Reconcile only after every original
+		# event, before terminal poses; this is a display boundary, not a rule tick.
+		_add("", "", {}, -1)
+		phases[-1].duration_us = 1
+		phases[-1].status_snapshot = result.statuses.duplicate(true)
+		phases[-1].round_snapshot = result.round
 	if not ending.is_empty():
 		for id in battle.party:
 			if _final_hp(id, result.events) > 0:
@@ -130,6 +137,9 @@ func clip_for(id: String, action: String) -> Dictionary:
 
 func _enter() -> void:
 	var phase: Dictionary = phases[phase_index]
+	if phase.has("status_snapshot"):
+		battle.statuses = phase.status_snapshot.duplicate(true)
+		battle.round = phase.round_snapshot
 	var event: Dictionary = phase.event
 	if event.is_empty(): return
 	if phase.event_index >= 0: consumed.append(phase.event_index)
@@ -138,7 +148,27 @@ func _enter() -> void:
 	elif event.kind in ["heal", "revive", "status_heal"]: target.hp += int(event.amount)
 	elif event.kind == "cast": actors[event.source].mp -= int(event.amount)
 	elif event.kind == "guard" and event.source not in battle.guarding: battle.guarding.append(event.source)
+	elif event.kind in ["status_add", "status_remove", "status_clear"]: _status_event(event)
 	# HP is a projection of bounded authoritative amounts, never a second formula.
+
+func _status_event(event: Dictionary) -> void:
+	var rows: Array = battle.get("statuses", [])
+	var matches: Array = rows.filter(func(row): return row.actor_id == event.target and row.status_id == event.status_id)
+	if event.kind != "status_add":
+		for row in matches: rows.erase(row)
+		return
+	# amount is the committed TOTAL stack count, including refresh/replace/cap.
+	# Zero means the target could not receive the status; retain any old row.
+	if int(event.amount) == 0: return
+	var current: Dictionary = matches[0] if not matches.is_empty() else {}
+	if current.is_empty():
+		current = {"actor_id": event.target, "status_id": event.status_id}
+		rows.append(current)
+	current.source_id = event.source
+	current.stacks = int(event.amount)
+	current.remaining_rounds = int(package.index.status_definitions[event.status_id].duration_rounds)
+	rows.sort_custom(func(a, b): return a.actor_id < b.actor_id or (a.actor_id == b.actor_id and a.status_id < b.status_id))
+	battle.statuses = rows
 
 func advance(delta: float, running: bool) -> bool:
 	if not active or not running: return false

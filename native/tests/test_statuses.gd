@@ -141,11 +141,16 @@ func probes(app, opening: Dictionary) -> void:
 		Statuses.add(package,session.state,session.entity(source),session.entity(source),{"status_id":spec.id,"stacks":1})
 	var original_effects: Array = skills[1].effects.duplicate(true)
 	skills[1].effects = [{"op":"heal","power":1},{"op":"status_add","status_id":original_defs[4].id,"stacks":1}]
+	var emitted = {"count":0}
+	var observer = func(_before, _result, _outcome): emitted.count += 1
+	session.battle_committed.connect(observer)
 	before = session.state.duplicate(true)
 	check(not session.battle_command("skill",source,skills[1].id) and session.state == before, "17th status rolls back preceding heal, MP debit, results and turn")
+	check(emitted.count == 0, "failed status transaction emits no partial presentation")
 	var use: Dictionary = package.world.item_definitions[5].battle_use; var item_effects: Array = use.effects.duplicate(true)
 	use.effects = skills[1].effects.duplicate(true)
 	check(not session.battle_command("item",source,"",package.world.item_definitions[5].id) and session.state == before, "17th item-applied status rolls back healing and inventory debit together")
+	check(emitted.count == 0, "failed item status transaction emits no partial presentation")
 	use.effects = item_effects; skills[1].effects = original_effects
 	package.world.status_definitions = original_defs; package.index.status_definitions = original_index
 	# Failure in the authored victory callback must also discard death-triggered status removals.
@@ -155,6 +160,8 @@ func probes(app, opening: Dictionary) -> void:
 	var node: Dictionary = package.index.nodes[battle.node_id]; var win: String = node.on_win; node.on_win = "node.missing"
 	before = session.state.duplicate(true)
 	check(not session.battle_command("skill","",skills[4].id) and session.state == before, "failed victory callback restores status rows, enemy HP, MP and the whole battle candidate")
+	check(emitted.count == 0, "failed terminal callback emits no status cleanup projection")
+	session.battle_committed.disconnect(observer)
 	node.on_win = win
 
 func status(session, actor_id: String, id: String) -> Dictionary: return Statuses.find(session.state,actor_id,id)

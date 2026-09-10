@@ -1,5 +1,23 @@
 # PAL Wanxiang Native preview
 
+Battle status presentation now follows the existing committed event indices.
+Add uses the committed total stacks and source; remove/clear happens at its own
+event. Silent remaining-round changes reconcile from the exact pre-cleanup result
+after all events and before terminal poses. This display boundary does not infer
+whether a rule tick ran from the round number, call rules or advance authority.
+Body status descriptions and sleep poses share copied display rows during playback;
+skip, load and package activation discard that temporary projection.
+
+`tests/test_status_presentation.gd` combines the previously authored status/action
+fixtures and traces 90 ordinary commands across 3/4/5 party, including refresh,
+stacking, removal, expiry, persistent death and revival. Synthetic cases separately
+cover capped/zero application, replace, double-hit event consumption, early enemy
+loss versus status-tick victory and failed transaction/callback emission. Windows
+GPU runs pass 11613 status checks plus 171 existing animation checks; 45 saves are
+independently validated. The product's `run_status_presentation_checks.py` records
+exact source/input hashes and failures. This does not add configurable status icons
+or certify real art, physical/human acceptance or complete content.
+
 Optional `pal.native.party-card.v1` separates internal panel, portrait, text,
 HP/MP bars and decorative images from the outer HUD layout. Encounter templates
 contain ordered, individually clipped percentage rectangles; actor-definition
@@ -11,8 +29,8 @@ precedence. There is no arbitrary script or font loading.
 
 All elements consume one displayed actor snapshot, including effective maxima,
 and never read already-settled values during playback. Decorative controls ignore
-mouse input, reuse draw nodes and remain outside save authority. Status icons
-require a separate status-playback projection and are not part of this version.
+mouse input, reuse draw nodes and remain outside save authority. Status icons can
+use the display projection above but are not part of this component version.
 Studio supports selection/drag/resize/nudge, list ordering, per-character copies,
 PNG decode before import, one-apply undo and restoration of the legacy template.
 The current 25-schema snapshot is `f50b3da867260a8aa0788cfcb2cc75f01bd8be8b`.

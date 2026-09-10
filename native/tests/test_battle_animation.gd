@@ -137,7 +137,7 @@ func death_and_revival(app,path:String,baseline:String,size:int)->void:
 	var before: Dictionary=session.state.duplicate(true); var result: Dictionary=before.extensions[Battle.KEY].duplicate(true)
 	var enemy: String=result.enemies[0].instance_id
 	result.events=[{"kind":"attack","source":enemy,"target":hero,"amount":20},
-		{"kind":"status_clear","source":hero,"target":hero,"amount":0}]
+		{"kind":"status_clear","source":hero,"target":hero,"amount":0,"status_id":session.package.world.status_definitions[0].id,"reason":"death"}]
 	view.present_committed(before,result,""); app._refresh()
 	while view.playing():
 		await RenderingServer.frame_post_draw

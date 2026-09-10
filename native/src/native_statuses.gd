@@ -116,8 +116,11 @@ static func end_round(package, state: Dictionary) -> void:
 				battle.events.append({"kind": "status_clear", "source": row.source_id, "target": id, "amount": count, "status_id": row.status_id, "reason": "expired"})
 
 static func describe(package, state: Dictionary, id: String) -> PackedStringArray:
+	return describe_rows(package, rows(state, id))
+
+static func describe_rows(package, instances: Array) -> PackedStringArray:
 	var result: PackedStringArray = []
-	for row in rows(state, id): result.append("%s×%d · %d轮" % [definition(package, row.status_id).display_name, row.stacks, row.remaining_rounds])
+	for row in instances: result.append("%s×%d · %d轮" % [definition(package, row.status_id).display_name, row.stacks, row.remaining_rounds])
 	return result
 
 static func validate_state(package, state: Dictionary) -> String:

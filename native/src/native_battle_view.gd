@@ -90,6 +90,15 @@ func action_caption() -> String:
 	return (session.package.index.actor_definitions[actor.definition_id].display_name + " · " + skills[0].display_name).replace("\n", " ").replace("\r", " ")
 func display_battle() -> Dictionary:
 	return presentation.battle if playing() else (session.state.extensions.get(Battle.KEY, {}) if session != null else {})
+func display_statuses(id: String) -> Array:
+	# Consumers receive their own rows, never aliases into authority or playback.
+	return display_battle().get("statuses", []).filter(func(row): return row.actor_id == id).duplicate(true)
+func describe_statuses(id: String) -> PackedStringArray:
+	return Statuses.describe_rows(session.package, display_statuses(id))
+func display_blocking(id: String, flag: String) -> String:
+	for row in display_statuses(id):
+		if Statuses.definition(session.package, row.status_id)[flag]: return row.status_id
+	return ""
 func classic_layout() -> Dictionary:
 	var battle: Dictionary = display_battle()
 	return {} if battle.is_empty() else Classic.for_encounter(session.package.world,battle.encounter_id)
@@ -322,7 +331,7 @@ func _draw_battle(battle: Dictionary, bounds: Vector2) -> void:
 				if event.kind in ["heal","revive","status_heal"] and event.target == row.instance_id: feedback_color = feedback_color.lerp(Color("80d8a1"),.7)
 		var action: String = "idle"
 		if row.hp == 0: action = "dead"
-		elif not playing() and session.battle_open() and not Statuses.blocking(session.package,session.state,row.instance_id,"skip_turn").is_empty(): action = "sleep"
+		elif not display_blocking(row.instance_id,"skip_turn").is_empty(): action = "sleep"
 		elif row.instance_id in battle.guarding: action = "defend"
 		elif row.hp * 5 <= Progression.stats(session.package, row).max_hp: action = "dying"
 		var elapsed: int = roundi(idle_elapsed * 1000000.0)
@@ -383,7 +392,7 @@ func _draw_battle(battle: Dictionary, bounds: Vector2) -> void:
 			displayed_enemy_overlays[row.instance_id]={"rect":placed.rect,"requested_rect":requested,"profile":profile,"hp":row.hp,"max_hp":Progression.stats(session.package,row).max_hp,"name":definition.display_name,"factor":overlay_factor*placed.fit}
 		if body.side == 1 and body.index == battle.turn and not playing() and not dream: draw_arc(pos,18,0,TAU,32,Color("ddbd70"),2)
 		var label: String = enemy_label(session.package,row,body.index) if body.side == 0 else definition.display_name
-		var statuses: PackedStringArray = Statuses.describe(session.package,session.state,row.instance_id) if session.battle_open() and not playing() else PackedStringArray()
+		var statuses: PackedStringArray = describe_statuses(row.instance_id)
 		var resolved: String = str(clip.get("action","static"))
 		var action_label: String = action if resolved == action else action + " (回退为 " + resolved + ")"
 		_status_regions.append({"bounds":rect,"text":label+" · "+action_label+"\n"+"\n".join(statuses)})
