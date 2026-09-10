@@ -44,7 +44,7 @@ func bind(view) -> void:
 	if profile.is_empty(): queue_redraw(); return
 	if size.x <= 0 or size.y <= 0: queue_redraw(); return
 	var ids: Array = battle.get("party",[])
-	boxes = Config.geometry(profile.layout,size,ids.size())
+	boxes = Config.geometry(profile.layout,size,ids.size(),profile.placement)
 	command_profile = CommandPanel.for_encounter(view.session.package.world,battle.encounter_id)
 	if not command_profile.is_empty(): boxes.commands = CommandPanel.geometry(command_profile,boxes.content).buttons
 	var legacy: int = CanvasItem.TEXTURE_FILTER_NEAREST if profile.style.portrait_filter == "nearest" else CanvasItem.TEXTURE_FILTER_LINEAR
@@ -60,9 +60,13 @@ func bind(view) -> void:
 		var portrait: Dictionary = Config.portrait(view.session.package.world,actor.definition_id)
 		var panel: Rect2 = boxes.cards[i]
 		var unit: float = panel.size.y/profile.layout.card_height
+		var text_origin_y: float = panel.position.y
+		if not profile.placement.is_empty():
+			unit = minf(unit,panel.size.x/profile.layout.min_card_width)
+			text_origin_y += (panel.size.y-profile.layout.card_height*unit)/2
 		var extent: float = minf(profile.style.portrait_size*unit,panel.size.x*.35)
 		cards[id] = {"instance_id":id,"hp":actor.hp,"mp":actor.mp,"stats":Progression.stats(view.session.package,actor),
-			"name":definition.display_name,"origin":panel.position,"panel_rect":panel,"unit":unit,
+			"name":definition.display_name,"origin":panel.position,"panel_rect":panel,"unit":unit,"text_origin_y":text_origin_y,
 			"face_rect":Rect2(panel.position+Vector2(5*unit,(panel.size.y-extent)/2),Vector2.ONE*extent),"portrait_asset":portrait.get("asset_id","")}
 	queue_redraw()
 
@@ -96,11 +100,11 @@ func _paint(canvas: CanvasItem, part: String) -> void:
 		var left: float = card.face_rect.end.x+6*unit
 		var width: float = maxf(1,panel.end.x-left-8*unit)
 		var font_size: int = maxi(8,roundi(profile.style.font_size*unit))
-		canvas.draw_string(font,Vector2(left,panel.position.y+(profile.style.font_size+3)*unit),card.name,HORIZONTAL_ALIGNMENT_LEFT,width,font_size,Color(colors.text))
+		canvas.draw_string(font,Vector2(left,card.text_origin_y+(profile.style.font_size+3)*unit),card.name,HORIZONTAL_ALIGNMENT_LEFT,width,font_size,Color(colors.text))
 		var row: int = 0
 		for entry in [["HP",card.hp,card.stats.max_hp,colors.hp],["MP",card.mp,card.stats.max_mp,colors.mp]]:
 			var height: float = (profile.style.font_size-1)*unit
-			var bar = Rect2(left,panel.position.y+(profile.style.font_size*2+row*(profile.style.font_size+4))*unit,width,height)
+			var bar = Rect2(left,card.text_origin_y+(profile.style.font_size*2+row*(profile.style.font_size+4))*unit,width,height)
 			canvas.draw_rect(bar,Color(colors.track))
 			var ratio: float = clampf(float(entry[1])/maxf(1,float(entry[2])),0,1)
 			canvas.draw_rect(Rect2(bar.position,Vector2(width*ratio,height)),Color(entry[3]))

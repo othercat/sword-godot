@@ -137,7 +137,7 @@ static func cover_rect(source: Vector2, bounds: Vector2) -> Rect2:
 func presentation_rect(bounds: Vector2) -> Rect2:
 	var battle: Dictionary = display_battle()
 	var profile: Dictionary = Hud.for_encounter(session.package.world,battle.encounter_id) if not battle.is_empty() else {}
-	return Rect2(Vector2.ZERO,bounds) if profile.is_empty() else Hud.geometry(profile.layout,bounds,battle.party.size()).content
+	return Rect2(Vector2.ZERO,bounds) if profile.is_empty() else Hud.geometry(profile.layout,bounds,battle.party.size(),profile.placement).content
 
 func _classic_stage(bounds: Vector2) -> Rect2:
 	var region: Rect2 = presentation_rect(bounds)

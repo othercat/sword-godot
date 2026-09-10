@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: MIT
 extends "res://tests/test_legacy_battle_import.gd"
+const Placement = preload("res://src/native_hud_placement.gd")
 ## Authored variants and real routed GUI input. No legacy parity or art verdict.
 var windows: Array = []
 func run() -> void:
@@ -31,20 +32,37 @@ func run() -> void:
 		check(app._responsive_mode() and app.dream_hud == app.responsive_hud,"authored HUD selected")
 		var authority: Dictionary = s.state.duplicate(true)
 		var battle: Dictionary = s.state.extensions[Battle.KEY]
+		var placement: Dictionary = Placement.for_encounter(s.package.world,battle.encounter_id)
 		check(battle.party.size() == int(fixture.count),"authored party count")
 		for size in [Vector2i(1440,960),Vector2i(980,720),Vector2i(1680,900)]:
 			root.size = size; await settle(); await RenderingServer.frame_post_draw
 			check(s.state == authority,"resize keeps authority")
+			var hud = app.dream_hud
+			check(view.presentation_rect(view.size).is_equal_approx(hud.boxes.content),"actors and HUD use the same content rectangle including origin")
+			if not placement.is_empty():
+				var expected = Rect2(hud.size*Vector2(placement.content_region.x,placement.content_region.y)/100,hud.size*Vector2(placement.content_region.width,placement.content_region.height)/100)
+				check(hud.boxes.content.is_equal_approx(expected),"authored content region follows viewport percentage")
+				check(expected.grow(.01).encloses(view.classic_stage),"actor stage follows reserved region origin")
 			for button in app.dream_hud.commands.get_children():
 				check(button.get_rect().is_equal_approx(app.dream_hud.boxes.commands[button.symbol]),"resized root command "+button.symbol)
 			for id in battle.party:
 				var card: Dictionary = app.dream_hud.cards[id]
 				check(card.instance_id == id and card.hp == s.entity(id).hp and card.mp == s.entity(id).mp,"HUD reads stable instance")
-				check(not app.dream_hud.boxes.content.intersects(card.panel_rect),"HUD reserved space")
+				if placement.is_empty(): check(not hud.boxes.content.intersects(card.panel_rect),"HUD reserved space")
+				else:
+					var region = Rect2(hud.size*Vector2(placement.cards_region.x,placement.cards_region.y)/100,hud.size*Vector2(placement.cards_region.width,placement.cards_region.height)/100)
+					check(region.grow(.01).encloses(card.panel_rect),"card stays within freely placed group")
+					check(card.panel_rect.grow(.01).encloses(card.face_rect),"portrait fits resized card")
+					for table in placement.slots_by_count:
+						if table.count == battle.party.size():
+							var authored: Dictionary = table.slots[battle.party.find(id)]
+							var exact = Rect2(region.position+region.size*Vector2(authored.x,authored.y)/100,region.size*Vector2(authored.width,authored.height)/100)
+							check(card.panel_rect.is_equal_approx(exact),"manual card follows current seat rectangle")
 			var path = output.path_join(fixture.label+"-%dx%d.png" % [size.x,size.y])
 			root.get_texture().get_image().save_png(path); windows.append({"path":path,"package_path":package_path,"viewport":[size.x,size.y]})
 		root.size = Vector2i(1280,800); await settle(); root.grab_focus(); await settle()
 		var initial: String = save(app,"initial-"+fixture.label)
+		check(not s.state.extensions.has(Placement.KEY),"placement does not become saved authority")
 		var actor: Dictionary = s.entity(battle.party[battle.turn])
 		var all_targets: bool = Battle.PlayerPhysical.all_targets(s.package.world,actor.definition_id)
 		var target_label: String = "攻击全体" if all_targets else "攻击 2"

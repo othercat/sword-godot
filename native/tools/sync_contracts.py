@@ -25,6 +25,7 @@ files["pal.native.player-physical.v1.schema.json"] = source / "schemas/pal.nativ
 files["pal.native.training.v1.schema.json"] = source / "schemas/pal.native.training.v1.schema.json"
 files["pal.native.enemy-physical.v1.schema.json"] = source / "schemas/pal.native.enemy-physical.v1.schema.json"
 files["pal.native.battle-hud.v1.schema.json"] = source / "schemas/pal.native.battle-hud.v1.schema.json"
+files["pal.native.hud-placement.v1.schema.json"] = source / "schemas/pal.native.hud-placement.v1.schema.json"
 files["pal.native.battle-canvas.v1.schema.json"] = source / "schemas/pal.native.battle-canvas.v1.schema.json"
 files["pal.native.battle-formation.v1.schema.json"] = source / "schemas/pal.native.battle-formation.v1.schema.json"
 files["pal.native.enemy-overlay.v1.schema.json"] = source / "schemas/pal.native.enemy-overlay.v1.schema.json"

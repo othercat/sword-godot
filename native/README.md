@@ -1,5 +1,24 @@
 # PAL Wanxiang Native preview
 
+Optional `pal.native.hud-placement.v1` adds authored party-card regions and actor
+canvas rectangles, plus independent per-count card rectangles. Left/top/free
+Studio presets use the same runtime layout path. Unspecified counts retain flow
+layout; the original HUD schema and content without the component stay unchanged.
+Cards keep existing portrait/data bindings, and command images retain their own
+layout relative to the actor canvas. Background canvas configuration is independent
+and still fills the stage by default. Geometry is display-only, never saved state.
+
+The owner snapshot is `dd805bd04858e85e76b471e8546a9400eeedc080`. Admission requires
+the paired capability, exact schema hash, an existing responsive HUD, bounded
+rectangles and complete, unique count tables. Malformed components are rejected
+without crashing early HUD validation. Geometry tests cover 4144 checks, including
+small regions and 1/3/4/5/16 seats. Four actual Studio packages pass 366 checks in
+12 GPU windows and eight independent save validations; the 16 admission cases
+also agree with the independent Python owner. These Windows/Godot 4.7.2 samples
+use five actual combatants, original command artwork and private Boss sprites.
+They do not expand the Dream 1–5 gameplay gate or certify art/physical input.
+Card internals, arbitrary map UI and complete mod-editor coverage remain pending.
+
 The optional `pal.native.sampling.v1` presentation component now requires the exact
 owner schema hash and `graphics.sampling.v1`. ClassicLowRes and PixelHD default to
 nearest filtering; IllustratedHD defaults to linear. Explicit scope choices take

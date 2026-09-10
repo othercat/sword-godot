@@ -6,6 +6,7 @@ const SCHEMA = "pal.native.battle-hud.v1"
 const CAPABILITY = "graphics.battle-hud.v1"
 const Classic = preload("res://src/native_classic_battle.gd")
 const Box = preload("res://src/native_box_layout.gd")
+const Placement = preload("res://src/native_hud_placement.gd")
 static func used(content: Dictionary) -> bool: return content.extensions.has(KEY)
 static func definition(content: Dictionary) -> Dictionary: return content.extensions.get(KEY,{})
 static func portraits(content: Dictionary) -> Array: return definition(content).get("portraits",[])
@@ -18,7 +19,7 @@ static func for_encounter(content: Dictionary, encounter_id: String) -> Dictiona
 				if row.id == binding.layout_id: layout = row
 			for row in value.styles:
 				if row.id == binding.style_id: style = row
-			return {"layout":layout,"style":style}
+			return {"layout":layout,"style":style,"placement":Placement.for_encounter(content,encounter_id)}
 	return {}
 static func portrait(content: Dictionary, definition_id: String) -> Dictionary:
 	for row in portraits(content):
@@ -52,7 +53,8 @@ static func validate_content(package) -> String:
 		actors.append(row.definition_id)
 	return ""
 
-static func geometry(layout: Dictionary, bounds: Vector2, count: int) -> Dictionary:
+static func geometry(layout: Dictionary, bounds: Vector2, count: int, placement: Dictionary = {}) -> Dictionary:
+	if not placement.is_empty(): return Placement.geometry(placement,layout,bounds,count)
 	var margin: float = minf(layout.margin,minf(bounds.x,bounds.y)*.05)
 	var gap: float = layout.gap
 	var region = Rect2(Vector2.ZERO,bounds)
