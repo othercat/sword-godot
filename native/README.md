@@ -19,7 +19,13 @@ skip/load/package switch and synthetic projection/overflow probes passed. The
 authored 112-pixel card-height example improves readability over the retained
 64-pixel attempt. This is a four-person synthetic fixture, not new Miaopang art,
 physical input, a full playthrough, all aspect ratios or packaged-device acceptance.
-The prior Windows archive has not yet been rebuilt with this v2 increment.
+Subsequent packaging of this runtime source (`5a17925`) and Studio `c83fd7e`
+produced a321-file self-contained Windows candidate. Its actual entrypoints,
+64 published-assembly card checks, automatic bundled-player package loading and
+byte-identical rebuild passed on the same host. Archive SHA256 is
+`cd564ffb2273b79808c9dbae44626e5bf26fbca45adfddc43b42eb46e9be7bfc`;
+the product's `party-card-v2-portable-results.json` records its exact closure.
+Packaged save/playthrough and other devices remain separate acceptance work.
 
 Battle status presentation now follows the existing committed event indices.
 Add uses the committed total stacks and source; remove/clear happens at its own
