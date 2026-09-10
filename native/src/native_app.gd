@@ -124,6 +124,11 @@ func _ready() -> void:
 	zoom.min_value = 0.5; zoom.max_value = 4.0; zoom.step = 0.25; zoom.value = _camera_zoom
 	zoom.value_changed.connect(func(value): _camera_zoom = value; _fit_world())
 	sidebar.add_child(zoom)
+	var names = CheckButton.new()
+	names.name = "MapActorNames"
+	names.text = "显示角色名"
+	names.toggled.connect(func(enabled): world_view.set_actor_names_visible(enabled))
+	sidebar.add_child(names)
 	equipment_button = _button(sidebar, "装备", _show_equipment); equipment_button.visible = false
 	var scroll = ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL

@@ -13,6 +13,13 @@ var tiles: TileMapLayer
 var actors: Dictionary = {}
 var backdrop: Sprite2D
 var visuals: Dictionary = {}
+var actor_labels: Dictionary = {}
+var show_actor_names: bool = false
+
+func set_actor_names_visible(enabled: bool) -> void:
+	show_actor_names = enabled
+	for label in actor_labels.values(): label.visible = enabled
+
 var _history: String = ""
 var terrain_layers: Array = []
 var depth_tiles: Array = []
@@ -42,6 +49,7 @@ func bind(model) -> void:
 			child.queue_free()
 	actors = {}
 	visuals = {}
+	actor_labels = {}
 	portal_markers = []
 	_history = _history_key()
 	var height: int = map_data.coordinates.tile_height
@@ -154,8 +162,9 @@ func _build_portals_and_actors(scene: Dictionary, height: int) -> void:
 		label.add_theme_color_override("font_shadow_color", Color.BLACK)
 		label.add_theme_constant_override("shadow_offset_x", 1)
 		label.add_theme_constant_override("shadow_offset_y", 1)
-		label.visible = not _map.has("terrain")
+		label.visible = show_actor_names
 		body.add_child(label)
+		actor_labels[item.instance_id] = label
 		actors[item.instance_id] = body
 		body.position = MapProjection.project(Vector2(item.position.x, item.position.y), _map.coordinates)
 
