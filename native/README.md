@@ -27,6 +27,18 @@ byte-identical rebuild passed on the same host. Archive SHA256 is
 the product's `party-card-v2-portable-results.json` records its exact closure.
 Packaged save/playthrough and other devices remain separate acceptance work.
 
+The optional `pal.native.map-ui.v1` draft now supports scene-bound map, party and
+dialogue workspace rectangles, supported panel styles and author camera defaults.
+Local view overrides remain outside saves and reset on explicit author-view reset
+or package switch. Scrollable dialogue retains focus access; battle transitions
+restore original parents, sizing flags and styles. Contract owner is `e1303e6`.
+The product's map-UI candidate-04 has 61 workbench checks, 52 actual Native window
+checks and three independently verified saves on the preserved real-map source.
+Walk/collision results match a package differing only in presentation. The retained
+v2 battle-card fixture also survives a package round trip. Map portraits/internal
+widgets, full playthrough and human/device acceptance remain separate; the Windows
+archive above predates this new map implementation.
+
 Battle status presentation now follows the existing committed event indices.
 Add uses the committed total stacks and source; remove/clear happens at its own
 event. Silent remaining-round changes reconcile from the exact pre-cleanup result

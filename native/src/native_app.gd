@@ -28,6 +28,11 @@ var _classic_context: String = ""
 var session = Session.new()
 var saves = Save.new()
 var world_view
+var map_ui = preload("res://src/native_map_ui_view.gd").new()
+var map_overview: CheckButton
+var map_zoom: SpinBox
+var map_names: CheckButton
+var map_reset: Button
 var title_label: Label
 var message: Label
 var roster: VBoxContainer
@@ -107,6 +112,7 @@ func _ready() -> void:
 	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	body.add_theme_constant_override("separation", 20)
 	layout.add_child(body)
+	map_ui.setup(self, body)
 	sidebar = VBoxContainer.new()
 	sidebar.custom_minimum_size.x = 230
 	body.add_child(sidebar)
@@ -115,20 +121,25 @@ func _ready() -> void:
 	party_title.add_theme_color_override("font_color", Color("d7be86"))
 	sidebar.add_child(party_title)
 	var overview = CheckButton.new()
+	map_overview = overview
 	overview.text = "地图总览"
-	overview.toggled.connect(func(enabled): _camera_overview = enabled; _fit_world())
+	overview.toggled.connect(func(enabled): map_ui.user_camera(self, "mode", "overview" if enabled else "follow"))
 	sidebar.add_child(overview)
 	var zoom = SpinBox.new()
+	map_zoom = zoom
 	zoom.prefix = "地图缩放"
 	zoom.suffix = "倍"
 	zoom.min_value = 0.5; zoom.max_value = 4.0; zoom.step = 0.25; zoom.value = _camera_zoom
-	zoom.value_changed.connect(func(value): _camera_zoom = value; _fit_world())
+	zoom.value_changed.connect(func(value): map_ui.user_camera(self, "zoom", value))
 	sidebar.add_child(zoom)
 	var names = CheckButton.new()
+	map_names = names
 	names.name = "MapActorNames"
 	names.text = "显示角色名"
-	names.toggled.connect(func(enabled): world_view.set_actor_names_visible(enabled))
+	names.toggled.connect(func(enabled): map_ui.user_camera(self, "actor_names", enabled))
 	sidebar.add_child(names)
+	map_reset = _button(sidebar, "恢复作者视图", func(): map_ui.reset_camera(self))
+	map_reset.name = "ResetMapCamera"; map_reset.visible = false
 	equipment_button = _button(sidebar, "装备", _show_equipment); equipment_button.visible = false
 	var scroll = ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -482,7 +493,7 @@ func _fit_world() -> void:
 	var map_data: Dictionary = session.package.index.maps[session.package.index.scenes[session.state.cursor.scene_id].map_id]
 	var bounds: Rect2 = MapProjection.bounds(map_data)
 	var logical_size: Vector2 = viewport.get_visible_rect().size
-	var scale_value: float = minf((logical_size.x - 32.0) / bounds.size.x, (logical_size.y - 32.0) / bounds.size.y)
+	var scale_value: float = maxf(0.001, minf((logical_size.x - 32.0) / bounds.size.x, (logical_size.y - 32.0) / bounds.size.y))
 	_camera_map = session.state.cursor.scene_id
 	_camera_bounds = bounds
 	if not _camera_overview: scale_value = _camera_zoom
@@ -519,6 +530,7 @@ func _refresh() -> void:
 	world_view.visible = not session.battle_open() and not battle_view.playing()
 	instructions.text = "按键方案：" + {"classic":"传统方向键","wasd":"WASD 行走","key_ini":"已导入 key.ini"}[key_bindings.profile.preset] + "\n在“按键”中查看或更改\n鼠标选择命令与目标"
 	battle_view.bind(session); battle_view.visible = session.battle_open() or battle_view.playing()
+	map_ui.prepare(self)
 	_set_classic_mode(battle_view.visible and not battle_view.classic_layout().is_empty())
 	world_view.visible = not battle_view.visible
 	if key != _presentation_key:
@@ -615,6 +627,7 @@ func _refresh() -> void:
 	pause_button.text = "继续" if session.paused else "暂停"
 	_fit_battle_commands()
 	_fit_classic_controls()
+	map_ui.apply(self)
 	if restore_focus: _restore_battle_focus.call_deferred(focus_key,_ui_generation)
 
 func _change_enemy_page(direction: int) -> void:

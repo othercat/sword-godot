@@ -1,0 +1,226 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "pal.native.map-ui.v1",
+  "title": "Authored map workspace and camera defaults",
+  "x-status": "draft",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "kind",
+    "scenes"
+  ],
+  "properties": {
+    "schema": {
+      "const": "pal.native.map-ui.v1"
+    },
+    "kind": {
+      "const": "content"
+    },
+    "scenes": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 512,
+      "items": {
+        "$ref": "#/definitions/scene"
+      }
+    }
+  },
+  "definitions": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+    },
+    "color": {
+      "type": "string",
+      "minLength": 9,
+      "maxLength": 9,
+      "pattern": "^#[0-9a-fA-F]{8}$"
+    },
+    "provenance": {
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": [
+            "synthetic",
+            "author-choice",
+            "draft-adaptation",
+            "approved"
+          ]
+        },
+        "source_id": {
+          "$ref": "#/definitions/id"
+        },
+        "source_revision": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "source_beat_ids": {
+          "type": "array",
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/definitions/id"
+          }
+        }
+      }
+    },
+    "rect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "x",
+        "y",
+        "width",
+        "height"
+      ],
+      "properties": {
+        "x": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "y": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "width": {
+          "type": "number",
+          "minimum": 0.01,
+          "maximum": 100
+        },
+        "height": {
+          "type": "number",
+          "minimum": 0.01,
+          "maximum": 100
+        }
+      }
+    },
+    "map": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "rect"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/id"
+        },
+        "kind": {
+          "const": "map"
+        },
+        "rect": {
+          "$ref": "#/definitions/rect"
+        }
+      }
+    },
+    "panel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "rect",
+        "visible",
+        "font_size",
+        "foreground",
+        "background"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/id"
+        },
+        "kind": {
+          "enum": [
+            "party",
+            "dialogue"
+          ]
+        },
+        "rect": {
+          "$ref": "#/definitions/rect"
+        },
+        "visible": {
+          "type": "boolean"
+        },
+        "font_size": {
+          "type": "integer",
+          "minimum": 12,
+          "maximum": 32
+        },
+        "foreground": {
+          "$ref": "#/definitions/color"
+        },
+        "background": {
+          "$ref": "#/definitions/color"
+        }
+      }
+    },
+    "scene": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scene_id",
+        "camera",
+        "elements",
+        "provenance"
+      ],
+      "properties": {
+        "scene_id": {
+          "$ref": "#/definitions/id"
+        },
+        "camera": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "mode",
+            "zoom",
+            "actor_names"
+          ],
+          "properties": {
+            "mode": {
+              "enum": [
+                "follow",
+                "overview"
+              ]
+            },
+            "zoom": {
+              "type": "number",
+              "minimum": 0.5,
+              "maximum": 4
+            },
+            "actor_names": {
+              "type": "boolean"
+            }
+          }
+        },
+        "elements": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {
+            "oneOf": [
+              {
+                "$ref": "#/definitions/map"
+              },
+              {
+                "$ref": "#/definitions/panel"
+              }
+            ]
+          }
+        },
+        "provenance": {
+          "$ref": "#/definitions/provenance"
+        }
+      }
+    }
+  }
+}
