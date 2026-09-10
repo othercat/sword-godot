@@ -354,7 +354,7 @@ func _draw_battle(battle: Dictionary, bounds: Vector2) -> void:
 		pos = projection * pos
 		var set_id = definition.get("battle_sprite_set")
 		var clip: Dictionary = {} if set_id == null else Frames.clip_for(session.package.index.battle_sprite_sets[set_id],action,"upper_left" if body.side == 1 else "lower_right")
-		var frame: Dictionary = Frames.frame_at(clip,elapsed)
+		var frame: Dictionary = frame_for_pose(clip,elapsed,action=="dead" and override.is_empty())
 		var local_rect: Rect2 = Rect2(-12,-40,24,40) if frame.is_empty() else Layout.frame_rect(frame)
 		var body_scale: float = projection.x.x if frame.is_empty() and not classic.is_empty() else scale_value
 		body_scale *= body.sprite_fit
@@ -441,3 +441,11 @@ func _draw_battle(battle: Dictionary, bounds: Vector2) -> void:
 			text = text.left(text.length() - 2) + "…"
 		draw_rect(Rect2(12, 8, minf(width + 16, display_font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 18).x + 16), 30), Color("101820"))
 		draw_string(display_font, Vector2(20, 29), text, HORIZONTAL_ALIGNMENT_LEFT, width, 18, Color("f1dda7"))
+
+static func frame_for_pose(clip: Dictionary, elapsed_us: int, settled_dead: bool) -> Dictionary:
+	# A loaded/settled corpse has no new death event. Do not replay its fall
+	# when the idle clock restarts; explicit death phases still use their clock.
+	# Preserve looping dead clips and idle/static fallback behavior.
+	if settled_dead and clip.get("action") == "dead" and not clip.loop:
+		return clip.frames[-1]
+	return Frames.frame_at(clip,elapsed_us)

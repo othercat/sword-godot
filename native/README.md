@@ -800,3 +800,17 @@ read-only and its existing distribution declarations remain in the output.
 guards, save/load, failed continuation rollback and the injected skip button.
 Studio authoring/adoption, genuine named artwork in the story, physical input,
 full playthrough and high-refresh hardware acceptance remain separate gates.
+
+## Settled knockout presentation
+
+A non-looping `dead` clip holds its last frame when the actor is already dead
+and has no active presentation phase. Loading a knockout save or skipping the
+fall therefore cannot restart the clip from a standing first frame. The original
+committed death phase still plays its complete authored duration. Looping death
+clips, idle/static fallbacks, gameplay HP and save schemas are unchanged.
+
+`tests/test_settled_battle_frames.gd` covers the selection boundaries without
+private artwork. The product's `capture_m2_knockout.gd` additionally exercised
+normal authored battle commands, all 36 fall frames, pause, mid-fall/settled saves
+and load in a real window; see its source/package hashes in product evidence.
+This is display regression coverage, not character artwork acceptance.
