@@ -32,12 +32,19 @@ func run() -> void:
 		check(app._responsive_mode() and app.dream_hud == app.responsive_hud,"authored HUD selected")
 		var authority: Dictionary = s.state.duplicate(true)
 		var battle: Dictionary = s.state.extensions[Battle.KEY]
-		var placement: Dictionary = Placement.for_encounter(s.package.world,battle.encounter_id)
+		var authored_placement: Dictionary = Placement.for_encounter(s.package.world,battle.encounter_id)
 		check(battle.party.size() == int(fixture.count),"authored party count")
-		for size in [Vector2i(1440,960),Vector2i(980,720),Vector2i(1680,900)]:
-			root.size = size; await settle(); await RenderingServer.frame_post_draw
+		for size in [Vector2i(720,720),Vector2i(960,720),Vector2i(1120,700),Vector2i(1120,630),Vector2i(1120,480)]:
+			root.size = size; await settle(); root.grab_focus(); await settle(); await RenderingServer.frame_post_draw
 			check(s.state == authority,"resize keeps authority")
 			var hud = app.dream_hud
+			var placement: Dictionary = Placement.select_layout(authored_placement,hud.size)
+			check(root.size==size,"actual content window matches requested aspect")
+			if not placement.is_empty():
+				check(hud.boxes.variant_id==Placement.selected_variant(authored_placement,hud.size).get("id","default"),"all render consumers select from the unreserved logical stage")
+			if fixture.label=="aspect-defaults":
+				var expected_variant: String = {720:"default",960:"layout.standard",700:"layout.wide",630:"layout.wide",480:"layout.ultrawide"}[size.x if size.x<1120 else size.y]
+				check(hud.boxes.variant_id==expected_variant,"default actual windows keep square stacked, 4:3 and 16:9 bottom, 21:9 right")
 			check(view.presentation_rect(view.size).is_equal_approx(hud.boxes.content),"actors and HUD use the same content rectangle including origin")
 			if not placement.is_empty():
 				var expected = Rect2(hud.size*Vector2(placement.content_region.x,placement.content_region.y)/100,hud.size*Vector2(placement.content_region.width,placement.content_region.height)/100)
@@ -58,8 +65,19 @@ func run() -> void:
 							var authored: Dictionary = table.slots[battle.party.find(id)]
 							var exact = Rect2(region.position+region.size*Vector2(authored.x,authored.y)/100,region.size*Vector2(authored.width,authored.height)/100)
 							check(card.panel_rect.is_equal_approx(exact),"manual card follows current seat rectangle")
+			var conflicts: Array = []
+			if fixture.get("aspect_defaults",false):
+				for side in ["enemy","party"]:
+					conflicts.append_array(view.formation_diagnostics[side].conflicts)
+					check(view.formation_diagnostics[side].conflicts.is_empty(),"automatic "+side+" group keeps all-action occupied bounds within its region")
+				for enemy in view.formation_diagnostics.enemy.occupied.values():
+					for party in view.formation_diagnostics.party.occupied.values(): check(not enemy.intersects(party),"five-boss defaults leave the opposing side separate")
+			# Exercise the root command and target/cancel mapping at each actual size.
+			await click(option(app,"攻击",true)); check(not app.classic_root,"resized attack command opens targets")
+			await key(KEY_ESCAPE); check(app.classic_root and s.state==authority,"resized target cancel preserves authority")
 			var path = output.path_join(fixture.label+"-%dx%d.png" % [size.x,size.y])
-			root.get_texture().get_image().save_png(path); windows.append({"path":path,"package_path":package_path,"viewport":[size.x,size.y]})
+			root.get_texture().get_image().save_png(path)
+			windows.append({"path":path,"package_path":package_path,"requested_window":[size.x,size.y],"actual_window":[root.size.x,root.size.y],"logical_root":[root.get_visible_rect().size.x,root.get_visible_rect().size.y],"logical_stage":[hud.size.x,hud.size.y],"render_pixels":[app.viewport.size.x,app.viewport.size.y],"variant_id":hud.boxes.get("variant_id","old-hud"),"group_conflicts":conflicts})
 		root.size = Vector2i(1280,800); await settle(); root.grab_focus(); await settle()
 		var initial: String = save(app,"initial-"+fixture.label)
 		check(not s.state.extensions.has(Placement.KEY),"placement does not become saved authority")

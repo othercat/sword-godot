@@ -1,5 +1,30 @@
 # PAL Wanxiang Native preview
 
+Optional `pal.native.hud-placement.v2` adds independently authored aspect layouts.
+Each encounter retains default geometry and an ordered list of rational minimum
+width:height conditions. All consumers select once from the unreserved logical
+battle stage, then lay out cards, actor canvas and commands from that selection.
+Window decorations, the logical stage and render pixels are recorded separately
+in the actual-window probe; resizing never writes gameplay or save authority.
+Studio can edit names, conditions, geometry and per-count cards, preview five
+common ratios or custom dimensions, and apply/undo the entire profile at once.
+
+The current contract snapshot is `23b6c12b201657f88c0fe5eb45984f47f603327f`.
+V2 requires its own exact hash/capability pair; the v1 schema bytes and old package
+behavior remain intact. Empty variant lists retain default geometry. Duplicate
+identities/equivalent ratios, unsorted conditions and invalid nested rectangles
+or seat tables reject admission. This selects presentation only, not more actors.
+
+Six actual Studio fixtures pass 1214 checks in 30 GPU windows and twelve independent
+save checks; thirty admission cases agree with the Python owner. Headless geometry
+adds 982 aspect checks to the existing 4144 base checks. The window probe asserts
+actual sizes and commands/target cancellation at every size. The author's common
+presets show square bottom rows, 4:3/16:10/16:9 bottom cards and 21:9 right cards;
+edited thresholds/left cards also work. Default Boss fixtures use all-action
+occupied extents with common group fit/separation; old manual overflow fixtures
+remain separate. Evidence and source hashes are in the PAL Wanxiang product repo's
+`hud-aspect-results.json`. These checks do not certify artwork or physical input.
+
 Optional `pal.native.hud-placement.v1` adds authored party-card regions and actor
 canvas rectangles, plus independent per-count card rectangles. Left/top/free
 Studio presets use the same runtime layout path. Unspecified counts retain flow
@@ -8,7 +33,7 @@ Cards keep existing portrait/data bindings, and command images retain their own
 layout relative to the actor canvas. Background canvas configuration is independent
 and still fills the stage by default. Geometry is display-only, never saved state.
 
-The owner snapshot is `dd805bd04858e85e76b471e8546a9400eeedc080`. Admission requires
+The v1 verification used owner `dd805bd04858e85e76b471e8546a9400eeedc080`. Admission requires
 the paired capability, exact schema hash, an existing responsive HUD, bounded
 rectangles and complete, unique count tables. Malformed components are rejected
 without crashing early HUD validation. Geometry tests cover 4144 checks, including
