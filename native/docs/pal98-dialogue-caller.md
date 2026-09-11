@@ -105,6 +105,10 @@ drawing adapter remains a system-font candidate, not original GDI pixel parity.
 Box/icon resources, target buffers, clock/input policy, general SSS, public
 state/save, ordinary-player activation and Mac/AMD acceptance remain separate work.
 
+A separate [rendered target](pal98-dialogue-surface.md) now fulfills text and
+background requests in a real-window probe. Its synthetic background and explicit
+mode/scene effects do not activate the ordinary player or general Trigger path.
+
 An error publishes no candidate state. It does **not** undo a draw, capture or
 restore already acknowledged by the host. Stop the failed invocation and surface
 its source diagnostic; do not automatically retry the old pending state as if

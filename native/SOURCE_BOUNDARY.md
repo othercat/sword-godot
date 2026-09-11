@@ -64,6 +64,12 @@ Session. Its host requests and explicit failure boundaries are documented in
 `docs/pal98-dialogue-caller.md`; private source text and probe traces remain outside
 this repository.
 
+The dialogue surface connects those requests to an independently implemented
+Godot RGBA target with actual pixel capture/restore and render acknowledgements.
+No original scene art, font or indexed raster implementation is included. The
+source-message probe uses an explicit synthetic background, not a replacement
+for original-game scene validation; see `docs/pal98-dialogue-surface.md`.
+
 Build with this directory as the project root. Parent root exports are not Native
 releases. `.gdignore` prevents the parent editor from scanning this nested project.
 The Native rendering path uses its own TileMapLayer adapter; the parent's
