@@ -41,6 +41,13 @@ translate a legacy game implementation or introduce a source-script interpreter.
 Complete resource bytes remain private local-preview inputs unless the author
 explicitly approves redistribution. No original payload is committed here.
 
+The internal text planner and body execution requests independently express byte
+controls and observable draw/wait/input ordering from the product's pinned
+PAL.EXE/PALOLD.dll instruction review. They do not copy procedural recovery code,
+load the DLL, include original font data or enable SSS in an ordinary session.
+The corrected evidence and separate caller/renderer boundaries are documented in
+`docs/pal98-text-plans.md` and `docs/pal98-text-execution.md`.
+
 Build with this directory as the project root. Parent root exports are not Native
 releases. `.gdignore` prevents the parent editor from scanning this nested project.
 The Native rendering path uses its own TileMapLayer adapter; the parent's

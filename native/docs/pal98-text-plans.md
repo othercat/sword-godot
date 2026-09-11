@@ -71,3 +71,7 @@ passing reports do not establish correct suffix behavior. V2 processes four
 additional `$01` controls and the additional `~80`, for 116,032 supported-source
 tokens (113 speed changes and 136 timed delays). Prior evidence stays preserved
 as superseded. These internal plans were not enabled in a player release.
+
+The internal [body execution helper](pal98-text-execution.md) now consumes v2 plans
+and emits acknowledged drawing/wait/input requests. Caller routing and ordinary
+session integration remain separate.
