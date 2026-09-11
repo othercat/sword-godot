@@ -1,5 +1,13 @@
 # PAL Wanxiang Native preview
 
+## Original TileMap background stage (2026-09-12)
+
+The addressed graphics reader now feeds a [TileMap background adapter](docs/pal98-map-background.md).
+It preserves original vmap cell/layer order and wrapped source addresses. A real
+GPU window matched20 original-DLL offscreen views across4 maps byte-for-byte,
+with128 checks. This does not implement event/party occlusion, original scene
+scripts, cold-start state or a playable original Session.
+
 ## Portable original graphics decoding (2026-09-12)
 
 The immutable graphics snapshot now opens an addressed, bounded
