@@ -80,3 +80,8 @@ snapshot replacement and malformed local views, then reads every record from a
 caller-provided ordinary source package. Reconstructed table hashes and opening
 addresses are independently checked by the product integration evidence. This
 establishes source consumption, not scene execution, event scheduling or gameplay.
+
+The internal [byte text planner](pal98-text-plans.md) consumes these message and
+instruction receipts without replacing them with decoded text. It preserves
+timed-return suffixes and rejects unsupported loader/parameter boundaries;
+ordinary session execution is still separate.
