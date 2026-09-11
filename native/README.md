@@ -1,5 +1,13 @@
 # PAL Wanxiang Native preview
 
+## Original resource reload lifecycle (2026-09-12)
+
+The [resource owner](docs/pal98-resource-reload.md) connects actual event,
+MAP/GOP, sprite-cache and equipment work in T212 order, preserving retained
+event buffers and EnterScript scene restarts.30 checks pass with explicit
+display/audio/script/save test doubles. Those execution backends and ordinary
+original Session integration remain pending; requests are not gameplay.
+
 ## Locked-package random arithmetic (2026-09-12)
 
 The [controlled random helper](docs/pal98-fixed-random.md) preserves the fixed

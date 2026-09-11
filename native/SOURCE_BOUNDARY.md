@@ -26,6 +26,11 @@ independently written; no PALDLL hook, recovered procedural source or GPL game
 implementation is included. The profile explicitly documents its adaptation
 boundaries, rather than claiming full original combat or legacy overflow parity.
 
+The resource reload owner independently expresses T212/T246 ordering and state
+ownership over the existing Native caches. Explicit requests require actual
+script/display/audio/save owners; test doubles do not supply product execution.
+See `docs/pal98-resource-reload.md` for partial support and rollback boundaries.
+
 The fixed-package controlled RNG independently expresses recovered integer and
 Single arithmetic and the new-game experience formulas. Its numeric oracle uses
 exact rational synthetic inputs. No DLL, hook implementation or process memory

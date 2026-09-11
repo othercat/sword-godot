@@ -36,6 +36,14 @@ func snapshot(kind: String) -> Dictionary:
 func source() -> Dictionary:
 	return _source.duplicate(true)
 
+func fork_for_reload():
+	if _source.is_empty(): return null
+	var candidate = get_script().new()
+	# Reader source bytes are immutable; its decode FIFO is not game state.
+	candidate._reader = _reader; candidate._source = _source.duplicate(true)
+	candidate._event = _event.duplicate(true); candidate._party = _party.duplicate(true)
+	return candidate
+
 func _failure(message: String, kind: String, slot: int) -> Dictionary:
 	return {"error": message, "source": _source.duplicate(true), "sprite_kind": kind, "runtime_slot": slot}
 

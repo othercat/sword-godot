@@ -1,5 +1,11 @@
 # Source-bound current-scene event storage
 
+The resource lifecycle supplies an explicit current scene to
+`commit_current_events(state, current_scene)`. A switch without resource flag4
+retains the loaded buffer, so its last-loaded scene cannot determine T175's
+writeback base. Existing callers may omit the argument to use the last loaded
+scene. See `pal98-resource-reload.md` for the retained-buffer regression.
+
 `native_pal98_scene_events.gd` independently implements the reviewed T201/T175
 event-table copy boundaries. It takes an admitted source snapshot, keeps all
 32-byte record fields and returns detached runtime candidates. Source bytes and

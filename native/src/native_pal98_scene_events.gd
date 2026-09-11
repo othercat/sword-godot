@@ -80,16 +80,19 @@ func load_scene_events(state: Dictionary, scene_id: int) -> Dictionary:
 	candidate.loaded_scene_id = scene_id; candidate.event_count = selected.count
 	return {"state": candidate, "raw_count": selected.raw_count, "loaded_count": selected.count, "first_global_index": selected.first}
 
-func commit_current_events(state: Dictionary) -> Dictionary:
+func commit_current_events(state: Dictionary, current_scene = -1) -> Dictionary:
 	var issue: String = validate_state(state)
 	if not issue.is_empty(): return _failure(issue)
-	if state.loaded_scene_id == 0: return _failure("T175 requires an explicit current scene")
+	if typeof(current_scene) != TYPE_INT: return _failure("T175 current scene must be an integer")
+	if current_scene == -1: current_scene = state.loaded_scene_id
+	if current_scene < 1 or current_scene >= int(state.scene_records.size() / 8): return _failure("T175 requires a current scene inside the table")
 	# T175 consumes the caller's current count; it does not recompute T201's
-	# next-scene difference. Keep that distinction when scripts change records.
-	var first: int = state.scene_records.decode_u16((state.loaded_scene_id - 1) * 8 + 6)
-	if first > 32767: return _failure("scene event writeback requires unresolved signed source address", state.loaded_scene_id)
+	# next-scene difference. A resource switch without flag4 retains the loaded
+	# backing while changing the CURRENT scene; the live owner passes that scene.
+	var first: int = state.scene_records.decode_u16((current_scene - 1) * 8 + 6)
+	if first > 32767: return _failure("scene event writeback requires unresolved signed source address", current_scene)
 	var end: int = (first + state.event_count) * RECORD_BYTES
-	if end > state.global_events.size(): return _failure("current event writeback exceeds owned global table", state.loaded_scene_id)
+	if end > state.global_events.size(): return _failure("current event writeback exceeds owned global table", current_scene)
 	var candidate: Dictionary = state.duplicate(true)
 	for index in range(state.event_count):
 		var at: int = (first + index) * RECORD_BYTES
