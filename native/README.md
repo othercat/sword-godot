@@ -1,5 +1,14 @@
 # PAL Wanxiang Native preview
 
+## Original depth queue stage (2026-09-12)
+
+The [depth queue adapter](docs/pal98-depth-queue.md) preserves explicit caller
+order, original nonstable signed16 sorting and IPNA literal-index transparency.
+Ten synthetic original-DLL offscreen cases matched actual GPU output;74 checks
+also cover T163 checked coordinates, detached snapshots and explicit diagnostics
+for original clipping-overflow paths. Map occlusion marks,
+original scene callers and a playable original Session remain pending.
+
 ## Original TileMap background stage (2026-09-12)
 
 The addressed graphics reader now feeds a [TileMap background adapter](docs/pal98-map-background.md).

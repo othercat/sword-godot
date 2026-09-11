@@ -77,8 +77,11 @@ height and LayerOffset for its top edge. These are different from background
 placement. exmap visits row/column/half, and ntre's signed16 sort is nonstable;
 the TileMap Y sort above must not be reused as a claim of ntre parity.
 
-Normal scene rendering first clears the tree/flags, queues events then the party,
+RenderSceneFrame first clears the tree/flags, queues events then the party,
 calls DrawMap/exmap, constructs spans from the already generated background, then
-runs ntre and the output/timer/palette/shake tail. Those stages, scene-script
+runs ntre and the output/timer/palette/shake tail. The normal SubMain composition
+chain instead queues party then events; the explicit caller order must be kept.
+The separate depth queue is now implemented in `pal98-depth-queue.md`, with
+original overflow diagnostics. Map occlusion and scene composition, scene-script
 execution, original cold-start selection, save/load, Mac/AMD and Richard
 acceptance remain unfinished. The ordinary source-only session guard remains.

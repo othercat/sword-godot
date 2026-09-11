@@ -54,6 +54,14 @@ private original-DLL/managed comparison hashes are verification inputs; no
 original or parent-project codec code, DLL or image payload is shipped. Exact
 budgets, source defect and execution boundaries are in `docs/pal98-graphics-records.md`.
 
+The map background and depth adapters independently express reviewed source
+addressing, descriptor, coordinate, transparency and ordering facts. Guarded
+original-DLL offscreen outputs are private development comparisons only. No
+recovered rendering procedure or binary is translated or shipped; ordinary
+scene state and script execution are not supplied by these components. Exact
+facts and comparison boundaries are in `docs/pal98-map-background.md` and
+`docs/pal98-depth-queue.md`.
+
 The portable source decoder additionally contains derived CP936/CP950 software
 tables from the MIT .NET CodePages provider. Exact provider/table hashes and
 upstream .NET/third-party notices accompany `encodings/`. No proprietary game
