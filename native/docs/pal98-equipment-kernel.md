@@ -65,6 +65,23 @@ diagnostic, rolling back all earlier members on failure. Inventory use counts,
 graphics reload, trails and rendering still belong to the larger initializer and
 must be integrated before claiming an original new game.
 
+`prepare_party_equipment(state, inventory_bytes)` adds the preceding inventory
+step. It requires all 256 six-byte inventory records from the caller and clears
+only each record's third WORD before the existing equipment rebuild. Every
+ItemId/Amount bit is retained, including signed patterns, unresolved IDs, empty
+slots and records beyond an empty slot. It neither invents a new-game bag nor
+deducts equipped items. The successful result contains both candidate state and
+inventory bytes; failure exposes neither partial candidate. This is Native's
+transaction boundary, not original failure parity: the recovered original owner
+does not roll back its earlier clears on a later script/resource failure.
+
+The nine-field internal state and v2 source profile remain unchanged; inventory
+belongs to the future enclosing runtime state. The new function does not claim
+to implement the surrounding 0075 command. Its original order is map-sprite load,
+inventory/equipment initialization, then party/trail synchronization. In
+particular, the final synchronization recalculates the leader's CurrentFrame;
+the earlier 0015 frame assignment is not proof of the first rendered frame.
+
 The private source check executes all six equipment fields for each of six source
 roles in its own single-member party. All complete the supported subset, including
 role1 status8, role2's base flag and temporary battle sprite, and role3's temporary
@@ -81,6 +98,10 @@ owner's `docs/evidence/original-v161-20260911/verify_equipment_kernel.py prepare
 --party-context ...` prepares the current v3 private binary fixtures from explicitly
 hashed DATA/SSS inputs. Its `verify` command also retains inspection of the earlier
 v2 fixtures and v1-kernel evidence; these are different state/profile combinations.
+The current checks combine each real role with an explicitly synthetic 256-slot
+inventory stress input. Add `--inventory-preparation` to the product `verify`
+command to check that input and the returned inventory hashes independently.
+This input is not an observed original new-game inventory or an imported save.
 
 Behavior provenance: the product's fixed-source `ORIGINAL_ENTRY_CLOSURE.md`,
 Pal98Research's role getter, modifier descriptor, `000B..001F` actions, trigger

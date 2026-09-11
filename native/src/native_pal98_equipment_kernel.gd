@@ -11,6 +11,8 @@ const FIRST_EFFECT = 17
 const LAST_EFFECT = 30
 const MODIFIER_COUNT = ROLES * 7 * 14
 const MAX_STEPS = 1024
+const INVENTORY_SLOTS = 256
+const INVENTORY_RECORD_BYTES = 6
 const PROFILE = "pal98.equipment-entry-subset.v2"
 var error: String = ""
 var _roles: Array = []
@@ -146,6 +148,23 @@ func rebuild_party_equipment(state: Dictionary) -> Dictionary:
 			entries.append({"party_slot": slot, "role": role, "equipment_field": field,
 				"object_id": result.object_id, "entry": result.entry, "return_entry": result.return_entry, "trace": result.trace})
 	return {"state": candidate, "entries": entries}
+
+func prepare_party_equipment(state: Dictionary, inventory_bytes: PackedByteArray) -> Dictionary:
+	# The inventory owner supplies all 256 records explicitly. Do not derive a
+	# new-game bag from equipment, discard empty slots, or reinterpret signed bits.
+	if inventory_bytes.size() != INVENTORY_SLOTS * INVENTORY_RECORD_BYTES:
+		var result: Dictionary = _failure("invalid_inventory_layout", "inventory requires 256 six-byte records")
+		result.diagnostic.size_bytes = inventory_bytes.size(); return result
+	var inventory: PackedByteArray = inventory_bytes.duplicate()
+	for slot in range(INVENTORY_SLOTS): inventory.encode_u16(slot * INVENTORY_RECORD_BYTES + 4, 0)
+	# Original order is usage clear, modifier-prefix clear, then member-by-member
+	# equipment execution. Native publishes only a complete candidate; this safety
+	# boundary is not a claim about rollback after an original VB/resource error.
+	var result: Dictionary = rebuild_party_equipment(state)
+	if result.has("error"):
+		result.diagnostic.preparation_phase = "equipment"; return result
+	result.inventory_bytes = inventory
+	return result
 
 func effective_stat(state: Dictionary, role: int, field: int) -> Dictionary:
 	var issue: String = validate_state(state)

@@ -2,10 +2,12 @@
 extends SceneTree
 const Kernel = preload("res://src/native_pal98_equipment_kernel.gd")
 const Reader = preload("res://src/native_json.gd")
+const Schema = preload("res://src/native_schema.gd")
 var checks: Array = []
 var failed: int = 0
 var output: String
 var real_results: Array = []
+var inventory_probe: Dictionary = {}
 
 func check(ok: bool, label: String) -> void:
 	checks.append({"name": label, "passed": ok})
@@ -43,11 +45,12 @@ func _initialize() -> void:
 	output = args[0]
 	if FileAccess.file_exists(output.path_join("results.json")): push_error("Use a fresh evidence directory"); quit(2); return
 	if DirAccess.make_dir_recursive_absolute(output) != OK: quit(2); return
-	_test_tables(); _test_execution(); _test_stats(); _test_bounds(); _test_party_context()
+	_test_tables(); _test_execution(); _test_stats(); _test_bounds(); _test_party_context(); _test_inventory_preparation()
 	if args.size() == 2: _test_real(args[1])
 	var report: Dictionary = {"checks": checks, "passed": checks.size() - failed, "failed": failed,
 		"real_entries": real_results, "kernel_only": true, "ordinary_native_package": false,
-		"complete_party_initializer": false, "original_playthrough": false, "device_acceptance": false}
+		"complete_party_initializer": false, "original_playthrough": false, "device_acceptance": false,
+		"inventory_probe": inventory_probe}
 	var file = FileAccess.open(output.path_join("results.json"), FileAccess.WRITE)
 	file.store_string(JSON.stringify(report, "  ", true)); file.close()
 	print("PAL98 equipment kernel: %d passed, %d failed; %s" % [checks.size() - failed, failed, output])
@@ -79,6 +82,47 @@ func _test_tables() -> void:
 	check(not core.read_tables(valid[0], huge, valid[2]), "object-count budget enforced")
 	huge.resize(65537 * 8)
 	check(not core.read_tables(valid[0], valid[1], huge), "instruction-count budget enforced")
+
+func _inventory_bytes() -> PackedByteArray:
+	# Deliberately noncanonical inventory, not a claimed original new-game bag:
+	# IDs may be zero/unresolved, quantities and use counts retain signed bits.
+	var words: Array = []
+	for slot in range(256): words.append_array([slot * 257, (0x8000 + slot) & 65535, (0xff00 + slot) & 65535])
+	return _bytes(words)
+
+func _test_inventory_preparation() -> void:
+	var core = _core([[0x17,11,17,5], [0,0,0,0]])
+	var state: Dictionary = core.initial_state(); state.modifiers.fill(9)
+	var before: Dictionary = state.duplicate(true)
+	var inventory: PackedByteArray = _inventory_bytes(); var original: PackedByteArray = inventory.duplicate()
+	var result: Dictionary = core.prepare_party_equipment(state, inventory)
+	check(result.has("state") and result.has("inventory_bytes"), "inventory clear and source equipment produce one candidate")
+	if not result.has("state"): return
+	var preserved: bool = true; var cleared: bool = true
+	for slot in range(256):
+		preserved = preserved and result.inventory_bytes.slice(slot * 6, slot * 6 + 4) == original.slice(slot * 6, slot * 6 + 4)
+		cleared = cleared and result.inventory_bytes.decode_u16(slot * 6 + 4) == 0
+	check(preserved and cleared, "all usage words clear while every ID/quantity bit remains")
+	check(result.inventory_bytes.decode_u16(0) == 0 and result.inventory_bytes.decode_u16(2) == 0x8000 and result.inventory_bytes.decode_u16(255 * 6) == 0xffff, "empty first slot and signed last-slot patterns do not stop inventory preparation")
+	check(inventory == original and state == before, "successful preparation does not mutate either caller input")
+	check(result.state == core.rebuild_party_equipment(state).state, "inventory preparation preserves existing equipment result and role5 modifier tail")
+	inventory_probe = {"kind": "synthetic-256-slot-inventory", "before_hex": original.hex_encode(), "after_hex": result.inventory_bytes.hex_encode()}
+	result.inventory_bytes[0] = 42
+	check(inventory == original, "returned inventory bytes are detached")
+	for size in [0,6,1535,1537]:
+		var bad = PackedByteArray(); bad.resize(size)
+		var failure: Dictionary = core.prepare_party_equipment(state, bad)
+		check(failure.diagnostic.code == "invalid_inventory_layout" and not failure.has("state") and not failure.has("inventory_bytes"), "inventory layout is explicit: " + str(size))
+	var wrong: Dictionary = state.duplicate(true); wrong.source_id = "wrong"
+	var invalid: Dictionary = core.prepare_party_equipment(wrong, inventory)
+	check(invalid.diagnostic.code == "invalid_state" and not invalid.has("inventory_bytes") and inventory == original, "wrong source state does not publish inventory clear")
+	var tables: Array = _tables([[0x17,11,17,5], [0,0,0,0], [0xfe,0,0,0], [0,0,0,0]])
+	tables[0].encode_u16((11 * 6 + 1) * 2, 2); tables[1].encode_u16((2 * 7 + 3) * 2, 3)
+	var failing = Kernel.new(); check(failing.read_tables(tables[0], tables[1], tables[2]), "later-member failure fixture parses")
+	var party: Dictionary = failing.initial_state([0,1]); var party_before: Dictionary = party.duplicate(true)
+	var failure: Dictionary = failing.prepare_party_equipment(party, inventory)
+	check(failure.diagnostic.code == "unsupported_opcode" and failure.diagnostic.pc == 3 and failure.diagnostic.party_slot == 1 and failure.diagnostic.preparation_phase == "equipment", "late equipment failure retains original PC/member diagnostic")
+	check(not failure.has("state") and not failure.has("inventory_bytes") and party == party_before and inventory == original, "late failure publishes neither partial inventory nor earlier member changes")
 
 func _test_execution() -> void:
 	var core = _core([[0x18, 11, 1, 0], [0x17, 11, 19, 9], [0x17, 11, 19, 0xfffc], [0, 0, 0, 0]])
@@ -271,7 +315,8 @@ func _test_real(path: String) -> void:
 	for key in ["data3_sha256", "objects_sha256", "scripts_sha256"]:
 		check(receipt[key] == value[key], "exact private source chunk bytes: " + key)
 	for role in range(6):
-		var initial: Dictionary = core.initial_state([role]); var result: Dictionary = core.rebuild_party_equipment(initial)
+		var initial: Dictionary = core.initial_state([role]); var inventory: PackedByteArray = _inventory_bytes()
+		var result: Dictionary = core.prepare_party_equipment(initial, inventory)
 		var problem: Dictionary = result.get("diagnostic", {})
 		var entries: Array = result.get("entries", []); var state: Dictionary = result.get("state", {})
 		var expected: Dictionary = value.roles[role]
@@ -281,6 +326,7 @@ func _test_real(path: String) -> void:
 			continue
 		check(problem.is_empty() and entries.size() == 6, "six equipment fields execute: source role " + str(role))
 		if not problem.is_empty(): continue
+		check(result.inventory_bytes.hex_encode() == inventory_probe.after_hex and inventory.hex_encode() == inventory_probe.before_hex, "real source equipment combines with explicitly synthetic inventory without mutating input: role " + str(role))
 		var actual: Array = []
 		for field in range(17, 31):
 			var stat: Dictionary = core.effective_stat(state, role, field)
@@ -295,4 +341,5 @@ func _test_real(path: String) -> void:
 		var traces: Array = []
 		for entry in entries: traces.append({"object_id": entry.object_id, "entry": entry.entry, "return_entry": entry.return_entry, "trace": entry.trace})
 		real_results.append({"role": role, "completed": true, "effective_fields_17_30": actual, "entries": traces,
-			"state": state, "source": receipt})
+			"state": state, "source": receipt, "inventory_before_sha256": Schema.digest(inventory),
+			"inventory_after_sha256": Schema.digest(result.inventory_bytes)})
