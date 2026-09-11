@@ -2,7 +2,7 @@
 extends RefCounted
 ## Addressed byte-level text plans. No rendering, clock advancement, input polling,
 ## dialog-state mutation or public save representation is performed here.
-const PROFILE = "pal98.text-byte-plan.v1"
+const PROFILE = "pal98.text-byte-plan.v2"
 const MAX_MESSAGE_BYTES = 255
 
 static func read_message(records, index: int) -> Dictionary:
@@ -26,7 +26,7 @@ static func _scan(message: Dictionary) -> Dictionary:
 	var bytes: PackedByteArray = message.value.bytes
 	if bytes.size() > MAX_MESSAGE_BYTES:
 		return _failure(message, "message_length_u1_unimplemented", "message exceeds original checked U1 length; extended text owner required", 0)
-	var tokens: Array = []; var offset: int = 0; var termination: String = "end"
+	var tokens: Array = []; var offset: int = 0
 	while offset < bytes.size():
 		var byte: int = bytes[offset]
 		var token: Dictionary = {"offset": offset, "size_bytes": 1}
@@ -44,7 +44,7 @@ static func _scan(message: Dictionary) -> Dictionary:
 				# CInt. No half ties occur in this bounded domain. These are the
 				# original parameters, not milliseconds or Native logic ticks.
 				token.units = int((number * 10 + 3) / 7); token.size_bytes = 3
-				token.kind = "character_delay" if byte == 36 else "timed_return"
+				token.kind = "character_delay" if byte == 36 else "timed_delay"
 			40, 41:
 				token.kind = "select_icon"; token.index = 2 if byte == 40 else 1
 			_:
@@ -58,10 +58,11 @@ static func _scan(message: Dictionary) -> Dictionary:
 				token.kind = "glyph"; token.bytes = glyph; token.advance_pixels = width * 8
 		tokens.append(token)
 		offset += token.size_bytes
-		if token.kind == "timed_return": termination = "timed_return"; break
+		# The original ~ branch jumps to ForNext, not ReturnVoid. Its wait
+		# finishes before scanning subsequent source bytes, if any.
 	var result: Dictionary = {"profile": PROFILE, "source": message.source.duplicate(true),
 		"text_encoding": message.value.text_encoding, "tokens": tokens, "consumed_bytes": offset,
-		"remaining_bytes": bytes.slice(offset), "termination": termination}
+		"remaining_bytes": bytes.slice(offset), "termination": "end"}
 	for key in ["offset_directory_source", "instruction_source", "instruction_words"]:
 		if message.has(key): result[key] = message[key].duplicate(true)
 	return result

@@ -81,9 +81,9 @@ func _synthetic() -> void:
 	var boundary: Dictionary = Text.read_message(records,3)
 	check(boundary.tokens.size() == 3 and boundary.tokens[0].bytes == PackedByteArray([128]) and boundary.tokens[1].bytes == PackedByteArray([0]), "0x80 and NUL are preserved single bytes in original comparison")
 	var controls: Dictionary = Text.read_message(records,4)
-	check(controls.tokens.map(func(t): return t.kind) == ["swap_colours","character_delay","glyph","select_icon","select_icon","timed_return"], "exactly five control families are recognized in source order")
+	check(controls.tokens.map(func(t): return t.kind) == ["swap_colours","character_delay","glyph","select_icon","select_icon","timed_delay","glyph"], "exactly five control families and post-delay glyphs are recognized in source order")
 	check(controls.tokens[1].units == 14 and controls.tokens[3].index == 2 and controls.tokens[4].index == 1 and controls.tokens[5].units == 43, "control parameters retain source meanings and nominal tick values")
-	check(controls.consumed_bytes == 10 and controls.remaining_bytes == PackedByteArray([83]) and controls.termination == "timed_return", "timed return stops before unconsumed source suffix")
+	check(controls.consumed_bytes == 11 and controls.remaining_bytes.is_empty() and controls.termination == "end" and controls.tokens[-1].bytes == PackedByteArray([83]), "timed delay resumes the original byte loop and consumes the suffix")
 	var lead: Dictionary = Text.read_message(records,5)
 	check(lead.tokens.size() == 1 and lead.tokens[0].bytes == PackedByteArray([129,0]) and lead.tokens[0].loader_zero and lead.tokens[0].size_bytes == 1 and lead.consumed_bytes == 1, "final DBCS lead reads explicit loader zero without inventing a source byte")
 	for index in [6,7]:
@@ -98,11 +98,11 @@ func _synthetic() -> void:
 	check(Text.read_message(records,10).tokens.size() == 255, "original U1 maximum message length is supported")
 	var long_message: Dictionary = Text.read_instruction(records,12)
 	check(long_message.diagnostic.code == "message_length_u1_unimplemented" and long_message.diagnostic.size_bytes == 256 and long_message.diagnostic.instruction_source.record_index == 12 and records.message_bytes(11).value.bytes.size() == 256, "long message remains readable but needs a separate execution owner")
-	var returned: Dictionary = Text.read_message(records,12)
-	check(returned.tokens.size() == 1 and returned.tokens[0].units == 43 and returned.remaining_bytes == "$99".to_ascii_buffer(), "speed control after timed return is not consumed")
-	check(Text.read_message(records,13).remaining_bytes == "$".to_ascii_buffer(), "malformed control in unconsumed suffix does not reject completed prefix")
+	var continued: Dictionary = Text.read_message(records,12)
+	check(continued.tokens.size() == 2 and continued.tokens[0].units == 43 and continued.tokens[1].kind == "character_delay" and continued.tokens[1].units == 141 and continued.remaining_bytes.is_empty(), "speed control after timed delay is consumed")
+	check(Text.read_message(records,13).diagnostic.code == "truncated_text_parameter" and Text.read_message(records,13).diagnostic.relative_byte_offset == 3, "malformed parameter after timed delay is diagnosed at its source offset")
 	check(Text.read_instruction(records,0).diagnostic.code == "not_message_instruction" and Text.read_instruction(records,100).diagnostic.code == "index_out_of_range", "wrong and missing instructions preserve source diagnostics")
-	controls.tokens[1].units = 999; controls.remaining_bytes[0] = 0
+	controls.tokens[1].units = 999; controls.tokens[-1].bytes[0] = 0
 	check(Text.read_message(records,4).tokens[1].units == 14 and records.message_bytes(4).value.bytes[-1] == 83, "plans and source records do not alias caller mutations")
 	var values: Array = [0,1,2,3,5,7,10,30,40,60,99]; var expected: Array = [0,1,3,4,7,10,14,43,57,86,141]
 	var delays: Array = []
@@ -117,8 +117,8 @@ func _real(fixture: Dictionary) -> void:
 	if package.pal98_sources == null: push_error(package.error); return
 	var records = package.pal98_sources.open_records(); var summary: Dictionary = records.table_summary()
 	check(records.metadata().fingerprint == fixture.fingerprint, "loaded source identity matches the source-window report")
-	var rows: Array = []; var unsupported: Array = []; var opening: Array = []; var suffixes: Array = []
-	var token_count: int = 0; var controls: Dictionary = {"swap_colours":0,"character_delay":0,"timed_return":0,"icon1":0,"icon2":0}
+	var rows: Array = []; var unsupported: Array = []; var opening: Array = []; var suffixes: Array = []; var continuations: Array = []
+	var token_count: int = 0; var controls: Dictionary = {"swap_colours":0,"character_delay":0,"timed_delay":0,"icon1":0,"icon2":0}
 	for index in range(summary.counts.messages):
 		var plan: Dictionary = Text.read_message(records,index)
 		if plan.has("error"):
@@ -129,16 +129,19 @@ func _real(fixture: Dictionary) -> void:
 		for token in plan.tokens:
 			if token.kind == "select_icon": controls["icon" + str(token.index)] += 1
 			elif controls.has(token.kind): controls[token.kind] += 1
+			if token.kind == "timed_delay" and token.offset + token.size_bytes < plan.source.size_bytes:
+				var after: int = token.offset + token.size_bytes
+				continuations.append({"index":index,"source_offset":plan.source.byte_offset + after,"following_hex":records.message_bytes(index).value.bytes.slice(after).hex_encode()})
 		if index < 5: opening.append({"index":index,"source":plan.source,"offset_directory_source":plan.offset_directory_source,"plan":normalized})
 		if not plan.remaining_bytes.is_empty(): suffixes.append({"index":index,"source_offset":plan.source.byte_offset + plan.consumed_bytes,"remaining_hex":plan.remaining_bytes.hex_encode()})
 	check(rows.size() == 13862 and unsupported.size() == 1 and unsupported[0].diagnostic.record_index == 13513 and unsupported[0].diagnostic.code == "message_length_u1_unimplemented", "all source messages classified with one explicit long-message boundary")
-	check(token_count == 116027 and controls == {"swap_colours":305,"character_delay":109,"timed_return":135,"icon1":10,"icon2":18}, "consumed token/control counts match independent byte scan")
-	check(suffixes.map(func(row): return row.index) == [8603,9213,10218,11122,11123], "all five source suffixes after timed return remain unconsumed")
+	check(token_count == 116032 and controls == {"swap_colours":305,"character_delay":113,"timed_delay":136,"icon1":10,"icon2":18}, "complete token/control counts include the post-delay source bytes")
+	check(suffixes.is_empty() and continuations.map(func(row): return row.index) == [8603,9213,10218,11122,11123], "all five post-delay continuations are consumed")
 	check(opening.map(func(row): return row.plan.tokens.size()) == [14,4,14,9,12], "opening five message token counts match source")
 	var first: Dictionary = Text.read_instruction(records,10)
-	check(first.tokens[0].kind == "character_delay" and first.tokens[0].units == 14 and first.tokens[-1].kind == "timed_return" and first.tokens[-1].units == 43 and first.instruction_source.record_index == 10, "opening FFFF reaches parameterized text plan with exact instruction receipt")
+	check(first.tokens[0].kind == "character_delay" and first.tokens[0].units == 14 and first.tokens[-1].kind == "timed_delay" and first.tokens[-1].units == 43 and first.instruction_source.record_index == 10, "opening FFFF resolves a lexical plan with exact instruction receipt; caller may select another display path")
 	var broken: Dictionary = Text.read_instruction(records,44957)
 	check(broken.diagnostic.code == "index_out_of_range" and broken.diagnostic.record_index == 13862 and broken.diagnostic.instruction_source.record_index == 44957, "original invalid FFFF retains message and referring instruction diagnosis")
 	reference = {"package_sha256":Schema.digest(FileAccess.get_file_as_bytes(fixture.package)), "package_content_lock":package.content_lock,
 		"source_fingerprint":records.metadata().fingerprint,"message_plans":rows,"unsupported":unsupported,"opening":opening,
-		"unconsumed_suffixes":suffixes,"token_count":token_count,"controls":controls}
+		"profile":Text.PROFILE,"unconsumed_suffixes":suffixes,"post_delay_continuations":continuations,"token_count":token_count,"controls":controls}

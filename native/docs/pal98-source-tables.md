@@ -83,5 +83,5 @@ establishes source consumption, not scene execution, event scheduling or gamepla
 
 The internal [byte text planner](pal98-text-plans.md) consumes these message and
 instruction receipts without replacing them with decoded text. It preserves
-timed-return suffixes and rejects unsupported loader/parameter boundaries;
+post-delay bytes and rejects unsupported loader/parameter boundaries;
 ordinary session execution is still separate.
