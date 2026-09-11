@@ -1,5 +1,13 @@
 # PAL Wanxiang Native preview
 
+## Original loaded sprite cache and scene composition (2026-09-12)
+
+The [source-bound cache and composition](docs/pal98-sprite-cache-and-composition.md)
+now connect event/party state through explicit resource loads and cached frame
+addresses to TileMap/occlusion/depth rendering.57 cache checks and78 GPU checks
+pass, including six full images matching the fixed original oracle. These remain
+explicit fixtures; original initialization/scripts/Session/save owners are pending.
+
 ## Original scene sprite requests (2026-09-12)
 
 The [state consumer](docs/pal98-scene-sprite-requests.md) now preserves T209/T213

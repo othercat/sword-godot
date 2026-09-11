@@ -26,6 +26,13 @@ independently written; no PALDLL hook, recovered procedural source or GPL game
 implementation is included. The profile explicitly documents its adaptation
 boundaries, rather than claiming full original combat or legacy overflow parity.
 
+The loaded sprite caches and scene composition independently express T98/T99 and
+T163 instruction facts, retaining Unknown bytes and explicit reload owners.
+GPU comparisons use private original-resource fixtures; no recovered procedure,
+source artwork, original DLL or development oracle is a player dependency.
+See `docs/pal98-sprite-cache-and-composition.md` for safety/exception differences
+and the remaining ordinary Session boundary.
+
 The scene sprite request consumer independently expresses fixed T209/T213 state
 and arithmetic facts, without recovered procedure code or source payloads.
 It does not invent initial state or bind resources at draw time. See
