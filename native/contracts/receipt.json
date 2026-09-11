@@ -1,6 +1,6 @@
 {
   "owner": "https://github.com/othercat/pal98-runtime-contracts.git",
-  "base_commit": "45c3daf6e232c78d7ee8411dcf2bfd4cd9432b0f",
+  "base_commit": "acbcc0db821f8bc2878cbd2431e4b5af9bf96b7e",
   "source_state": "committed-snapshot",
   "status": "draft",
   "license": "MIT",
@@ -17,6 +17,7 @@
     "pal.native.battle-layout.v2.schema.json": "bdfed46acebb4ab8523abe28b4691dc09da02177744233a9e6e3c765803cbce4",
     "pal.native.battle-ui.v1.schema.json": "ec87a6194ae8e7e0f19dc088d2d125ec99699f957892d161ff38a2dd65304d04",
     "pal.native.pal98-sources.v1.schema.json": "de219e65c86580c7d6b756ffee03a57b488c521a4c119356acd33d7590c21990",
+    "pal.native.pal98-graphics.v1.schema.json": "101a8833036e37d00b473ecdd25fdf42de1edd8fb789f429ef2f08f33b93ad1d",
     "pal.native.attack-formula.v1.schema.json": "720068a9102bd5c411afb194f98eb2cc3942b778097248c36a469a7e0b9e0664",
     "pal.native.attack-random.v1.schema.json": "3ade35a254e6346f1e815e1a8937f3c5089944512bcbeaa92dca96f62a3e6b8f",
     "pal.native.player-physical.v1.schema.json": "760ad97df47bf242695c73b22fa492cde9796b5383400c1cd6d9570b920e699e",

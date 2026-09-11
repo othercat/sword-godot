@@ -20,7 +20,7 @@ func open(path: String) -> bool:
 	while not pending.is_empty():
 		var relative: String = pending.pop_back()
 		var directory = DirAccess.open(_root.path_join(relative))
-		if directory == null: return _fail("cannot open package directory")
+		if directory == null: return _fail("cannot open package directory: " + relative + " (" + str(DirAccess.get_open_error()) + "). Check permissions; use a shorter local path or select the matching ZIP.")
 		directory.include_hidden = true
 		directory.include_navigational = false
 		if directory.list_dir_begin() != OK: return _fail("cannot enumerate package directory")

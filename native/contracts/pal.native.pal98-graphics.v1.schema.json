@@ -1,0 +1,40 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "pal.native.pal98-graphics.v1",
+  "title": "Optional immutable PAL98 graphics containers",
+  "x-status": "draft",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "kind", "fingerprint", "source_fingerprint", "label", "license", "redistributable", "files"],
+  "properties": {
+    "schema": {"const": "pal.native.pal98-graphics.v1"},
+    "kind": {"const": "content"},
+    "fingerprint": {"$ref": "#/definitions/hash"},
+    "source_fingerprint": {"$ref": "#/definitions/hash"},
+    "label": {"type": "string", "minLength": 1, "maxLength": 128},
+    "license": {"type": "string", "minLength": 1, "maxLength": 128},
+    "redistributable": {"type": "boolean"},
+    "files": {
+      "type": "object", "additionalProperties": false,
+      "required": ["MAP.MKF", "GOP.MKF", "MGO.MKF", "PAT.MKF"],
+      "properties": {
+        "MAP.MKF": {"$ref": "#/definitions/file"},
+        "GOP.MKF": {"$ref": "#/definitions/file"},
+        "MGO.MKF": {"$ref": "#/definitions/file"},
+        "PAT.MKF": {"$ref": "#/definitions/file"}
+      }
+    }
+  },
+  "definitions": {
+    "hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "file": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "sha256", "size_bytes"],
+      "properties": {
+        "path": {"type": "string", "pattern": "^content/pal98-graphics/[a-f0-9]{64}/(map\\.mkf|gop\\.mkf|mgo\\.mkf|pat\\.mkf)$"},
+        "sha256": {"$ref": "#/definitions/hash"},
+        "size_bytes": {"type": "integer", "minimum": 8, "maximum": 16777216}
+      }
+    }
+  }
+}

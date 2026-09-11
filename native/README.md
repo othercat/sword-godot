@@ -1,5 +1,27 @@
 # PAL Wanxiang Native preview
 
+## Immutable original graphics containers (2026-09-12)
+
+The ordinary package loader admits the optional `pal.native.pal98-graphics.v1`
+component (`resources.pal98-graphics.v1`) from contract owner `acbcc0d`.
+MAP/GOP/MGO/PAT retain exact bytes and original-table provenance through ZIP and
+directory transport; callers receive detached metadata/byte copies. Entry budget
+is16 MiB, existing base/four-table schemas are unchanged, and old packages still
+load. This is opaque resource preservation, not image decoding or game execution.
+The ordinary source-only session guard remains in place.
+
+Verification:60 graphics admission/copy/negative-package checks,23 cross-language
+contract cases, and9 ordinary window/session-preservation checks. On this Windows
+host,267-character nested directories failed; the same bytes passed as a ZIP and
+under a shorter Chinese/space directory path. Directory errors now identify the
+relative path and suggest checking access, shortening the path or selecting the
+matching ZIP. Deep-path, Mac/AMD and complete original gameplay are not accepted.
+Private evidence lives in Studio's existing `original-v163-codex-review-20260912-01`
+root. The inherited inspection drafts remain uncommitted and are excluded from
+this increment; the published receipt has31 schemas, the working draft has32.
+The60 Native and23 contract checks also pass from exported staged source trees
+without inspection, using the committed31-schema snapshot.
+
 ## Immutable original source tables (2026-09-11)
 
 The ordinary package loader now admits [source-bound PAL98 data tables](docs/pal98-source-tables.md)

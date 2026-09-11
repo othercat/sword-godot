@@ -18,6 +18,7 @@ const EnemyActions = preload("res://src/native_enemy_actions.gd")
 const Equipment = preload("res://src/native_equipment.gd")
 const InitialVitals = preload("res://src/native_initial_vitals.gd")
 const Pal98Sources = preload("res://src/native_pal98_sources.gd")
+const Pal98Graphics = preload("res://src/native_pal98_graphics.gd")
 const Classic = preload("res://src/native_classic_battle.gd")
 const BattleUi = preload("res://src/native_battle_ui.gd")
 const BattleHud = preload("res://src/native_battle_hud_config.gd")
@@ -48,6 +49,7 @@ var content_lock: String = ""
 var index: Dictionary = {}
 var textures: Dictionary = {}
 var pal98_sources = null
+var pal98_graphics = null
 var schema = Schema.new()
 var _source
 var map_cells: Dictionary = {}
@@ -70,7 +72,7 @@ func load_package(path: String) -> bool:
 	content_lock = Schema.digest(bytes)
 	if not manifest.dependencies.is_empty(): return _fail("package dependencies not implemented")
 	for capability in manifest.required_capabilities:
-		if capability not in CAPABILITIES and capability not in [Pal98Sources.CAPABILITY, InitialVitals.CAPABILITY, StoryNotice.CAPABILITY, MapUi.CAPABILITY, PartyCard.CAPABILITY, PartyCard.CAPABILITY_V2, HudPlacement.CAPABILITY, HudPlacement.CAPABILITY_V2, EnemyActions.CAPABILITY, Progression.CAPABILITY, Equipment.CAPABILITY, Classic.CAPABILITY, Classic.CAPABILITY_V2, BattleUi.CAPABILITY, BattleHud.CAPABILITY, BattleCanvas.CAPABILITY, CommandPanel.CAPABILITY, EnemyOverlay.CAPABILITY, BattleFormation.CAPABILITY, AttackFormula.CAPABILITY, AttackRandom.CAPABILITY, PlayerPhysical.CAPABILITY, Training.CAPABILITY, Training.ESCAPE_CAPABILITY, EnemyPhysical.CAPABILITY, MapPerformance.CAPABILITY, Sampling.CAPABILITY]: return _fail("unsupported capability: " + capability)
+		if capability not in CAPABILITIES and capability not in [Pal98Graphics.CAPABILITY, Pal98Sources.CAPABILITY, InitialVitals.CAPABILITY, StoryNotice.CAPABILITY, MapUi.CAPABILITY, PartyCard.CAPABILITY, PartyCard.CAPABILITY_V2, HudPlacement.CAPABILITY, HudPlacement.CAPABILITY_V2, EnemyActions.CAPABILITY, Progression.CAPABILITY, Equipment.CAPABILITY, Classic.CAPABILITY, Classic.CAPABILITY_V2, BattleUi.CAPABILITY, BattleHud.CAPABILITY, BattleCanvas.CAPABILITY, CommandPanel.CAPABILITY, EnemyOverlay.CAPABILITY, BattleFormation.CAPABILITY, AttackFormula.CAPABILITY, AttackRandom.CAPABILITY, PlayerPhysical.CAPABILITY, Training.CAPABILITY, Training.ESCAPE_CAPABILITY, EnemyPhysical.CAPABILITY, MapPerformance.CAPABILITY, Sampling.CAPABILITY]: return _fail("unsupported capability: " + capability)
 	for key in ["pal.native.package.v1", "pal.native.content.v1"]:
 		if manifest.contract_hashes.get(key) != schema.hashes.get(key): return _fail("contract hash mismatch: " + key)
 	if manifest.contract_hashes.size() != 2: return _fail("unknown contract hash")
@@ -102,6 +104,8 @@ func load_package(path: String) -> bool:
 	var component_hashes: Dictionary = {}
 	if Pal98Sources.used(world) != (Pal98Sources.CAPABILITY in manifest.required_capabilities): return _fail("pal98-sources capability/component mismatch")
 	if Pal98Sources.used(world): component_hashes[Pal98Sources.SCHEMA] = schema.hashes.get(Pal98Sources.SCHEMA)
+	if Pal98Graphics.used(world) != (Pal98Graphics.CAPABILITY in manifest.required_capabilities): return _fail("pal98-graphics capability/component mismatch")
+	if Pal98Graphics.used(world): component_hashes[Pal98Graphics.SCHEMA] = schema.hashes.get(Pal98Graphics.SCHEMA)
 	if InitialVitals.used(world) != (InitialVitals.CAPABILITY in manifest.required_capabilities): return _fail("initial-vitals capability/component mismatch")
 	if InitialVitals.used(world): component_hashes[InitialVitals.SCHEMA] = schema.hashes.get(InitialVitals.SCHEMA)
 	if Sampling.used(world) != (Sampling.CAPABILITY in manifest.required_capabilities): return _fail("sampling capability/component mismatch")
@@ -178,6 +182,18 @@ func load_package(path: String) -> bool:
 			declared[row.path] = "content"; source_payloads[role] = payloads[row.path]
 		source_candidate = Pal98Sources.new()
 		if not source_candidate.load_source(component, source_payloads, schema): return _fail(source_candidate.error)
+	var graphics_candidate = null
+	if Pal98Graphics.used(world):
+		var component: Dictionary = world.extensions[Pal98Graphics.KEY]
+		if not component.redistributable and not local_preview: return _fail("graphics has no distribution approval")
+		var graphics_payloads: Dictionary = {}
+		for role in Pal98Graphics.FILES:
+			var row: Dictionary = component.files[role]
+			if declared.has(row.path) or not files.has(row.path): return _fail("duplicate/missing graphics path")
+			if files[row.path].sha256 != row.sha256 or files[row.path].size_bytes != row.size_bytes: return _fail("graphics identity mismatch")
+			declared[row.path] = "content"; graphics_payloads[role] = payloads[row.path]
+		graphics_candidate = Pal98Graphics.new()
+		if not graphics_candidate.load_source(world, graphics_payloads, schema): return _fail(graphics_candidate.error)
 	textures = {}
 	var pixels: int = 0
 	for asset in world.assets:
@@ -217,6 +233,7 @@ func load_package(path: String) -> bool:
 		if declared.get(path_name) != files[path_name].kind: return _fail("file kind mismatch")
 	_source.close()
 	pal98_sources = source_candidate
+	pal98_graphics = graphics_candidate
 	return true
 
 static func _big32(bytes: PackedByteArray, offset: int) -> int:
@@ -233,11 +250,14 @@ func _json(bytes: PackedByteArray) -> Dictionary:
 func _fail(message: String) -> bool:
 	error = message
 	pal98_sources = null
+	pal98_graphics = null
 	if _source != null: _source.close()
 	return false
 
 func _references() -> bool:
 	var source_issue: String = Pal98Sources.validate_content(world, schema)
+	if not source_issue.is_empty(): return _fail(source_issue)
+	source_issue = Pal98Graphics.validate_content(world, schema)
 	if not source_issue.is_empty(): return _fail(source_issue)
 	index = {}
 	map_cells = {}

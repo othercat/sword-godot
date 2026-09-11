@@ -20,6 +20,7 @@ files = {f"pal.native.{kind}.v1.schema.json": source / "schemas" / f"pal.native.
 files["pal.native.battle-layout.v2.schema.json"] = source / "schemas/pal.native.battle-layout.v2.schema.json"
 files["pal.native.battle-ui.v1.schema.json"] = source / "schemas/pal.native.battle-ui.v1.schema.json"
 files["pal.native.pal98-sources.v1.schema.json"] = source / "schemas/pal.native.pal98-sources.v1.schema.json"
+files["pal.native.pal98-graphics.v1.schema.json"] = source / "schemas/pal.native.pal98-graphics.v1.schema.json"
 files["pal.native.attack-formula.v1.schema.json"] = source / "schemas/pal.native.attack-formula.v1.schema.json"
 files["pal.native.attack-random.v1.schema.json"] = source / "schemas/pal.native.attack-random.v1.schema.json"
 files["pal.native.player-physical.v1.schema.json"] = source / "schemas/pal.native.player-physical.v1.schema.json"
