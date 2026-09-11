@@ -37,6 +37,12 @@ func activate(candidate, now_usec: int = -1) -> bool:
 	if candidate == null or not candidate.error.is_empty() or candidate.world.is_empty():
 		error = "invalid package candidate"
 		return false
+	# Studio's source-author container has no original execution model yet.
+	# Preserve the live session instead of running its synthetic seed as PAL98.
+	var provenance: Variant = candidate.manifest.get("provenance")
+	if provenance is Dictionary and provenance.get("source_id", "") == "source.pal98.complete-package":
+		error = "original_source_only: 原版来源工程尚未接入原版游戏执行，当前不能试玩。"
+		return false
 	var previous_package = package
 	var previous_state = state
 	package = candidate
