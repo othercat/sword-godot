@@ -76,8 +76,7 @@ func _ready() -> void:
 	get_window().gui_embed_subwindows = true
 	var theme_data = Theme.new()
 	theme_data.default_font_size = 20
-	var font = SystemFont.new()
-	font.font_names = PackedStringArray(["Microsoft YaHei UI", "Noto Sans CJK SC", "PingFang SC", "sans-serif"])
+	var font = preload("res://src/native_ui_font.gd").create()
 	theme_data.default_font = font
 	theme = theme_data
 	var margin = MarginContainer.new()

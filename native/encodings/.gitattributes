@@ -1,0 +1,4 @@
+# These generated/vendor bytes have provenance hashes; preserve them on checkout.
+*.bin -text
+*.TXT -text -whitespace
+manifest.json -text whitespace=cr-at-eol

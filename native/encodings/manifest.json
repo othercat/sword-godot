@@ -1,0 +1,38 @@
+{
+  "profile": "pal98.codepages-dotnet8.v1",
+  "tables": [
+    {
+      "encoding": "gbk",
+      "code_page": 936,
+      "file": "cp936.bin",
+      "size_bytes": 263180,
+      "sha256": "fed0b8ec03389f7e558d2e63b954ca77027186e961ed11cdebefeb6f304100a5",
+      "single_count": 130,
+      "lead_count": 126,
+      "pair_count": 23940,
+      "oracle_cases": 65792,
+      "oracle_sha256": "1656176f7ab74e699d7dbe20c2f16c71a18d7ebe6d6e9e3dbe0f77faf41453d9"
+    },
+    {
+      "encoding": "big5",
+      "code_page": 950,
+      "file": "cp950.bin",
+      "size_bytes": 263180,
+      "sha256": "1e536aeb5f9cad1767aecb1e40a42d26753c040ea9d47c7829f004e558a30f33",
+      "single_count": 130,
+      "lead_count": 126,
+      "pair_count": 19710,
+      "oracle_cases": 65792,
+      "oracle_sha256": "efd246d8cd14acdf80870bf265456dffb00145187283c982996054fb5e2b06c8"
+    }
+  ],
+  "provider": {
+    "package": "System.Text.Encoding.CodePages",
+    "version": "8.0.0",
+    "sha256": "f1d8adcd3569623c65ebc17497772f22bec9b6781c8b10e690637eeb44f91543",
+    "repository": "https://github.com/dotnet/runtime",
+    "commit": "5535e31a712343a63f5d7d796cd874e563e5ac14",
+    "license_sha256": "d7a68596ab69b06f51ca278a6545148e4269a9381c26d597c13df5d88e08cf5b",
+    "notices_sha256": "19c19dcac9f3ee6302cfbc6745bb8e79f08efc4c933eb8dc5509bf14b88347ec"
+  }
+}

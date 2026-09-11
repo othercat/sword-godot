@@ -48,6 +48,15 @@ load the DLL, include original font data or enable SSS in an ordinary session.
 The corrected evidence and separate caller/renderer boundaries are documented in
 `docs/pal98-text-plans.md` and `docs/pal98-text-execution.md`.
 
+The portable source decoder additionally contains derived CP936/CP950 software
+tables from the MIT .NET CodePages provider. Exact provider/table hashes and
+upstream .NET/third-party notices accompany `encodings/`. No proprietary game
+text, original font, provider DLL or .NET player dependency is included. The
+internal text drawing adapter independently implements the reviewed call
+parameters using the existing Native system-font candidates and Godot TextLine.
+It does not copy the recovered GDI implementation or claim pixel parity. See
+`docs/pal98-text-codec-and-drawing.md` for reproduction and display boundaries.
+
 Build with this directory as the project root. Parent root exports are not Native
 releases. `.gdignore` prevents the parent editor from scanning this nested project.
 The Native rendering path uses its own TileMapLayer adapter; the parent's

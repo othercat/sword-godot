@@ -77,3 +77,7 @@ Early development reports used the wrong pre-wait X advance and missed entry
 icon reset. Both were corrected from raw T82 instructions before this feature's
 first commit. Earlier reports remain preserved as superseded development evidence.
 No visual, original-playthrough, Mac or AMD acceptance follows from these tests.
+
+A separate [decoder and drawing adapter](pal98-text-codec-and-drawing.md) now
+consumes these requests in a real-window probe. That does not connect this kernel
+to the ordinary Session, a real clock/input source, or original caller dispatch.
