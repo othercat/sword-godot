@@ -7,6 +7,7 @@ const CAPABILITY = "sources.pal98-win95.v1"
 const FILES = {"data": "data.mkf", "sss": "sss.mkf", "words": "word.dat", "messages": "m.msg"}
 const MAX_FILE = 8388608
 const Schema = preload("res://src/native_schema.gd")
+const Records = preload("res://src/native_pal98_source_records.gd")
 var error: String = ""
 var _metadata: Dictionary = {}
 var _bytes: Dictionary = {}
@@ -78,6 +79,10 @@ func copy_bytes(role: String) -> PackedByteArray:
 func copy_chunk(role: String, index: int) -> PackedByteArray:
 	var chunks: Array = _tables.get(role, [])
 	return chunks[index].duplicate() if index >= 0 and index < chunks.size() else PackedByteArray()
+
+func open_records():
+	var reader = Records.new()
+	return reader if reader.load_source(self) else null
 
 func _chunks(bytes: PackedByteArray, label: String) -> Array:
 	if bytes.size() < 4: _fail(label + " length"); return []

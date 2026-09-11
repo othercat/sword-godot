@@ -37,3 +37,46 @@ activation, six source-role equipment results, and malformed/synthetic package
 cases. All source references and fixture bytes are caller-provided private inputs;
 only synthetic values and the tests are committed. Window, physical-input,
 original-gameplay, Mac15.7.7 and AMD acceptance are separate evidence boundaries.
+
+## Addressed source record views
+
+`package.pal98_sources.open_records()` opens an independent immutable reader, or
+returns null before admission. A later replacement of the source object does not
+change an already opened reader. A failed reader replacement keeps its previous
+snapshot. Calls return either a value with source receipts or an error with a
+source diagnostic; returned arrays, bytes and metadata do not alias stored data.
+
+The reader in `native_pal98_source_records.gd` exposes:
+
+- Six 75-WORD roles from field-major DATA3; their receipts describe 12-byte WORD
+  spacing, not a fictitious contiguous role record. Words retain all 16 bits.
+- SSS0 32-byte event and SSS2 14-byte object records as raw words. These views do
+  not guess unknown field semantics or manufacture Native entity identities.
+- SSS1 raw 8-byte records, including the final boundary record. `scene()` excludes
+  that terminal record and verifies the requested scene's half-open SSS0 range
+  using the next record. `scene_for_runtime_id(1)` explicitly selects raw index 0.
+  Other scene ranges and unexecuted entry references are not silently repaired.
+- SSS4 8-byte instructions with raw opcode/operand words. Index zero and unknown
+  opcodes remain inspectable; execution, zero-entry return and PC wrap belong to
+  the future interpreter.
+- Exact ten-byte WORD entries and M.MSG spans selected by adjacent SSS3 offsets.
+  Empty messages, NUL, spaces and undecodable bytes are retained. The unindexed
+  M.MSG tail has its own view. `message_for_instruction()` resolves an FFFF
+  reference and keeps the referring instruction address on success or failure.
+
+Receipts bind the source fingerprint, relative package path, file SHA256, record
+index and exact file offsets. Message receipts also identify both SSS3 boundary
+entries. This is an internal read API, not a new public save format. It neither
+decodes GBK/Big5 nor executes text controls or confirmation/timing behavior.
+
+SSS0/SSS1 remain opaque at source-package admission: requesting malformed record
+tables or scene ranges produces a local diagnostic. It does not discard the
+source, reject previously valid source-bearing packages, or prevent reading an
+independent valid table. No new capability, schema, ordinary session behavior or
+runtime formula is introduced.
+
+`tests/test_pal98_source_records.gd` checks synthetic record/address boundaries,
+snapshot replacement and malformed local views, then reads every record from a
+caller-provided ordinary source package. Reconstructed table hashes and opening
+addresses are independently checked by the product integration evidence. This
+establishes source consumption, not scene execution, event scheduling or gameplay.
