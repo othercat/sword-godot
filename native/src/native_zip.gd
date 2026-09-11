@@ -55,7 +55,7 @@ func open(path: String) -> bool:
 		var name = name_bytes.get_string_from_utf8()
 		var directory: bool = name.ends_with("/")
 		if name.to_utf8_buffer() != name_bytes or not portable(name.trim_suffix("/") if directory else name) or folded.has(name.to_lower()): return _fail("nonportable or duplicate ZIP path")
-		if (directory and size != 0) or (not directory and size == 0): return _fail("ZIP directory/file size mismatch")
+		if directory and size != 0: return _fail("ZIP directory/file size mismatch")
 		folded[name.to_lower()] = true
 		_guard.seek(_guard.get_position() + extra_size + comment_size)
 		var next: int = _guard.get_position()

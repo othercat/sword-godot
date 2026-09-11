@@ -1,5 +1,14 @@
 # PAL Wanxiang Native preview
 
+## Immutable original source tables (2026-09-11)
+
+The ordinary package loader now admits [source-bound PAL98 data tables](docs/pal98-source-tables.md)
+produced by the Studio workbench. Four complete data files retain their hashes,
+explicit encoding, unknown bytes and message tails through ZIP/directory loading.
+The 187 source-admission checks include the six-role equipment consumer, empty
+messages and malformed package rejection. Normal sessions do not execute source
+scripts yet; this is not an original-game candidate or device acceptance.
+
 ## Source-bound equipment entry kernel (2026-09-11)
 
 The internal [PAL98 equipment kernel](docs/pal98-equipment-kernel.md) executes

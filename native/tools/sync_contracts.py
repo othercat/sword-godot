@@ -19,6 +19,7 @@ if origin not in ("https://github.com/othercat/pal98-runtime-contracts.git", "gi
 files = {f"pal.native.{kind}.v1.schema.json": source / "schemas" / f"pal.native.{kind}.v1.schema.json" for kind in ("content", "package", "state", "save", "enemy-actions", "progression", "equipment", "battle-layout")}
 files["pal.native.battle-layout.v2.schema.json"] = source / "schemas/pal.native.battle-layout.v2.schema.json"
 files["pal.native.battle-ui.v1.schema.json"] = source / "schemas/pal.native.battle-ui.v1.schema.json"
+files["pal.native.pal98-sources.v1.schema.json"] = source / "schemas/pal.native.pal98-sources.v1.schema.json"
 files["pal.native.attack-formula.v1.schema.json"] = source / "schemas/pal.native.attack-formula.v1.schema.json"
 files["pal.native.attack-random.v1.schema.json"] = source / "schemas/pal.native.attack-random.v1.schema.json"
 files["pal.native.player-physical.v1.schema.json"] = source / "schemas/pal.native.player-physical.v1.schema.json"

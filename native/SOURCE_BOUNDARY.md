@@ -34,6 +34,13 @@ recovered procedural implementation is copied or translated. This internal kerne
 does not enable original scripts in the ordinary Native session; its exact subset
 and missing owners are documented in `docs/pal98-equipment-kernel.md`.
 
+The optional immutable source-table component admits user-selected legacy data
+through the shared MIT schema and existing bounded ZIP/directory transports.
+Its parser is independently expressed from file-format boundaries; it does not
+translate a legacy game implementation or introduce a source-script interpreter.
+Complete resource bytes remain private local-preview inputs unless the author
+explicitly approves redistribution. No original payload is committed here.
+
 Build with this directory as the project root. Parent root exports are not Native
 releases. `.gdignore` prevents the parent editor from scanning this nested project.
 The Native rendering path uses its own TileMapLayer adapter; the parent's

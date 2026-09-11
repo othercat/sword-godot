@@ -38,7 +38,7 @@ func open(path: String) -> bool:
 				if stream == null: return _fail("cannot read package file: " + child)
 				var length: int = stream.get_length()
 				stream.close()
-				if length < 1 or length > Zip.MAX_ENTRY: return _fail("directory file size limit")
+				if length > Zip.MAX_ENTRY: return _fail("directory file size limit")
 				total += length
 				if total > Zip.MAX_TOTAL: return _fail("directory package size limit")
 				entries[child] = {"size": length}

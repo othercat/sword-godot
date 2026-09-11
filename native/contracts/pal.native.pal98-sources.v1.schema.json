@@ -1,0 +1,49 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "pal.native.pal98-sources.v1",
+  "title": "Optional immutable PAL98 Win95 source tables",
+  "x-status": "draft",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "kind", "dialect", "text_encoding", "fingerprint", "label", "license", "redistributable", "files", "provenance"],
+  "properties": {
+    "schema": {"const": "pal.native.pal98-sources.v1"},
+    "kind": {"const": "content"},
+    "dialect": {"const": "pal98-win95"},
+    "text_encoding": {"enum": ["gbk", "big5"]},
+    "fingerprint": {"$ref": "#/definitions/hash"},
+    "label": {"type": "string", "minLength": 1, "maxLength": 128},
+    "license": {"type": "string", "minLength": 1, "maxLength": 128},
+    "redistributable": {"type": "boolean"},
+    "files": {
+      "type": "object", "additionalProperties": false,
+      "required": ["data", "sss", "words", "messages"],
+      "properties": {
+        "data": {"$ref": "#/definitions/file"},
+        "sss": {"$ref": "#/definitions/file"},
+        "words": {"$ref": "#/definitions/file"},
+        "messages": {"$ref": "#/definitions/file"}
+      }
+    },
+    "provenance": {
+      "type": "object", "additionalProperties": false, "required": ["status"],
+      "properties": {
+        "status": {"enum": ["synthetic", "author-choice", "draft-adaptation", "approved"]},
+        "source_id": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-z][a-z0-9_.-]*$"},
+        "source_revision": {"type": "string", "maxLength": 128}
+      }
+    }
+  },
+  "definitions": {
+    "hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "file": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "sha256", "size_bytes"],
+      "properties": {
+        "path": {"type": "string", "pattern": "^content/pal98-sources/[a-f0-9]{64}/(data\\.mkf|sss\\.mkf|word\\.dat|m\\.msg)$"},
+        "sha256": {"$ref": "#/definitions/hash"},
+        "size_bytes": {"type": "integer", "minimum": 0, "maximum": 8388608}
+      }
+    }
+  }
+}
