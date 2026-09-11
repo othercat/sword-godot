@@ -1,5 +1,13 @@
 # PAL Wanxiang Native preview
 
+## Original current-scene event storage (2026-09-12)
+
+The [source event storage component](docs/pal98-scene-events.md) now preserves
+the original global/current-event copy boundaries,160-record cap and older
+backing slots. Its24 checks cover all294 source scenes and detached edit/writeback
+roundtrips. This remains internal storage; ordinary original Session activation,
+resource/script ordering and real save/load remain pending.
+
 ## Original map occlusion and source graphics composition (2026-09-12)
 
 The [map mark/depth adapter](docs/pal98-map-occlusion.md) now joins decoded

@@ -65,6 +65,10 @@ The map occlusion adapter similarly uses independently expressed exrij/exbb/exma
 coordinate and addressing facts. Its real-resource compositions use explicit
 development inputs, not recovered original caller code or a shipped DLL. See
 `docs/pal98-map-occlusion.md` for source identities and unresolved scene owners.
+Current-scene event storage independently expresses the reviewed T201/T175 byte
+copy boundaries, retaining unknown record fields and uninitialized backing as
+explicit Unknown. No recovered procedure or original save layout is copied or
+claimed; source inputs stay private. See `docs/pal98-scene-events.md`.
 
 The portable source decoder additionally contains derived CP936/CP950 software
 tables from the MIT .NET CodePages provider. Exact provider/table hashes and
