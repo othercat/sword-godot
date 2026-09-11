@@ -23,6 +23,10 @@ static func context_from(state: Dictionary) -> Dictionary:
 		if state.has(key): result[key] = state[key]
 	return result
 
+static func inspect_state(records, state: Dictionary) -> Dictionary:
+	var plan: Dictionary = _plan_for(records,state)
+	return plan if plan.has("error") else _result(state,plan)
+
 static func _integer(value, low: int, high: int) -> bool:
 	return (value is int or value is float) and is_finite(float(value)) and value == floor(value) and value >= low and value <= high
 

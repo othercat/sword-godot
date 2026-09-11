@@ -78,6 +78,9 @@ icon reset. Both were corrected from raw T82 instructions before this feature's
 first commit. Earlier reports remain preserved as superseded development evidence.
 No visual, original-playthrough, Mac or AMD acceptance follows from these tests.
 
-A separate [decoder and drawing adapter](pal98-text-codec-and-drawing.md) now
-consumes these requests in a real-window probe. That does not connect this kernel
-to the ordinary Session, a real clock/input source, or original caller dispatch.
+A separate [decoder and drawing adapter](pal98-text-codec-and-drawing.md) consumes
+these requests in a real-window probe. The internal
+[dialogue caller](pal98-dialogue-caller.md) now composes FFFF/title/background and
+ClearText requests, using the new read-only `inspect_state` API. The existing body
+step behavior is unchanged. Neither addition activates the ordinary Session or
+provides a real clock/input source.

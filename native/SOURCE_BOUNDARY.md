@@ -57,6 +57,13 @@ parameters using the existing Native system-font candidates and Godot TextLine.
 It does not copy the recovered GDI implementation or claim pixel parity. See
 `docs/pal98-text-codec-and-drawing.md` for reproduction and display boundaries.
 
+The internal dialogue caller independently composes reviewed FFFF/ClearText
+branch and helper-call facts. It does not copy or translate recovered procedures,
+import parent ScriptVM code, include original UI sprites or enable the ordinary
+Session. Its host requests and explicit failure boundaries are documented in
+`docs/pal98-dialogue-caller.md`; private source text and probe traces remain outside
+this repository.
+
 Build with this directory as the project root. Parent root exports are not Native
 releases. `.gdignore` prevents the parent editor from scanning this nested project.
 The Native rendering path uses its own TileMapLayer adapter; the parent's
