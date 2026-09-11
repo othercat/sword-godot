@@ -3,12 +3,13 @@
 ## Source-bound equipment entry kernel (2026-09-11)
 
 The internal [PAL98 equipment kernel](docs/pal98-equipment-kernel.md) executes
-recovered modifier assignment, equipment assignment, selected role-field writes
-and U2 entry return behavior against fingerprinted DATA3/SSS tables. Its source
-and synthetic checks pass 214 assertions. A separate Python inspection verifies
-the actual source traces and resulting words. Three source roles complete this
-subset; the other three report the first missing status or party battle-field
-owner. The ordinary package/session
+recovered modifier assignment, equipment assignment, role/party field writes,
+bounded status effects and U2 entry return behavior against fingerprinted DATA3/SSS
+tables. Its source and synthetic checks pass 385 assertions. A separate Python
+inspection verifies the actual source traces, resulting words and party ownership.
+All six source roles complete their equipment entries in individual single-member
+parties. The status4 nonpositive-HP rendering/RNG branch remains an explicit failure.
+The ordinary package/session
 and existing authored equipment rules do not enable this kernel. This is not a
 complete party initializer, original-game candidate or device acceptance.
 

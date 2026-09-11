@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 extends RefCounted
-## Bounded, independently written execution of recovered equipment-entry actions
-## entry subset. This is an internal kernel, not Native package/save admission or
+## Bounded, independently written execution of recovered equipment-entry actions.
+## This is an internal kernel, not Native package/save admission or
 ## the complete 0075 party rebuild. No source game code is loaded or evaluated.
 const ROLES = 6
 const ROLE_FIELDS = 75
@@ -11,7 +11,7 @@ const FIRST_EFFECT = 17
 const LAST_EFFECT = 30
 const MODIFIER_COUNT = ROLES * 7 * 14
 const MAX_STEPS = 1024
-const PROFILE = "pal98.equipment-entry-subset.v1"
+const PROFILE = "pal98.equipment-entry-subset.v2"
 var error: String = ""
 var _roles: Array = []
 var _objects: Array = []
@@ -54,17 +54,33 @@ func read_tables(data3: PackedByteArray, objects: PackedByteArray, scripts: Pack
 func source_receipt() -> Dictionary:
 	return _receipt.duplicate(true)
 
-func initial_state() -> Dictionary:
-	if _receipt.is_empty(): return {}
+static func _party_issue(roles: Array) -> String:
+	# This models a legacy three-slot party only; it is not a Native party limit.
+	if roles.is_empty() or roles.size() > 3: return "source party requires 1..3 members"
+	var seen: Array = []
+	for role in roles:
+		if typeof(role) != TYPE_INT or role < 0 or role >= ROLES or role in seen: return "source party role is invalid or repeated"
+		seen.append(role)
+	return ""
+
+func initial_state(party_roles: Array = [0]) -> Dictionary:
+	if _receipt.is_empty() or not _party_issue(party_roles).is_empty(): return {}
 	var effects: Array = []; effects.resize(MODIFIER_COUNT); effects.fill(0)
 	var entries: Array = []
 	for index in range(int(_receipt.object_count)): entries.append(_objects[index * 7 + 3])
+	var fields: Array = []; var statuses: Array = []
+	for role in party_roles:
+		# A projection of the two consumed G05CC fields, not a guessed record stride.
+		fields.append({"battle_sprite_word": 0, "cooperative_magic_word": 0})
+		var row: Array = []; row.resize(9); row.fill(0); statuses.append(row)
 	return {"source_id": _receipt.source_id, "role_words": _roles.duplicate(),
-		"modifiers": effects, "equip_entries": entries, "previous_item": 0}
+		"modifiers": effects, "equip_entries": entries, "previous_item": 0,
+		"party_roles": party_roles.duplicate(), "party_fields": fields,
+		"party_statuses": statuses, "trigger_success_word": 0}
 
 func validate_state(state: Dictionary) -> String:
 	if _receipt.is_empty(): return "source tables have not been read"
-	if state.size() != 5 or state.get("source_id") != _receipt.source_id:
+	if state.size() != 9 or state.get("source_id") != _receipt.source_id:
 		return "equipment state source or shape mismatch"
 	for field in ["role_words", "modifiers", "equip_entries"]:
 		if not state.get(field) is Array: return "equipment state requires word arrays"
@@ -76,6 +92,23 @@ func validate_state(state: Dictionary) -> String:
 			if typeof(word) != TYPE_INT or word < low or word > high: return "equipment state word out of range: " + field
 	if typeof(state.get("previous_item")) != TYPE_INT or state.previous_item < 0 or state.previous_item > 65535:
 		return "previous equipment object is not a WORD"
+	if not state.get("party_roles") is Array: return "source party roles must be an array"
+	var issue: String = _party_issue(state.party_roles)
+	if not issue.is_empty(): return issue
+	if not state.get("party_fields") is Array or not state.get("party_statuses") is Array:
+		return "source party fields and statuses must be arrays"
+	if state.party_fields.size() != state.party_roles.size() or state.party_statuses.size() != state.party_roles.size():
+		return "source party projection must match member count"
+	for slot in range(state.party_roles.size()):
+		var fields = state.party_fields[slot]; var statuses = state.party_statuses[slot]
+		if not fields is Dictionary or fields.size() != 2: return "source party field projection has the wrong shape"
+		for key in ["battle_sprite_word", "cooperative_magic_word"]:
+			if typeof(fields.get(key)) != TYPE_INT or fields[key] < 0 or fields[key] > 65535: return "source party field is not a WORD"
+		if not statuses is Array or statuses.size() != 9: return "source party status row requires nine I2 values"
+		for duration in statuses:
+			if typeof(duration) != TYPE_INT or duration < -32768 or duration > 32767: return "source status duration is not signed I2"
+	if typeof(state.get("trigger_success_word")) != TYPE_INT or state.trigger_success_word < -32768 or state.trigger_success_word > 32767:
+		return "trigger success word is not signed I2"
 	return ""
 
 func _failure(code: String, message: String, pc: int = -1, words: Array = [], steps: int = 0) -> Dictionary:
@@ -91,6 +124,28 @@ func clear_original_modifier_prefix(state: Dictionary) -> Dictionary:
 	# clearing all six roles here would silently change the recovered behavior.
 	for index in range(490): candidate.modifiers[index] = 0
 	return {"state": candidate}
+
+func rebuild_party_equipment(state: Dictionary) -> Dictionary:
+	var cleared: Dictionary = clear_original_modifier_prefix(state)
+	if cleared.has("error"): return cleared
+	var candidate: Dictionary = cleared.state; var entries: Array = []
+	# Finish each member before copying the next member's base fields: a source
+	# equipment script may assign another role's base before that copy happens.
+	for slot in range(candidate.party_roles.size()):
+		var role: int = candidate.party_roles[slot]
+		candidate.role_words[4 * ROLES + role] = 0
+		candidate.party_fields[slot].battle_sprite_word = candidate.role_words[1 * ROLES + role]
+		candidate.party_fields[slot].cooperative_magic_word = candidate.role_words[65 * ROLES + role]
+		candidate.party_statuses[slot][8] = 0
+		for field in range(11, 17):
+			var result: Dictionary = run_equipped_entry(candidate, role, field)
+			if result.has("error"):
+				result.diagnostic.party_slot = slot; result.diagnostic.role = role
+				return result
+			candidate = result.state
+			entries.append({"party_slot": slot, "role": role, "equipment_field": field,
+				"object_id": result.object_id, "entry": result.entry, "return_entry": result.return_entry, "trace": result.trace})
+	return {"state": candidate, "entries": entries}
 
 func effective_stat(state: Dictionary, role: int, field: int) -> Dictionary:
 	var issue: String = validate_state(state)
@@ -111,6 +166,8 @@ func run_equipped_entry(state: Dictionary, role: int, equipment_field: int, step
 	if not issue.is_empty(): return _failure("invalid_state", issue)
 	if role < 0 or role >= ROLES or equipment_field < 11 or equipment_field > 16:
 		return _failure("invalid_context", "equipment entry requires a source role and one of fields 11..16")
+	var party_slot: int = state.party_roles.find(role)
+	if party_slot < 0: return _failure("invalid_context", "equipment role must resolve through the current source party")
 	if step_budget < 1 or step_budget > MAX_STEPS: return _failure("invalid_budget", "equipment instruction budget must be 1..1024")
 	var object_id: int = state.role_words[equipment_field * ROLES + role]
 	# The original initialization caller executes only signed item IDs > 0.
@@ -119,6 +176,9 @@ func run_equipped_entry(state: Dictionary, role: int, equipment_field: int, step
 	if object_id >= int(_receipt.object_count): return _failure("invalid_object", "equipped source object is outside SSS2")
 	var entry: int = state.equip_entries[object_id]
 	var candidate: Dictionary = state.duplicate(true)
+	# This belongs to the trigger caller, not to opcode 002D. Skipped nonpositive
+	# items above never enter that caller and retain the previous success word.
+	candidate.trigger_success_word = -1
 	var pc: int = entry; var trace: Array = []
 	# Entry zero is the trigger owner's null entry, independent of record 0000.
 	if entry == 0: return {"state": candidate, "entry": entry, "return_entry": entry, "object_id": object_id, "trace": trace}
@@ -156,15 +216,35 @@ func run_equipped_entry(state: Dictionary, role: int, equipment_field: int, step
 				var field: int = words[1]; var target: int = _signed(int(words[3]))
 				if target < 0:
 					return _failure("negative_role_selector_unimplemented", "001A negative role selector is outside the verified subset", pc, words, trace.size())
-				if target == 0 and field in [1, 65]:
-					return _failure("party_battle_field_unimplemented", "001A current-target field 1/65 requires the party battle-record owner", pc, words, trace.size())
 				var selected_role: int = target - 1 if target > 0 else role
 				if selected_role < 0 or selected_role >= ROLES or field < 0 or field >= ROLE_FIELDS:
 					return _failure("invalid_role_address", "001A role field is outside the six-role DATA3 layout", pc, words, trace.size())
-				var index: int = field * ROLES + selected_role
-				row.target_role = selected_role; row.role_field = field
-				row.before = candidate.role_words[index]; row.after = words[2]
-				candidate.role_words[index] = row.after
+				if target == 0 and field in [1, 65]:
+					var key: String = "battle_sprite_word" if field == 1 else "cooperative_magic_word"
+					row.party_slot = party_slot; row.party_field = key
+					row.before = candidate.party_fields[party_slot][key]; row.after = words[2]
+					candidate.party_fields[party_slot][key] = row.after
+				else:
+					var index: int = field * ROLES + selected_role
+					row.target_role = selected_role; row.role_field = field
+					row.before = candidate.role_words[index]; row.after = words[2]
+					candidate.role_words[index] = row.after
+			0x002D:
+				var status: int = _signed(int(words[1])); var duration: int = _signed(int(words[2]))
+				if status < 0 or status >= 9:
+					return _failure("invalid_status_address", "002D status is outside the nine-slot source status table", pc, words, trace.size())
+				var previous: int = candidate.party_statuses[party_slot][status]
+				if status == 4:
+					if _signed(int(candidate.role_words[9 * ROLES + role])) <= 0:
+						return _failure("status4_render_unimplemented", "002D status4 with nonpositive HP requires the original four-frame render and RNG owner", pc, words, trace.size())
+					candidate.trigger_success_word = 0
+				elif (status > 4 or previous <= 0) and previous < duration:
+					candidate.party_statuses[party_slot][status] = duration
+				# Arg2 is not read by the original case. Status identity is indexed
+				# by party slot, unlike base role fields and equipment modifiers.
+				row.party_slot = party_slot; row.status_slot = status
+				row.before = previous; row.after = candidate.party_statuses[party_slot][status]
+				row.trigger_success_word = candidate.trigger_success_word
 			_:
 				return _failure("unsupported_opcode", "equipment opcode %04X is not implemented by this subset" % opcode, pc, words, trace.size())
 		trace.append(row); pc = (pc + 1) & 65535

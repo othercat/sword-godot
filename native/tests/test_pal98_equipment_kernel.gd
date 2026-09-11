@@ -43,7 +43,7 @@ func _initialize() -> void:
 	output = args[0]
 	if FileAccess.file_exists(output.path_join("results.json")): push_error("Use a fresh evidence directory"); quit(2); return
 	if DirAccess.make_dir_recursive_absolute(output) != OK: quit(2); return
-	_test_tables(); _test_execution(); _test_stats(); _test_bounds()
+	_test_tables(); _test_execution(); _test_stats(); _test_bounds(); _test_party_context()
 	if args.size() == 2: _test_real(args[1])
 	var report: Dictionary = {"checks": checks, "passed": checks.size() - failed, "failed": failed,
 		"real_entries": real_results, "kernel_only": true, "ordinary_native_package": false,
@@ -102,16 +102,19 @@ func _test_execution() -> void:
 	check(result.state.modifiers == assigned.initial_state().modifiers, "001A does not turn base assignments into equipment modifiers")
 	for field in [1, 65]:
 		var redirected = _core([[0x18, 11, 1, 0], [0x1a, field, 351, 0], [0, 0, 0, 0]])
-		_unchanged_failure(redirected, redirected.initial_state(), 0, 11, "party_battle_field_unimplemented", 2)
+		var projected: Dictionary = redirected.run_equipped_entry(redirected.initial_state(), 0, 11)
+		check(not projected.has("error") and projected.state.role_words[field * 6] == 0, "current 001A field1/65 does not overwrite source base")
+		check(projected.state.party_fields[0]["battle_sprite_word" if field == 1 else "cooperative_magic_word"] == 351, "current 001A writes the correct party projection")
 	var negative = _core([[0x1a, 4, 1, 65535]])
 	_unchanged_failure(negative, negative.initial_state(), 0, 11, "negative_role_selector_unimplemented", 1)
-	var unknown = _core([[0x17, 11, 19, 3], [0x2d, 8, 32760, 0], [0, 0, 0, 0]])
+	var unknown = _core([[0x17, 11, 19, 3], [0xfe, 8, 32760, 0], [0, 0, 0, 0]])
 	result = _unchanged_failure(unknown, unknown.initial_state(), 0, 11, "unsupported_opcode", 2)
-	check(result.diagnostic.words == [0x2d, 8, 32760, 0] and result.diagnostic.source.source_id == unknown.source_receipt().source_id, "unimplemented status action identifies raw operands and exact source")
+	check(result.diagnostic.words == [0xfe, 8, 32760, 0] and result.diagnostic.source.source_id == unknown.source_receipt().source_id, "unimplemented action identifies raw operands and exact source")
 	var null_source = _core([[0xffff, 0, 0, 0]])
 	state = null_source.initial_state(); state.equip_entries[1] = 0
 	result = null_source.run_equipped_entry(state, 0, 11)
-	check(result.trace.is_empty() and result.state == state, "zero trigger entry returns without fetching a record")
+	var null_expected: Dictionary = state.duplicate(true); null_expected.trigger_success_word = -1
+	check(result.trace.is_empty() and result.state == null_expected, "zero trigger entry keeps caller success initialization but performs no fetch")
 	for word in [0, 32768, 65535]:
 		state = null_source.initial_state(); state.role_words[11 * 6] = word
 		result = null_source.run_equipped_entry(state, 0, 11)
@@ -183,11 +186,75 @@ func _test_bounds() -> void:
 			"bad_previous": state.previous_item = 65536
 		_unchanged_failure(core, state, 0, 11, "invalid_state")
 
+func _test_party_context() -> void:
+	var core = _core([[0x18, 11, 1, 0], [0x1a, 4, 1, 0], [0x1a, 1, 6, 0], [0x1a, 65, 351, 0], [0x2d, 8, 32760, 65535], [0, 0, 0, 0]])
+	var state: Dictionary = core.initial_state([5, 1])
+	state.role_words[11 * 6 + 5] = 1; state.role_words[1 * 6 + 5] = 123; state.role_words[65 * 6 + 5] = 456
+	state.party_statuses[1][8] = 100
+	var before: Dictionary = state.duplicate(true); var result: Dictionary = core.run_equipped_entry(state, 5, 11)
+	check(not result.has("error") and state == before, "source role5 resolves through party slot0 without mutating input")
+	check(result.state.party_statuses[0][8] == 32760 and result.state.party_statuses[1][8] == 100, "002D owns party-slot status rather than source-role status")
+	check(result.state.party_fields[0] == {"battle_sprite_word": 6, "cooperative_magic_word": 351}, "current field1/65 updates two known offsets without guessing a full record stride")
+	check(result.state.role_words[1 * 6 + 5] == 123 and result.state.role_words[65 * 6 + 5] == 456 and result.state.role_words[4 * 6 + 5] == 1, "ordinary role field and party temporaries keep distinct owners")
+	check(result.state.trigger_success_word == -1 and result.state.role_words[9 * 6 + 5] == 0, "status8 ignores HP and Arg2 without inventing a failure or render")
+	result = core.rebuild_party_equipment(state)
+	check(not result.has("error") and result.entries.size() == 12 and state == before, "two-member rebuild is one isolated candidate")
+	check(result.state.party_statuses[0][8] == 32760 and result.state.party_statuses[1][8] == 0, "rebuild clears each slot's status8 before its own equipment")
+	for vector in [[0, 5, 10, 5], [3, 0, 10, 10], [3, -5, -1, -1], [2, 0, -1, 0], [0, -2, -3, -2],
+		[5, 5, 10, 10], [8, 100, 32760, 32760], [8, 32767, 32760, 32767], [8, 32760, 32760, 32760],
+		[1, 1, 32760, 1], [7, -32768, 32767, 32767], [6, 0, -32768, 0], [8, 32760, 32767, 32767], [5, 999, 1000, 1000]]:
+		var action = _core([[0x2d, vector[0], vector[2] & 65535, 32767], [0, 0, 0, 0]])
+		var input: Dictionary = action.initial_state(); input.party_statuses[0][vector[0]] = vector[1]
+		var actual: Dictionary = action.run_equipped_entry(input, 0, 11)
+		check(not actual.has("error") and actual.state.party_statuses[0][vector[0]] == vector[3], "002D signed qualification/replacement vector " + str(vector))
+		check(actual.state.trigger_success_word == -1, "unchanged duration does not clear trigger success")
+	var pose = _core([[0x17, 11, 19, 1], [0x2d, 4, 100, 0], [0x2d, 8, 10, 0], [0, 0, 0, 0]])
+	for hp in [0, 65535]:
+		state = pose.initial_state(); state.role_words[9 * 6] = hp
+		_unchanged_failure(pose, state, 0, 11, "status4_render_unimplemented", 2)
+	state = pose.initial_state(); state.role_words[9 * 6] = 1; state.party_statuses[0][4] = 3
+	result = pose.run_equipped_entry(state, 0, 11)
+	check(not result.has("error") and result.state.party_statuses[0][4] == 3 and result.state.trigger_success_word == 0, "status4 on living role retains duration and clears success; later status8 does not set it back")
+	check(result.state.party_statuses[0][8] == 10, "later non4 status action still executes after status4 qualification failure")
+	for status in [65535, 9]:
+		var bad = _core([[0x2d, status, 1, 0]])
+		_unchanged_failure(bad, bad.initial_state(), 0, 11, "invalid_status_address", 1)
+	var tables: Array = _tables([[0x1a, 1, 99, 2], [0, 0, 0, 0], [0x1a, 65, 351, 0], [0, 0, 0, 0]])
+	tables[0].encode_u16((11 * 6 + 1) * 2, 2); tables[1].encode_u16((2 * 7 + 3) * 2, 3)
+	var ordered = Kernel.new(); check(ordered.read_tables(tables[0], tables[1], tables[2]), "ordered two-member source admitted")
+	state = ordered.initial_state([0, 1]); state.role_words[4 * 6] = 7; state.role_words[4 * 6 + 1] = 9
+	state.party_statuses[0][2] = 4; before = state.duplicate(true)
+	result = ordered.rebuild_party_equipment(state)
+	check(not result.has("error") and result.state.party_fields[1].battle_sprite_word == 99, "earlier equipment base assignment precedes the later member's copy")
+	check(result.state.role_words[4 * 6] == 0 and result.state.role_words[4 * 6 + 1] == 0 and result.state.party_statuses[0][2] == 4, "rebuild clears only the specified role flag and status8")
+	check(result.state.party_fields[1].cooperative_magic_word == 351 and state == before, "later equipment temporary replaces copied field inside one transaction")
+	tables[2].encode_u16(3 * 8, 0xfe)
+	var failing = Kernel.new(); check(failing.read_tables(tables[0], tables[1], tables[2]), "late-failure source admitted")
+	state = failing.initial_state([0, 1]); before = state.duplicate(true); result = failing.rebuild_party_equipment(state)
+	check(result.has("error") and not result.has("state") and state == before, "later member failure rolls back all earlier member preparation and equipment")
+	check(result.diagnostic.party_slot == 1 and result.diagnostic.role == 1 and result.diagnostic.pc == 3, "late failure identifies member and actual source PC")
+	check(core.initial_state([0, 1, 2, 3]).is_empty() and core.initial_state([0, 0]).is_empty(), "source party capacity and duplicate role inputs are explicit")
+	_unchanged_failure(core, core.initial_state([1]), 0, 11, "invalid_context")
+	for defect in ["member", "duplicate", "missing_field", "extra_field", "bad_word", "status_size", "status_range", "status_bool", "success"]:
+		state = core.initial_state([0, 1])
+		match defect:
+			"member": state.party_roles[0] = 6
+			"duplicate": state.party_roles[1] = 0
+			"missing_field": state.party_fields.pop_back()
+			"extra_field": state.party_fields[0].frame = 1
+			"bad_word": state.party_fields[0].battle_sprite_word = -1
+			"status_size": state.party_statuses[0].pop_back()
+			"status_range": state.party_statuses[0][0] = 32768
+			"status_bool": state.party_statuses[0][0] = false
+			"success": state.trigger_success_word = 32768
+		_unchanged_failure(core, state, 0, 11, "invalid_state")
+
 func _test_real(path: String) -> void:
 	var reader = Reader.new(); var value = reader.decode(FileAccess.get_file_as_bytes(path))
 	check(value is Dictionary and reader.error.is_empty(), "private source fixture is bounded strict JSON")
 	if not value is Dictionary: return
-	check(value.get("kind") == "private-pal98-equipment-kernel-fixture-v2", "private binary fixture format is explicit")
+	check(value.get("kind") == "private-pal98-equipment-kernel-fixture-v3", "private party-context binary fixture format is explicit")
+	if value.get("kind") != "private-pal98-equipment-kernel-fixture-v3": return
 	var tables: Array = []
 	for row in [["data3", 900], ["objects", 65536 * 14], ["scripts", 65536 * 8]]:
 		var name: String = value.get(row[0] + "_file", "")
@@ -204,13 +271,9 @@ func _test_real(path: String) -> void:
 	for key in ["data3_sha256", "objects_sha256", "scripts_sha256"]:
 		check(receipt[key] == value[key], "exact private source chunk bytes: " + key)
 	for role in range(6):
-		var state: Dictionary = core.initial_state(); var initial: Dictionary = state.duplicate(true)
-		var entries: Array = []; var problem: Dictionary = {}
-		var cleared: Dictionary = core.clear_original_modifier_prefix(state); state = cleared.state
-		for slot in range(11, 17):
-			var result: Dictionary = core.run_equipped_entry(state, role, slot)
-			if result.has("error"): problem = result.diagnostic; break
-			state = result.state; entries.append(result)
+		var initial: Dictionary = core.initial_state([role]); var result: Dictionary = core.rebuild_party_equipment(initial)
+		var problem: Dictionary = result.get("diagnostic", {})
+		var entries: Array = result.get("entries", []); var state: Dictionary = result.get("state", {})
 		var expected: Dictionary = value.roles[role]
 		if expected.has("failure_pc"):
 			check(problem.get("pc") == expected.failure_pc and problem.get("code") == expected.failure_code, "source side effect is diagnosed without silent omission: role " + str(role))
@@ -226,7 +289,9 @@ func _test_real(path: String) -> void:
 		check(actual == expected.effective_fields_17_30, "all 14 source-backed derived words match independent expectation: role " + str(role))
 		check(state.role_words == expected.role_words, "base assignments match source semantics without baking in modifiers: role " + str(role))
 		check(state.equip_entries == initial.equip_entries, "0000 retains every shared object entry: source role " + str(role))
-		check(core.initial_state() == initial, "source words and initial state stay immutable: role " + str(role))
+		for key in ["party_roles", "party_fields", "party_statuses", "trigger_success_word"]:
+			check(state[key] == expected[key], "actual source party projection: role %d %s" % [role, key])
+		check(core.initial_state([role]) == initial, "source words and initial state stay immutable: role " + str(role))
 		var traces: Array = []
 		for entry in entries: traces.append({"object_id": entry.object_id, "entry": entry.entry, "return_entry": entry.return_entry, "trace": entry.trace})
 		real_results.append({"role": role, "completed": true, "effective_fields_17_30": actual, "entries": traces,
