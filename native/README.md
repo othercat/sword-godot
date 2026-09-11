@@ -818,6 +818,14 @@ party transitions, rejection and rollback. Its synthetic results do not establis
 original-game or cross-device acceptance. Existing package/rules/state/save schemas
 and packages without this extension retain their prior format and behavior.
 
+`tests/test_legacy_role_import.gd` consumes the six `native-fixtures.json` packages
+from Studio's `NativeStudioSmoke --legacy-role` and a fresh evidence directory:
+`--headless --path native --script res://tests/test_legacy_role_import.gd -- <fixtures> <output>`.
+It checks source names and starting HP/MP, opaque DATA3 receipt preservation, and
+actual saves and reloads. This is integration of the five explicitly imported
+fields; other source fields, original rules and original gameplay are not executed.
+The fixture packages and source resources stay outside this repository.
+
 ## Settled knockout presentation
 
 A non-looping `dead` clip holds its last frame when the actor is already dead
