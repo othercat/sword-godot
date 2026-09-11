@@ -1,5 +1,13 @@
 # PAL Wanxiang Native preview
 
+## Locked-package random arithmetic (2026-09-12)
+
+The [controlled random helper](docs/pal98-fixed-random.md) preserves the fixed
+DLL's double seed step, Single rounding and static mirror. SubMain's five-role
+experience projection consumes exactly70 ordinary calls;1134 rational vectors
+and six full sequences pass32 checks. Initial Timer seed, special contexts,
+ordinary original Session and persistent save integration remain pending.
+
 ## Original loaded sprite cache and scene composition (2026-09-12)
 
 The [source-bound cache and composition](docs/pal98-sprite-cache-and-composition.md)
