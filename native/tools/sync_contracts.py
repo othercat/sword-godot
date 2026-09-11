@@ -31,6 +31,7 @@ files["pal.native.party-card.v1.schema.json"] = source / "schemas/pal.native.par
 files["pal.native.party-card.v2.schema.json"] = source / "schemas/pal.native.party-card.v2.schema.json"
 files["pal.native.map-ui.v1.schema.json"] = source / "schemas/pal.native.map-ui.v1.schema.json"
 files["pal.native.story-notice.v1.schema.json"] = source / "schemas/pal.native.story-notice.v1.schema.json"
+files["pal.native.initial-vitals.v1.schema.json"] = source / "schemas/pal.native.initial-vitals.v1.schema.json"
 files["pal.native.battle-canvas.v1.schema.json"] = source / "schemas/pal.native.battle-canvas.v1.schema.json"
 files["pal.native.battle-formation.v1.schema.json"] = source / "schemas/pal.native.battle-formation.v1.schema.json"
 files["pal.native.enemy-overlay.v1.schema.json"] = source / "schemas/pal.native.enemy-overlay.v1.schema.json"

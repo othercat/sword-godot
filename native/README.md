@@ -801,6 +801,23 @@ guards, save/load, failed continuation rollback and the injected skip button.
 Studio authoring/adoption, genuine named artwork in the story, physical input,
 full playthrough and high-refresh hardware acceptance remain separate gates.
 
+## Authored starting health and mana
+
+Optional `pal.native.initial-vitals.v1` content is gated by
+`actors.initial-vitals.v1` and the exact component schema hash. It configures
+absolute HP/MP per world instance after initial progression, training and equipment,
+before entry-story execution. Unlisted instances still start at their effective
+maximum. Zero is allowed; excessive, negative, duplicate and unresolved values
+reject admission. Initial values are never reapplied on party changes or save load.
+
+`tests/test_initial_vitals.gd` takes the `native-fixtures.json` emitted by Studio's
+`NativeStudioSmoke --initial-vitals` and a fresh evidence directory. Run with
+`--headless --path native --script res://tests/test_initial_vitals.gd -- <fixtures> <output>`.
+It exercises real compiled packages, actual save files, derived limits, ordinary
+party transitions, rejection and rollback. Its synthetic results do not establish
+original-game or cross-device acceptance. Existing package/rules/state/save schemas
+and packages without this extension retain their prior format and behavior.
+
 ## Settled knockout presentation
 
 A non-looping `dead` clip holds its last frame when the actor is already dead

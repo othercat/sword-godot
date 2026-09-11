@@ -16,6 +16,7 @@ const Statuses = preload("res://src/native_statuses.gd")
 const Battle = preload("res://src/native_battle.gd")
 const EnemyActions = preload("res://src/native_enemy_actions.gd")
 const Equipment = preload("res://src/native_equipment.gd")
+const InitialVitals = preload("res://src/native_initial_vitals.gd")
 const Classic = preload("res://src/native_classic_battle.gd")
 const BattleUi = preload("res://src/native_battle_ui.gd")
 const BattleHud = preload("res://src/native_battle_hud_config.gd")
@@ -67,7 +68,7 @@ func load_package(path: String) -> bool:
 	content_lock = Schema.digest(bytes)
 	if not manifest.dependencies.is_empty(): return _fail("package dependencies not implemented")
 	for capability in manifest.required_capabilities:
-		if capability not in CAPABILITIES and capability not in [StoryNotice.CAPABILITY, MapUi.CAPABILITY, PartyCard.CAPABILITY, PartyCard.CAPABILITY_V2, HudPlacement.CAPABILITY, HudPlacement.CAPABILITY_V2, EnemyActions.CAPABILITY, Progression.CAPABILITY, Equipment.CAPABILITY, Classic.CAPABILITY, Classic.CAPABILITY_V2, BattleUi.CAPABILITY, BattleHud.CAPABILITY, BattleCanvas.CAPABILITY, CommandPanel.CAPABILITY, EnemyOverlay.CAPABILITY, BattleFormation.CAPABILITY, AttackFormula.CAPABILITY, AttackRandom.CAPABILITY, PlayerPhysical.CAPABILITY, Training.CAPABILITY, Training.ESCAPE_CAPABILITY, EnemyPhysical.CAPABILITY, MapPerformance.CAPABILITY, Sampling.CAPABILITY]: return _fail("unsupported capability: " + capability)
+		if capability not in CAPABILITIES and capability not in [InitialVitals.CAPABILITY, StoryNotice.CAPABILITY, MapUi.CAPABILITY, PartyCard.CAPABILITY, PartyCard.CAPABILITY_V2, HudPlacement.CAPABILITY, HudPlacement.CAPABILITY_V2, EnemyActions.CAPABILITY, Progression.CAPABILITY, Equipment.CAPABILITY, Classic.CAPABILITY, Classic.CAPABILITY_V2, BattleUi.CAPABILITY, BattleHud.CAPABILITY, BattleCanvas.CAPABILITY, CommandPanel.CAPABILITY, EnemyOverlay.CAPABILITY, BattleFormation.CAPABILITY, AttackFormula.CAPABILITY, AttackRandom.CAPABILITY, PlayerPhysical.CAPABILITY, Training.CAPABILITY, Training.ESCAPE_CAPABILITY, EnemyPhysical.CAPABILITY, MapPerformance.CAPABILITY, Sampling.CAPABILITY]: return _fail("unsupported capability: " + capability)
 	for key in ["pal.native.package.v1", "pal.native.content.v1"]:
 		if manifest.contract_hashes.get(key) != schema.hashes.get(key): return _fail("contract hash mismatch: " + key)
 	if manifest.contract_hashes.size() != 2: return _fail("unknown contract hash")
@@ -97,6 +98,8 @@ func load_package(path: String) -> bool:
 	var equipment_used: bool = Equipment.used(world)
 	if equipment_used != (Equipment.CAPABILITY in manifest.required_capabilities): return _fail("equipment capability/component mismatch")
 	var component_hashes: Dictionary = {}
+	if InitialVitals.used(world) != (InitialVitals.CAPABILITY in manifest.required_capabilities): return _fail("initial-vitals capability/component mismatch")
+	if InitialVitals.used(world): component_hashes[InitialVitals.SCHEMA] = schema.hashes.get(InitialVitals.SCHEMA)
 	if Sampling.used(world) != (Sampling.CAPABILITY in manifest.required_capabilities): return _fail("sampling capability/component mismatch")
 	if Sampling.used(world): component_hashes[Sampling.SCHEMA] = schema.hashes.get(Sampling.SCHEMA)
 	if MapPerformance.used(world) != (MapPerformance.CAPABILITY in manifest.required_capabilities): return _fail("performance capability/component mismatch")
@@ -370,6 +373,8 @@ func _references() -> bool:
 	if not training_issue.is_empty(): return _fail(training_issue)
 	var enemy_physical_issue: String = EnemyPhysical.validate_content(self)
 	if not enemy_physical_issue.is_empty(): return _fail(enemy_physical_issue)
+	var vitals_issue: String = InitialVitals.validate_content(self)
+	if not vitals_issue.is_empty(): return _fail(vitals_issue)
 	if SceneTravel.used(world) and SceneTravel.CAPABILITY not in manifest.required_capabilities: return _fail("missing scene travel capability")
 	if PartyTrail.used(world):
 		if PartyTrail.CAPABILITY not in manifest.required_capabilities: return _fail("missing party trail capability")

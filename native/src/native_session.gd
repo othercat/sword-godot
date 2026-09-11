@@ -6,6 +6,7 @@ const Inventory = preload("res://src/native_inventory.gd")
 const Regions = preload("res://src/native_regions.gd")
 const Condition = preload("res://src/native_condition.gd")
 const Equipment = preload("res://src/native_equipment.gd")
+const InitialVitals = preload("res://src/native_initial_vitals.gd")
 const Progression = preload("res://src/native_progression.gd")
 const AttackRandom = preload("res://src/native_attack_random.gd")
 const PlayerPhysical = preload("res://src/native_player_physical.gd")
@@ -62,6 +63,9 @@ func activate(candidate, now_usec: int = -1) -> bool:
 		for actor in state.entities:
 			var effective: Dictionary = Progression.stats(package, actor)
 			actor.hp = effective.max_hp; actor.mp = effective.max_mp
+	error = InitialVitals.initialize(package, state)
+	if not error.is_empty():
+		package = previous_package; state = previous_state; return false
 	Regions.initialize(world, state)
 	MapPerformance.initialize(world, state)
 	error = PartyTrail.reseed(package, state, world.active_party)

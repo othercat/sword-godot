@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "pal.native.initial-vitals.v1",
+  "title": "Optional per-instance starting health and mana",
+  "x-status": "draft",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "kind", "actors"],
+  "properties": {
+    "schema": {"const": "pal.native.initial-vitals.v1"},
+    "kind": {"const": "content"},
+    "actors": {
+      "type": "array", "minItems": 1, "maxItems": 65536,
+      "items": {"$ref": "#/definitions/actor"}
+    }
+  },
+  "definitions": {
+    "id": {
+      "type": "string", "minLength": 1, "maxLength": 128,
+      "pattern": "^[a-z][a-z0-9_.-]*(?::[a-z0-9][a-z0-9_./-]*)?$"
+    },
+    "provenance": {
+      "type": "object", "additionalProperties": false, "required": ["status"],
+      "properties": {
+        "status": {"enum": ["synthetic", "author-choice", "draft-adaptation", "approved"]},
+        "source_id": {"$ref": "#/definitions/id"},
+        "source_revision": {"type": "string", "maxLength": 128},
+        "source_beat_ids": {"type": "array", "maxItems": 100, "uniqueItems": true, "items": {"$ref": "#/definitions/id"}}
+      }
+    },
+    "actor": {
+      "type": "object", "additionalProperties": false,
+      "required": ["instance_id", "hp", "mp", "provenance"],
+      "properties": {
+        "instance_id": {"$ref": "#/definitions/id"},
+        "hp": {"type": "integer", "minimum": 0, "maximum": 1000000},
+        "mp": {"type": "integer", "minimum": 0, "maximum": 1000000},
+        "provenance": {"$ref": "#/definitions/provenance"}
+      }
+    }
+  }
+}

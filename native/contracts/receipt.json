@@ -1,6 +1,6 @@
 {
   "owner": "https://github.com/othercat/pal98-runtime-contracts.git",
-  "base_commit": "85658024f4a92a9845e82bd59c19e357a0d2fcc2",
+  "base_commit": "e624ca1d85dae40f7b7b1b462c76f19a17826917",
   "source_state": "committed-snapshot",
   "status": "draft",
   "license": "MIT",
@@ -28,6 +28,7 @@
     "pal.native.party-card.v2.schema.json": "e14a226887d5dafd081d5f921c53d94239a5dc52b2d1406dab707e52011a6b1e",
     "pal.native.map-ui.v1.schema.json": "e0108bb3bfe459d9d9c6abe02491f6b3983d496609bf9ca5eb3f98ca95ffbbc3",
     "pal.native.story-notice.v1.schema.json": "0ea379d3a07c25e1170bdfa2bc9ee960d26f3878cf438cf6124dfc7d670a1237",
+    "pal.native.initial-vitals.v1.schema.json": "194eb7b6d43b4046ab6e6542aee763108572d8d79ecc9969f4e53e709e5d0fa0",
     "pal.native.battle-canvas.v1.schema.json": "94aff80646dbb79492a0ff3ae3e6553523bd9a66ef459faa6bbb771a9180a569",
     "pal.native.battle-formation.v1.schema.json": "d4d98ea555ad33d6b0230bb5b6e40a892cbe2f704ee5d0e4a8cce643a3c90705",
     "pal.native.enemy-overlay.v1.schema.json": "4bc2d7bf25fdd280ed510b0255f0f12f7d55f977448969369be56804ce8ea67f",
