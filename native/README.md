@@ -1,5 +1,14 @@
 # PAL Wanxiang Native preview
 
+## Original map occlusion and source graphics composition (2026-09-12)
+
+The [map mark/depth adapter](docs/pal98-map-occlusion.md) now joins decoded
+original maps and sprites to the GPU background/depth pipeline. The86-check
+synthetic suite and69-check ordinary-source suite match original offscreen
+coordinates, flags and images, including nonempty MAP10/12 occlusion. Original
+script execution and a playable Session remain pending; these use explicit
+test inputs and do not establish cold-start state or device acceptance.
+
 ## Original depth queue stage (2026-09-12)
 
 The [depth queue adapter](docs/pal98-depth-queue.md) preserves explicit caller

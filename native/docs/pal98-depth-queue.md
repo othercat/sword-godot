@@ -105,8 +105,9 @@ then party (PAL.EXE0x404668/40466E), while the normal SubMain chain queues party
 then events (0x41B3A8/41B3AE). Map tiles follow via exmap. This module deliberately
 receives their explicit final sequence; it does not silently choose one owner.
 
-T163's five-neighbor exbb marks, exmap tile rows and caller-owned background
-composition remain to be connected. Out-of-map mark addresses must not silently
+T163's five-neighbor exbb marks and exmap tile rows are now implemented in
+`pal98-map-occlusion.md`, including explicit-source GPU composition comparisons.
+Original caller-owned state/scene composition remains pending. Out-of-map mark addresses must not silently
 wrap to14 bits; the original expanded bounding box has no such clipping rule.
 Original cold-start state, scripts, ordinary Session, save/load, Mac/AMD execution
 and Richard acceptance remain pending. The source-only admission guard remains.

@@ -61,6 +61,10 @@ recovered rendering procedure or binary is translated or shipped; ordinary
 scene state and script execution are not supplied by these components. Exact
 facts and comparison boundaries are in `docs/pal98-map-background.md` and
 `docs/pal98-depth-queue.md`.
+The map occlusion adapter similarly uses independently expressed exrij/exbb/exmap
+coordinate and addressing facts. Its real-resource compositions use explicit
+development inputs, not recovered original caller code or a shipped DLL. See
+`docs/pal98-map-occlusion.md` for source identities and unresolved scene owners.
 
 The portable source decoder additionally contains derived CP936/CP950 software
 tables from the MIT .NET CodePages provider. Exact provider/table hashes and
