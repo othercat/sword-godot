@@ -26,6 +26,14 @@ independently written; no PALDLL hook, recovered procedural source or GPL game
 implementation is included. The profile explicitly documents its adaptation
 boundaries, rather than claiming full original combat or legacy overflow parity.
 
+The internal PAL98 equipment-entry kernel uses independently expressed behavioral
+facts from the product's fixed-source review: signed modifier assignment, checked
+I2 summation, source object entry references and bounded dispatch. Private DATA3
+and SSS tables are test inputs and remain outside public source releases. No
+recovered procedural implementation is copied or translated. This internal kernel
+does not enable original scripts in the ordinary Native session; its exact subset
+and missing owners are documented in `docs/pal98-equipment-kernel.md`.
+
 Build with this directory as the project root. Parent root exports are not Native
 releases. `.gdignore` prevents the parent editor from scanning this nested project.
 The Native rendering path uses its own TileMapLayer adapter; the parent's

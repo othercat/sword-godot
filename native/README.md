@@ -1,5 +1,17 @@
 # PAL Wanxiang Native preview
 
+## Source-bound equipment entry kernel (2026-09-11)
+
+The internal [PAL98 equipment kernel](docs/pal98-equipment-kernel.md) executes
+recovered modifier assignment, equipment assignment, selected role-field writes
+and U2 entry return behavior against fingerprinted DATA3/SSS tables. Its source
+and synthetic checks pass 214 assertions. A separate Python inspection verifies
+the actual source traces and resulting words. Three source roles complete this
+subset; the other three report the first missing status or party battle-field
+owner. The ordinary package/session
+and existing authored equipment rules do not enable this kernel. This is not a
+complete party initializer, original-game candidate or device acceptance.
+
 ## Authored story-boundary notices (2026-09-10)
 
 The optional `pal.native.story-notice.v1` component is pinned to owner
