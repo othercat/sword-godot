@@ -53,6 +53,33 @@ static func fresh_startup(hour, minute, second, millisecond) -> Dictionary:
 	var seeded = randomize_r8(create(0x050000), timer)
 	return {"state": seeded.state, "timer_single": timer, "seed_before": 0x050000}
 
+static func startup_from_epoch_msec(unix_msec, offset_minutes) -> Dictionary:
+	if typeof(unix_msec) != TYPE_INT or typeof(offset_minutes) != TYPE_INT or offset_minutes < -1440 or offset_minutes > 1440:
+		return {"error": "Startup clock requires integer epoch milliseconds and explicit UTC offset minutes"}
+	# Reduce before adding the offset, so even int64 endpoint inputs cannot
+	# overflow. Positive remainder also handles dates before the Unix epoch.
+	var local_ms: int = ((unix_msec % 86400000) + offset_minutes * 60000 + 172800000) % 86400000
+	var seconds: int = int(local_ms / 1000)
+	return fresh_startup(int(seconds / 3600), int(seconds / 60) % 60, seconds % 60, local_ms % 1000)
+
+static func capture_startup() -> Dictionary:
+	# Portable host adapter, called once by the future original process owner.
+	# UTC wall time supplies fractions; timezone bias supplies local time.
+	# This wall clock must never become the game's authoritative logic clock.
+	for attempt in range(3):
+		var before: Dictionary = Time.get_time_zone_from_system()
+		var unix_seconds: float = Time.get_unix_time_from_system()
+		var after: Dictionary = Time.get_time_zone_from_system()
+		if before.get("bias") != after.get("bias"): continue
+		if not is_finite(unix_seconds) or absf(unix_seconds) > 4503599627370.0:
+			return {"error": "System clock outside precise epoch-millisecond acquisition range"}
+		var unix_msec: int = int(floor(unix_seconds * 1000.0))
+		var result = startup_from_epoch_msec(unix_msec, after.get("bias"))
+		if result.has("error"): return result
+		result.clock_sample = {"unix_msec": unix_msec, "offset_minutes": after.bias}
+		return result
+	return {"error": "System timezone changed during startup clock acquisition"}
+
 static func ordinary_next(state: Dictionary, context: String) -> Dictionary:
 	var issue = validate(state)
 	if not issue.is_empty(): return {"error": issue}

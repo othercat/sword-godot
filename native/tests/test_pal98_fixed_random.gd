@@ -77,6 +77,22 @@ func _initialize() -> void:
 	for f in [[-1, 0, 0, 0], [24, 0, 0, 0], [1, 60, 0, 0], [1, 0, 60, 0], [1, 0, 0, 1000], [1.0, 0, 0, 0], [1, 0, 0, null]]:
 		check(Random.fresh_startup(f[0], f[1], f[2], f[3]).has("error"), "invalid or Unknown local clock fields diagnose: " + str(f))
 	check(Random.randomize_r8(state, INF).has("error") and Random.randomize_r8(state, NAN).has("error") and Random.randomize_r8(state, 1).has("error"), "R8 rejects nonfinite or implicit numeric conversion")
+	var clock_vectors: Array = [[0, 0, [0,0,0,0]], [-1, 0, [23,59,59,999]],
+		[0,345,[5,45,0,0]], [0,-210,[20,30,0,0]], [86399999,480,[7,59,59,999]],
+		[28800125,-480,[0,0,0,125]], [9223372036854775807,0,[7,12,55,807]],
+		[-9223372036854775807-1,0,[16,47,4,192]]]
+	var clocks_equal: bool = true
+	for vector in clock_vectors:
+		var f = vector[2]
+		if Random.startup_from_epoch_msec(vector[0], vector[1]) != Random.fresh_startup(f[0],f[1],f[2],f[3]): clocks_equal = false
+	check(clocks_equal, "epoch conversion handles offsets, midnight, pre-epoch and int64 endpoints without overflow")
+	check(Random.startup_from_epoch_msec(0.0,0).has("error") and Random.startup_from_epoch_msec(0,null).has("error") and Random.startup_from_epoch_msec(0,1441).has("error"), "epoch and timezone require explicit valid integers")
+	var clock_before: int = int(floor(Time.get_unix_time_from_system() * 1000.0))
+	var captured = Random.capture_startup()
+	var clock_after: int = int(floor(Time.get_unix_time_from_system() * 1000.0))
+	check(not captured.has("error") and captured.clock_sample.unix_msec >= clock_before and captured.clock_sample.unix_msec <= clock_after, "actual host captures one bounded startup wall-clock sample")
+	if not captured.has("error"):
+		check(captured.state == Random.startup_from_epoch_msec(captured.clock_sample.unix_msec,captured.clock_sample.offset_minutes).state, "recorded host clock deterministically reproduces its initial RNG state")
 	var out = FileAccess.open(args[1], FileAccess.WRITE)
-	out.store_string(JSON.stringify({"success": failed == 0, "failed": failed, "checks": checks, "vectors": oracle.vectors.size(), "original_gameplay": false, "native_save_acceptance": false}, "\t")); out.close()
+	out.store_string(JSON.stringify({"success": failed == 0, "failed": failed, "checks": checks, "vectors": oracle.vectors.size(), "host_clock": captured, "original_gameplay": false, "native_save_acceptance": false}, "\t")); out.close()
 	print("Fixed original RNG: ", checks.size(), " checks, ", failed, " failed"); quit(0 if failed == 0 else 1)

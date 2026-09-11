@@ -6,9 +6,9 @@ The [controlled random helper](docs/pal98-fixed-random.md) preserves the fixed
 DLL's double seed step, Single rounding and static mirror. SubMain's five-role
 experience projection consumes exactly70 ordinary calls. Explicit local-clock
 startup seeding preserves Timer Single rounding and the observed high-DWORD
-Randomize mix.1134 RNG/14,000 Timer vectors and six full sequences pass44 checks.
-Host-clock acquisition, special contexts, ordinary original Session and
-persistent save integration remain pending.
+Randomize mix.1134 RNG/14,000 Timer vectors, six full sequences and actual
+portable host-clock acquisition pass48 checks. Special contexts, ordinary
+original Session and persistent save integration remain pending.
 
 ## Original loaded sprite cache and scene composition (2026-09-12)
 

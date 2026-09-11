@@ -3,7 +3,7 @@
 `native_pal98_fixed_random.gd` independently implements the ordinary controlled
 random path of the locked PAL.dll1.6.2.0, plus SubMain's new-game experience
 projection and explicit local-time startup seeding. It is internal: no ordinary
-original Session, host-clock acquisition, public save contract or game-wide RNG
+original Session, public save contract or game-wide RNG
 dispatch is enabled by these increments.
 
 The fixed DLL SHA256 is
@@ -50,6 +50,20 @@ milliseconds, and PAL's initializer stores the result as VT_R4. The helper
 preserves Single rounding, including23:59:59.999 rounding to86400. The host
 must acquire the sample once at process initialization; calling this factory
 for each new game would incorrectly reset the DLL's persistent mirror.
+
+`capture_startup` now acquires a portable host sample using Godot's fractional
+UTC Unix time and current timezone offset in minutes. It retries a timezone
+change during acquisition, records integer epoch milliseconds/offset, and
+converts that single sample to local time before the above arithmetic. This is
+wall time only, never the game's logical clock. The adapter follows the
+[Godot Time API](https://docs.godotengine.org/en/stable/classes/class_time.html#class-time-method-get-unix-time-from-system);
+its current timezone API and fractional timestamp are not an assertion that
+two independently sampled Windows/Native processes receive identical time.
+Explicit integer conversion also handles pre-epoch times and int64 endpoints
+without overflowing the timezone addition. `startup-clock-01.json` passes48
+checks, retaining all arithmetic tests and recording an actual Windows host
+sample that reconstructs the same initial state. Mac/AMD clock acquisition and
+ordinary application integration are not yet tested.
 
 PAL then uses explicit Randomize, which converts its argument to R8 and mixes
 the **high DWORD**: `mixed = ((high << 8) ^ (high >> 8)) & 0xFFFF00`, preserving

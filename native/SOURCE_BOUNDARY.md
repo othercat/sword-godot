@@ -30,8 +30,8 @@ The fixed-package controlled RNG independently expresses recovered integer and
 Single arithmetic and the new-game experience formulas. Its numeric oracle uses
 exact rational synthetic inputs. No DLL, hook implementation or process memory
 access is a Native dependency. See `docs/pal98-fixed-random.md` for the explicit
-ordinary-context boundary, observed startup seed mixing and remaining host-clock,
-Session and save owners.
+ordinary-context boundary, observed startup seed mixing, explicit portable
+host-clock acquisition and remaining Session/save owners.
 
 The loaded sprite caches and scene composition independently express T98/T99 and
 T163 instruction facts, retaining Unknown bytes and explicit reload owners.
