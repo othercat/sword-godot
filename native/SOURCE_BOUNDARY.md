@@ -26,6 +26,11 @@ independently written; no PALDLL hook, recovered procedural source or GPL game
 implementation is included. The profile explicitly documents its adaptation
 boundaries, rather than claiming full original combat or legacy overflow parity.
 
+The scene sprite request consumer independently expresses fixed T209/T213 state
+and arithmetic facts, without recovered procedure code or source payloads.
+It does not invent initial state or bind resources at draw time. See
+`docs/pal98-scene-sprite-requests.md` for evidence and execution boundaries.
+
 The internal PAL98 equipment-entry kernel uses independently expressed behavioral
 facts from the product's fixed-source review: signed modifier assignment, checked
 I2 summation, source object entry references and bounded dispatch. Private DATA3

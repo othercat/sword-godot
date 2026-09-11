@@ -1,5 +1,12 @@
 # PAL Wanxiang Native preview
 
+## Original scene sprite requests (2026-09-12)
+
+The [state consumer](docs/pal98-scene-sprite-requests.md) now preserves T209/T213
+signed arithmetic, event filtering, actual party/follower frames and distinct
+composition-owner order. Its29 checks pass. Requests identify loaded cache slots;
+graphics reload, original lifecycle and ordinary Session activation remain pending.
+
 ## Original current-scene event storage (2026-09-12)
 
 The [source event storage component](docs/pal98-scene-events.md) now preserves
