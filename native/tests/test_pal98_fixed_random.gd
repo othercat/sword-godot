@@ -58,6 +58,25 @@ func _initialize() -> void:
 	check(Random.new_game_experience(state, [32767, 1, 1, 1, 1]).has("error") and state == before, "checked experience I2 overflow publishes no partial rows or RNG consumption")
 	check(Random.new_game_experience(state, [1, 1, 1, 1]).has("error") and Random.new_game_experience(state, [1, 1, 1, 1, null]).has("error") and Random.new_game_experience(state, [1, 1, 1, 1, 1.0]).has("error"), "explicit five signed role levels required")
 	check(Random._nearest_even(2.5) == 2 and Random._nearest_even(3.5) == 4 and Random._nearest_even(0.5) == 0 and Random._nearest_even(19.5) == 20, "VB CInt ties round to even, independently of roundf")
+	var timers_equal: bool = true
+	for vector in oracle.timer_vectors:
+		var f = vector.fields
+		var actual = Random.fresh_startup(int(f[0]), int(f[1]), int(f[2]), int(f[3]))
+		if actual.has("error") or actual.state.live_seed != int(vector.seed) or actual.state.mirror_seed != null or bits(actual.timer_single) != int(vector.timer_bits): timers_equal = false; break
+	check(timers_equal and oracle.timer_vectors.size() == 14000, "14000 local Timer samples match exact Single rounding and high-DWORD startup mixing")
+	var mix_equal: bool = true
+	for vector in oracle.randomize_r8_vectors:
+		var input = Random.create(int(vector.seed)); input.mirror_seed = 456
+		var actual = Random.randomize_r8(input, float(vector.value))
+		if actual.state.live_seed != int(vector.next) or actual.state.mirror_seed != 456 or input.live_seed != int(vector.seed): mix_equal = false
+	check(mix_equal, "explicit R8 mixing preserves outer bytes, static mirror and input across signed and large values")
+	var observed = Random.randomize_r8(Random.create(0x050000), 20117.587890625)
+	check(observed.state.live_seed == 0xe5b600, "actual fixed-package Randomize sample: 050000 to E5B600 from VT_R4 bits469D2B2D")
+	var end_day = Random.fresh_startup(23, 59, 59, 999)
+	check(end_day.timer_single == 86400.0 and Random.fresh_startup(0, 0, 0, 0).state.live_seed == 0, "Single can round the final millisecond to86400 and midnight mixes zero")
+	for f in [[-1, 0, 0, 0], [24, 0, 0, 0], [1, 60, 0, 0], [1, 0, 60, 0], [1, 0, 0, 1000], [1.0, 0, 0, 0], [1, 0, 0, null]]:
+		check(Random.fresh_startup(f[0], f[1], f[2], f[3]).has("error"), "invalid or Unknown local clock fields diagnose: " + str(f))
+	check(Random.randomize_r8(state, INF).has("error") and Random.randomize_r8(state, NAN).has("error") and Random.randomize_r8(state, 1).has("error"), "R8 rejects nonfinite or implicit numeric conversion")
 	var out = FileAccess.open(args[1], FileAccess.WRITE)
 	out.store_string(JSON.stringify({"success": failed == 0, "failed": failed, "checks": checks, "vectors": oracle.vectors.size(), "original_gameplay": false, "native_save_acceptance": false}, "\t")); out.close()
 	print("Fixed original RNG: ", checks.size(), " checks, ", failed, " failed"); quit(0 if failed == 0 else 1)

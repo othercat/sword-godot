@@ -25,6 +25,34 @@ static func _single(value: float) -> float:
 	var bytes = PackedByteArray(); bytes.resize(4); bytes.encode_float(0, value)
 	return bytes.decode_float(0)
 
+static func randomize_r8(state: Dictionary, value) -> Dictionary:
+	var issue = validate(state)
+	if not issue.is_empty(): return {"error": issue}
+	if typeof(value) != TYPE_FLOAT or not is_finite(value):
+		return {"error": "Explicit Randomize requires a finite R8 value"}
+	var bytes = PackedByteArray(); bytes.resize(8); bytes.encode_double(0, value)
+	# With the saved ESI on the stack, original [esp+0xC] is the HIGH DWORD
+	# of the R8 argument. Preserve both outer bytes of the previous live DWORD.
+	var word: int = bytes.decode_u32(4)
+	var mixed: int = ((word << 8) ^ (word >> 8)) & 0xffff00
+	var next: Dictionary = state.duplicate(true)
+	next.live_seed = (state.live_seed & 0xff0000ff) | mixed
+	return {"state": next}
+
+static func fresh_startup(hour, minute, second, millisecond) -> Dictionary:
+	# Host supplies ONE local-clock sample. This is separate from the logical
+	# game clock and only runs on process initialization, not every new game.
+	var fields: Array = [hour, minute, second, millisecond]
+	var limits: Array = [23, 59, 59, 999]
+	for at in range(4):
+		if typeof(fields[at]) != TYPE_INT or fields[at] < 0 or fields[at] > limits[at]:
+			return {"error": "Startup requires explicit valid local hour/minute/second/millisecond"}
+	var timer: float = _single(float((hour * 60 + minute) * 60 + second) + float(millisecond) * 0.001)
+	# Fixed VB allocation writes 0x050000 before the observed initializer.
+	# PAL constructs VT_R4(Timer), then explicit Randomize converts it to R8.
+	var seeded = randomize_r8(create(0x050000), timer)
+	return {"state": seeded.state, "timer_single": timer, "seed_before": 0x050000}
+
 static func ordinary_next(state: Dictionary, context: String) -> Dictionary:
 	var issue = validate(state)
 	if not issue.is_empty(): return {"error": issue}

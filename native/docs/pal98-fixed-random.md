@@ -2,8 +2,9 @@
 
 `native_pal98_fixed_random.gd` independently implements the ordinary controlled
 random path of the locked PAL.dll1.6.2.0, plus SubMain's new-game experience
-projection. It is internal: no ordinary original Session, initial Timer seed,
-public save contract or game-wide RNG dispatch is enabled by this increment.
+projection and explicit local-time startup seeding. It is internal: no ordinary
+original Session, host-clock acquisition, public save contract or game-wide RNG
+dispatch is enabled by these increments.
 
 The fixed DLL SHA256 is
 `3074423f2ea58529fd22b8e72a05ef289adf15a3b796841447e03db3417446ff`.
@@ -26,8 +27,8 @@ rounded halfway away from zero by `roundf`, divided by10,000,000 in Single,
 then clamped by `fminf`/`fmaxf` to `[0, 0x3F7FFFFE]` as float bits. The
 intermediate Single rounding matters; Godot's default RNG and unrounded double
 arithmetic are not substitutes. The ordinary context must be explicit. Mode1,
-forced diagnostics, poison bypass/zero-bucket compatibility and Randomize
-dispatch are not implemented by this helper. A future interpreter must select
+forced diagnostics, poison bypass/zero-bucket compatibility and implicit
+Randomize dispatch are not implemented by this helper. A future interpreter must select
 the correct context before calling it; these exclusions are not silent no-ops.
 
 SubMain's original loop iterates roles0..4, categories0..7. Category0 stores
@@ -39,6 +40,50 @@ calls/140 LCG steps and returns the subsequent RNG state. Failure returns no
 partial projection or consumed state: this deliberately differs from an
 original exception after earlier array writes. The5×8 result describes only
 level/count, not the complete VB array descriptor, EXP record or save layout.
+
+## Startup Timer and explicit Randomize
+
+`fresh_startup` requires one explicit local hour/minute/second/millisecond
+sample. Fixed VB allocation writes seed0x050000. `rtcGetTimer` calls
+`GetLocalTime`, combines whole seconds with the binary64 constant0.001 times
+milliseconds, and PAL's initializer stores the result as VT_R4. The helper
+preserves Single rounding, including23:59:59.999 rounding to86400. The host
+must acquire the sample once at process initialization; calling this factory
+for each new game would incorrectly reset the DLL's persistent mirror.
+
+PAL then uses explicit Randomize, which converts its argument to R8 and mixes
+the **high DWORD**: `mixed = ((high << 8) ^ (high >> 8)) & 0xFFFF00`, preserving
+old live seed bits0..7 and24..31. `randomize_r8` changes only live seed, retaining
+an already initialized controlled mirror. The separate missing-argument Timer
+branch and general VARIANT conversion are outside this API.
+
+This corrects the historical `PAL_VB4_RANDOM_EVIDENCE.json` / stage opinion's
+"low DWORD" prose. At RVA74303, `push esi` means `[esp+0xC]` is the R8 high
+DWORD: entry stack is return/low/high. The fixed package's new no-input CDB
+sample corroborates that reading: Timer Single bits469D2B2D =20117.587890625,
+converted R8 lowA0000000/high40D3A565, seed050000→E5B600. The low-word formula
+would yieldA00000 and is not used. Reference research files remain unmodified.
+
+Private `cdb-randomize-03.log` SHA256
+`73b51c8b2f6d00d48295a8a73edd986dc4bb30c8c6c0a5dd1e53a9ed8deafb2a`
+records hardware entry/return breaks at PAL thunks401048/40104E, ESI4180D2/
+4180E4 and live seed before/after. CDB q exited before GUI input, with no game
+variable write. `timer-randomize-pe-evidence.json` binds GetLocalTime IAT9C2F0,
+constant RVA92518, seed initialization RVA2524 and timer/randomize byte ranges.
+The explicit mixing range RVA74303,42 bytes has SHA256
+`606a59e80b52b11b1602e64fb8ee9237c30929851fd9c90dae1b96612c5e845f`.
+The private runtime retained only its three known log/output changes;
+`randomize-03-after-audit.json` rehashes all1579 protected source files with
+zero changes/extras. Original saves/config/resources remain unchanged.
+
+`fixed-rng-oracle-02.json` adds14,000 rational local-time vectors over14 second
+values and every millisecond,32 explicit R8 cases, and the observed sample.
+`fixed-rng-02.json` passes44 checks, including all previous controlled sequence
+tests. This closes these arithmetic paths, not later seed stability, ordinary
+Session/new-game execution or device acceptance.
+The inspection-free `timer-seed-index01/native` export, tree
+`eceb2c69adc8d8d139c3867a2e8574d35b07c180`, also passes44 checks in
+`timer-seed-staged-01.json`, before this documentation-only evidence addition.
 
 Evidence in Studio's ignored `artifacts/verification/v163-startup-02/`:
 

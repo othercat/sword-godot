@@ -95,9 +95,26 @@ def main():
         assert struct.unpack('<I', struct.pack('<f', float(value)))[0] == vector['value_bits']
     report = {'authority': authority, 'kind': 'exact-rational synthetic arithmetic oracle',
               'original_gameplay': False, 'vectors': vectors, 'sequences': sequences}
+    timer_vectors = []
+    # Fraction(float) captures the exact binary64 0.001 constant in VB's image.
+    for seconds in (0, 1, 31, 32, 8191, 8192, 16383, 16384, 20117, 32767, 32768, 65535, 65536, 86399):
+        for ms in range(1000):
+            value_bits = single_bits(F(seconds) + F(0.001) * ms)
+            value = float(from_bits(value_bits))
+            high = struct.unpack('<II', struct.pack('<d', value))[1]
+            seed = ((high << 8) ^ (high >> 8)) & 0xffff00
+            timer_vectors.append({'fields': [seconds//3600, seconds//60 % 60, seconds % 60, ms],
+                                  'timer_bits': value_bits, 'seed': seed})
+    report['timer_vectors'] = timer_vectors
+    report['randomize_r8_vectors'] = []
+    for value in (0.0, -0.0, 0.5, -0.5, 20117.587890625, -12345.625, 86400.0, 1e100):
+        high = struct.unpack('<II', struct.pack('<d', value))[1]
+        for seed in (0, 0x050000, 0xabcdef12, 0xffffffff):
+            report['randomize_r8_vectors'].append({'value': value, 'seed': seed,
+                'next': (seed & 0xff0000ff) | (((high << 8) ^ (high >> 8)) & 0xffff00)})
     with args.output.open('x', encoding='utf-8') as out:
         json.dump(report, out, indent=2); out.write('\n')
-    print(f'{len(vectors)} vectors and {len(sequences)} complete 70-call sequences')
+    print(f'{len(vectors)} RNG vectors, {len(sequences)} complete 70-call sequences, {len(timer_vectors)} Timer vectors')
 
 
 if __name__ == '__main__':
