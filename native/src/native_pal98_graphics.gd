@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 extends RefCounted
-## Immutable opaque graphics containers. No frame decoding or gameplay admission.
+## Immutable graphics containers. Admission keeps opaque payloads; readers decode
+## only explicitly selected chunks/frames. This does not enable original gameplay.
 const KEY = "pal.native.pal98-graphics"
 const SCHEMA = "pal.native.pal98-graphics.v1"
 const CAPABILITY = "resources.pal98-graphics.v1"
@@ -8,6 +9,7 @@ const FILES = ["MAP.MKF", "GOP.MKF", "MGO.MKF", "PAT.MKF"]
 const MAX_FILE = 16777216
 const Schema = preload("res://src/native_schema.gd")
 const Sources = preload("res://src/native_pal98_sources.gd")
+const Records = preload("res://src/native_pal98_graphics_records.gd")
 var error: String = ""
 var _metadata: Dictionary = {}
 var _bytes: Dictionary = {}
@@ -62,6 +64,10 @@ func metadata() -> Dictionary:
 
 func copy_bytes(role: String) -> PackedByteArray:
 	return _bytes.get(role, PackedByteArray()).duplicate()
+
+func open_records():
+	var reader = Records.new()
+	return reader if reader.load_source(self) else null
 
 func _fail(message: String) -> bool:
 	error = "pal98-graphics: " + message

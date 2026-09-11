@@ -1,5 +1,14 @@
 # PAL Wanxiang Native preview
 
+## Portable original graphics decoding (2026-09-12)
+
+The immutable graphics snapshot now opens an addressed, bounded
+[resource reader](docs/pal98-graphics-records.md) for YJ2 MAP/MGO, GOP/MGO frame
+pointers, RLE planes and explicit RGB6 palettes. The936-check source/synthetic
+suite matches all859 previously verified compressed blocks and the full indexed
+scan, retaining MGO571frame1's known failure. It has no DLL/exporter/.NET dependency.
+Ordinary admission remains compatible; original scene execution is still pending.
+
 ## Immutable original graphics containers (2026-09-12)
 
 The ordinary package loader admits the optional `pal.native.pal98-graphics.v1`
@@ -7,7 +16,8 @@ component (`resources.pal98-graphics.v1`) from contract owner `acbcc0d`.
 MAP/GOP/MGO/PAT retain exact bytes and original-table provenance through ZIP and
 directory transport; callers receive detached metadata/byte copies. Entry budget
 is16 MiB, existing base/four-table schemas are unchanged, and old packages still
-load. This is opaque resource preservation, not image decoding or game execution.
+load. Admission preserves opaque payloads; decoding happens only through the
+explicit reader above and does not enable game execution.
 The ordinary source-only session guard remains in place.
 
 Verification:60 graphics admission/copy/negative-package checks,23 cross-language

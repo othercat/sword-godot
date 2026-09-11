@@ -48,6 +48,12 @@ load the DLL, include original font data or enable SSS in an ordinary session.
 The corrected evidence and separate caller/renderer boundaries are documented in
 `docs/pal98-text-plans.md` and `docs/pal98-text-execution.md`.
 
+The addressed graphics reader independently implements the documented YJ2,
+word-pointer, RLE and RGB6 byte formats. Studio's published format facts and
+private original-DLL/managed comparison hashes are verification inputs; no
+original or parent-project codec code, DLL or image payload is shipped. Exact
+budgets, source defect and execution boundaries are in `docs/pal98-graphics-records.md`.
+
 The portable source decoder additionally contains derived CP936/CP950 software
 tables from the MIT .NET CodePages provider. Exact provider/table hashes and
 upstream .NET/third-party notices accompany `encodings/`. No proprietary game
