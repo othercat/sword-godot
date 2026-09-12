@@ -371,6 +371,35 @@ func _synthetic_checks() -> void:
 		"0x0047 asks the audio owner to play the effect")
 	# 0x001F through the real inventory owner.
 	# 0x006E party step: position copies, viewport delta, layer and owners.
+	# 0x009A event state range and its global fallback.
+	var range_program: Array = [[0x009A, 0x0001, 0x0002, 0x0042], [0x0001, 0, 0, 0]]
+	var range_source = _source([0, 2], [1, 0], range_program, [], 2)
+	var range_owner = _owner(range_source)
+	var range_state = _fixture(range_source)
+	var range_storage = Events.new(); range_storage.load_source(range_source)
+	range_state.events = range_storage.load_scene_events(range_state.events, 1).state
+	var range_run = _drive(range_owner, range_owner.start(range_state, 1, 1))
+	var range_effects: Array = range_run.result.get("effects", [])
+	check(not range_run.result.has("error") and range_effects.size() == 1
+		and range_effects[0].scope == "current_scene" and range_effects[0].written == [1, 2],
+		"0x009A writes the inclusive event state range: " + str(range_run.result.get("error", "")))
+	check(range_run.result.state.events.active_slots[0].decode_u16(12) == 0x0042
+		and range_run.result.state.events.active_slots[1].decode_u16(12) == 0x0042,
+		"the range write reaches every event record in the interval")
+	check(range_run.result.state.events.active_slots[1].decode_u16(20) == 0,
+		"the range write leaves the neighbouring event words untouched")
+	var global_range_program: Array = [[0x009A, 0x0009, 0x0009, 0x0055], [0x0001, 0, 0, 0]]
+	var global_range_source = _source([0, 0], [1, 0], global_range_program, [], 9)
+	var global_range_owner = _owner(global_range_source)
+	var global_range_state = _fixture(global_range_source)
+	var global_range_storage = Events.new(); global_range_storage.load_source(global_range_source)
+	global_range_state.events = global_range_storage.load_scene_events(global_range_state.events, 1).state
+	var global_range_run = _drive(global_range_owner, global_range_owner.start(global_range_state, 1, 1))
+	var global_range_effects: Array = global_range_run.result.get("effects", [])
+	check(not global_range_run.result.has("error") and global_range_effects.size() == 1
+		and global_range_effects[0].scope == "global_table"
+		and global_range_run.result.state.events.global_events.decode_u16((9 - 1) * 32 + 12) == 0x0055,
+		"an out-of-range 0x009A start falls back to the global event record")
 	var step_program: Array = [[0x006E, 0x0010, 0xFFF8, 0x0002], [0x0001, 0, 0, 0]]
 	var step_source = _source([0, 0], [1, 0], step_program)
 	var step_owner = _owner(step_source)

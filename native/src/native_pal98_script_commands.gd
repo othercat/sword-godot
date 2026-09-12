@@ -109,6 +109,9 @@ const CASES = {
 	0x006E: {"range": ["0x00425178", "0x00425206"],
 		"sha256": "8b13d7703f032edde9e259c8491c84c6a86c674dc295405f1af189599284a8ea",
 		"effect": "copies the world position into the previous-position words and the viewport into its previous copies, adds the A0/A1 deltas to the viewport, stores A2*8 as the party layer word and, when either delta is nonzero, requests PostMoveUpdate (0x0041D2CC) and UpdateViewportAndPartyPosition (0x0041CC3C)"},
+	0x009A: {"range": ["0x0042694E", "0x00426A56"],
+		"sha256": "2c21b7afb612569200ad2e9991adcb32b92cc0f5736d8c25b469ded47aef59a4",
+		"effect": "resolves A0/A1 against the scene event base and writes the state word (+12) for the inclusive range, falling back to the global event record when the start is out of range"},
 	0x001F: {"range": ["0x00421EC4", "0x00421F00"],
 		"sha256": "79fa119ab6503c8516f2ac38ffe38c581b8630ad9f6072d3a3c1d1903e55d8b0",
 		"effect": "compresses the inventory (T152 0x0041C96C), defaults a nonpositive amount to 1 and adds the item through T140 (0x0041CCCC)"},
@@ -269,6 +272,7 @@ func consume(state: Dictionary, request: Dictionary) -> Dictionary:
 		0x008B: return _command_008B(state, request, source)
 		0x0093: return _command_0093(state, request, source)
 		0x0099: return _command_0099(state, request, source)
+		0x009A: return _command_009A(state, request, source)
 	var facts: Dictionary = case_facts(opcode)
 	var details: Dictionary = {"effect": facts.get("effect"), "case_range": facts.get("range"),
 		"case_sha256": facts.get("sha256")}
@@ -507,6 +511,40 @@ func _command_0093(state: Dictionary, request: Dictionary, source: Dictionary) -
 
 ## 0x0099 writes a scene record's map word: a negative A0 means the current scene
 ## and additionally asks the resource owner to reload the map.
+## 0x009A writes the event state word (+12) for an inclusive scene-relative range.
+func _command_009A(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
+	if not state.get("events") is Dictionary:
+		return _failure("event_backing", "0x009A requires the explicit event state", request, source)
+	if not _u2(request.words[3]):
+		return _failure("event_backing", "0x009A requires a U2 state word", request, source)
+	var base: int = state.events.scene_records.decode_u16((state.globals.current_scene - 1) * 8 + 6)
+	var start: int = _signed(request.words[1]) - base
+	var finish: int = _signed(request.words[2]) - base
+	var value: int = request.words[3]
+	if start > 0 and start <= state.events.event_count:
+		if finish < start or finish > state.events.event_count:
+			return _failure("event_backing", "0x009A range leaves the current event table", request, source)
+		var written: Array = []
+		for index in range(start, finish + 1):
+			var row: Dictionary = _events.event_record(state.events, index)
+			if row.has("error"): return _failure("event_record", str(row.error), request, source)
+			var bytes: PackedByteArray = row.value
+			bytes.encode_u16(12, value)
+			var replaced: Dictionary = _events.replace_event_record(state.events, index, bytes)
+			if replaced.has("error"): return _failure("event_writeback", str(replaced.error), request, source)
+			state.events = replaced.state
+			written.append(index)
+		return _result(state, request, [{"kind": "event_state_range", "scope": "current_scene",
+			"from": start, "to": finish, "value": value, "written": written, "source": source}])
+	var at: int = (_signed(request.words[1]) - 1) * 32 + 12
+	var global_bytes: PackedByteArray = state.events.global_events
+	if at < 0 or at + 2 > global_bytes.size():
+		return _failure("event_backing", "0x009A global fallback target is outside the event table", request, source)
+	state.events.global_events = global_bytes
+	state.events.global_events.encode_u16(at, value)
+	return _result(state, request, [{"kind": "event_state_range", "scope": "global_table",
+		"from": _signed(request.words[1]), "to": finish, "value": value, "offset": at, "source": source}])
+
 func _command_0099(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
 	var argument: int = _signed(request.words[1])
 	var scene: int = state.globals.get("current_scene", 0) if argument < 0 else argument
