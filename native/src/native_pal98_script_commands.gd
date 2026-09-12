@@ -34,6 +34,9 @@ const PARTY_SLOTS = 5
 const TRAIL_SLOTS = 5
 
 const CASES = {
+	0x0020: {"range": ["0x00421F00", "0x00421F60"],
+		"sha256": "68ce75cfdbf65d5dc20ab0825678b6867c4fad7f29037bc77410d71a18645471",
+		"effect": "counts the item over the last active inventory slot and the active members' equipment fields 11..16; a count below A1 with nonzero A2 rewrites the ByRef entry to A2-1, otherwise T135 removes the amount, clears exhausted records and unequips one field per shortage copy"},
 	0x003B: {"range": ["0x0042322E", "0x00423272"],
 		"sha256": "484d663d6609be35e3f751d9ffd339139334eb4d09b80749cfba723871e1f842",
 		"effect": "centered dialog globals: mode 0, text origin (80,40), colour word when A0 is positive"},
@@ -200,6 +203,7 @@ const UPDATE_VIEWPORT_AND_PARTY = "update_viewport_and_party_position" # 0x0041C
 const PLAY_CD_OR_MIDI = "play_cd_or_midi_track" # 0x0041D23C
 const DELAY_TICKS = "delay_ticks" # 0x004170C4
 const ViewportMove = preload("res://src/native_pal98_viewport_move.gd")
+const Inventory = preload("res://src/native_pal98_inventory.gd")
 const ROLE_G05CC_BATTLE_SPRITE = 0
 const ROLE_G05CC_COOPERATIVE_MAGIC = 11
 const ROLE_FIELD_BATTLE_SPRITE = 1
@@ -217,6 +221,7 @@ var _identity: String = ""
 var _scene_count: int = 0
 var _walk = Walk.new()
 var _viewport
+var _inventory
 
 static func _i2(value) -> bool:
 	return typeof(value) == TYPE_INT and value >= -32768 and value <= 32767
@@ -292,6 +297,7 @@ func consume(state: Dictionary, request: Dictionary) -> Dictionary:
 		0x003C: return _command_003C(state, request, source)
 		0x0035: return _command_0035(state, request, source)
 		0x001F: return _command_001F(state, request, source)
+		0x0020: return _command_0020(state, request, source)
 		0x001D: return _command_001D(state, request, source)
 		0x003D: return _command_003D(state, request, source)
 		0x0016: return _command_0016(state, request, source)
@@ -601,6 +607,43 @@ func _command_001F(state: Dictionary, request: Dictionary, source: Dictionary) -
 		"procedure": "CompressInventoryAndReturnLastSlot", "add_entry": "0x0041CCCC",
 		"add_procedure": "AddInventoryItemAmount", "item": item, "amount": amount}]
 	return result
+
+## 0x0020 counts the item over the latest inventory (the last active slot's
+## amount, never the duplicate sum) plus the active members' equipment fields
+## 11..16 (T173). A count below the amount with a nonzero A2 rewrites the ByRef
+## entry to A2-1 and removes nothing; otherwise T135 removes the amount from
+## the records, clears the exhausted ones and unequips one field 11..16 copy
+## per shortage copy. Only a zero A1 defaults to one, and every failure keeps
+## the prior state.
+func _command_0020(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
+	if not state.get("inventory_bytes") is PackedByteArray or state.inventory_bytes.size() != 256 * 6:
+		return _failure("inventory_backing", "0x0020 requires the explicit 256-record inventory", request, source)
+	if not state.get("equipment") is Dictionary or not state.equipment.get("role_words") is Array:
+		return _failure("role_backing", "0x0020 requires the explicit role word table", request, source)
+	var party_roles: Array = state.equipment.get("party_roles", [])
+	if party_roles.is_empty(): return _failure("role_backing", "0x0020 requires the active role projection", request, source)
+	var last = state.globals.get("member_last")
+	if not _i2(last) or last < 0: return _failure("role_backing", "0x0020 needs the explicit member count", request, source)
+	var item: int = _signed(request.words[1])
+	var amount: int = 1 if _signed(request.words[2]) == 0 else _signed(request.words[2])
+	var entry_word: int = request.words[3]
+	if not _inventory is Object: _inventory = Inventory.new()
+	var counted: Dictionary = _inventory.count_item_inventory_and_equipment(
+		state.inventory_bytes, item, state.equipment.role_words, party_roles, last)
+	if counted.has("error"): return _failure("inventory_count", str(counted.error), request, source)
+	if counted.value < amount and entry_word != 0:
+		var jump: Dictionary = _result(state, request, [{"kind": "inventory_shortage_jump", "item": item,
+			"count": counted.value, "amount": amount, "jump_entry": entry_word - 1, "source": source}])
+		jump.entry = entry_word - 1
+		return jump
+	var removed: Dictionary = _inventory.remove_inventory_item_and_unequip_shortfall(
+		state.inventory_bytes, item, amount, state.equipment.role_words, party_roles, last)
+	if removed.has("error"): return _failure("inventory_remove", str(removed.error), request, source)
+	state.inventory_bytes = removed.inventory_bytes
+	state.equipment.role_words = removed.role_words
+	return _result(state, request, [{"kind": "inventory_removal", "item": item, "amount": amount,
+		"consumed": removed.consumed, "unequipped": removed.unequipped,
+		"shortage_left": removed.shortage_left, "source": source}])
 
 ## 0x0047 plays a sound effect through the audio owner when sound is enabled.
 func _command_0047(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:

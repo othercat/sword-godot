@@ -12,6 +12,7 @@ extends RefCounted
 const SLOTS = 256
 const RECORD_BYTES = 6
 const AMOUNT_CAP = 99
+const ROLES = 6
 
 var error: String = ""
 
@@ -26,6 +27,9 @@ func _shape_issue(inventory_bytes) -> String:
 func _failure(message: String) -> Dictionary:
 	error = "pal98-inventory: " + message
 	return {"error": error}
+
+static func _signed(value: int) -> int:
+	return value - 65536 if value > 32767 else value
 
 func _amount(inventory: PackedByteArray, slot: int) -> int:
 	return inventory.decode_s16(slot * RECORD_BYTES + 2)
@@ -90,3 +94,81 @@ func compress_and_return_last_slot(inventory_bytes: PackedByteArray) -> Dictiona
 			candidate[target * RECORD_BYTES + byte] = candidate[source_slot * RECORD_BYTES + byte]
 			candidate[source_slot * RECORD_BYTES + byte] = temporary
 	return {"inventory_bytes": candidate, "last_slot": last, "moved": selectable.size()}
+
+## T153: the copies of the item across the active members' six equipment fields
+## (11..16), addressed field*6+role through the party projection over the
+## members 0..member_last.
+func count_equipped_copies(item_id: int, role_words: Array, party_roles: Array, member_last: int) -> Dictionary:
+	var total: int = 0
+	for slot in range(mini(member_last + 1, party_roles.size())):
+		var role = party_roles[slot]
+		if not _i2(role) or role < 0 or role >= ROLES: return _failure("equipment role identity outside the table")
+		for field in range(11, 17):
+			var word: int = field * ROLES + role
+			if word >= role_words.size(): return _failure("equipment fields outside the word table")
+			if _signed(role_words[word]) == item_id: total += 1
+	return {"value": total}
+
+## T173: the amount of the last active inventory slot for the item (duplicates
+## never sum) plus the equipped copies, combined with a checked I2 add.
+func count_item_inventory_and_equipment(inventory_bytes: PackedByteArray, item_id: int,
+		role_words: Array, party_roles: Array, member_last: int) -> Dictionary:
+	var issue: String = _shape_issue(inventory_bytes)
+	if not issue.is_empty(): return _failure(issue)
+	var last = find_last_active_slot(inventory_bytes, item_id)
+	if last.has("error"): return last
+	var total: int = _amount(inventory_bytes, last.value) if last.value >= 0 else 0
+	var equipped: Dictionary = count_equipped_copies(item_id, role_words, party_roles, member_last)
+	if equipped.has("error"): return equipped
+	var combined: int = total + equipped.value
+	if not _i2(combined): return _failure("checked I2 combined count overflow")
+	return {"value": combined}
+
+## T135: remove up to `remove_count` copies. While remaining, each matching
+## record decrements its in-use field by the current remaining with a checked
+## I2 subtract clamped below zero, then either reduces the amount (enough
+## stock) or clears the exhausted record. Each shortage copy clears the first
+## matching field 11..16 equipped copy over the active members. A failure
+## applies nothing.
+func remove_inventory_item_and_unequip_shortfall(inventory_bytes: PackedByteArray, item_id: int,
+		remove_count: int, role_words: Array, party_roles: Array, member_last: int) -> Dictionary:
+	var issue: String = _shape_issue(inventory_bytes)
+	if not issue.is_empty(): return _failure(issue)
+	if not _i2(item_id) or not _i2(remove_count): return _failure("inventory remove requires signed I2 arguments")
+	var candidate: PackedByteArray = inventory_bytes.duplicate()
+	var words: Array = role_words.duplicate()
+	var remaining: int = remove_count
+	var consumed: int = 0
+	for record in range(SLOTS):
+		if remaining <= 0: break
+		if _item(candidate, record) != item_id or _amount(candidate, record) <= 0: continue
+		var left: int = candidate.decode_s16(record * RECORD_BYTES + 4) - remaining
+		if not _i2(left): return _failure("checked I2 in-use decrement overflow at slot " + str(record))
+		candidate.encode_s16(record * RECORD_BYTES + 4, maxi(left, 0))
+		var amount: int = _amount(candidate, record)
+		if amount >= remaining:
+			candidate.encode_s16(record * RECORD_BYTES + 2, amount - remaining)
+			consumed += remaining
+			remaining = 0
+		else:
+			remaining -= amount
+			consumed += amount
+			candidate.encode_s16(record * RECORD_BYTES, 0)
+			candidate.encode_s16(record * RECORD_BYTES + 2, 0)
+	var unequipped: int = 0
+	for copy in range(maxi(remaining, 0)):
+		var cleared: bool = false
+		for slot in range(mini(member_last + 1, party_roles.size())):
+			var role = party_roles[slot]
+			if not _i2(role) or role < 0 or role >= ROLES: return _failure("equipment role identity outside the table")
+			for field in range(11, 17):
+				var word: int = field * ROLES + role
+				if word >= words.size(): return _failure("equipment fields outside the word table")
+				if _signed(words[word]) == item_id:
+					words[word] = 0
+					unequipped += 1
+					cleared = true
+					break
+			if cleared: break
+	return {"inventory_bytes": candidate, "role_words": words, "consumed": consumed,
+		"unequipped": unequipped, "shortage_left": maxi(remaining, 0)}
