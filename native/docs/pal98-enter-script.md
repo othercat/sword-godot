@@ -190,6 +190,17 @@ the decoded source bytes. 91 checks pass.
 
 ### Full T212 cycle (2026-09-12)
 
+### Chain-driven dialogue frame (2026-09-12)
+
+`tests/window_enter_script_dialogue.gd` drives the same real opening entry, and
+when the caller composes the whole-string draw for the opening title the raw
+source bytes go through `native_pal98_dialogue_surface.gd` on a real 320x200
+target over an explicit opaque probe frame with the admitted 256-colour day
+palette. The window is captured as `dialogue-frame-04.png`; 8 checks pass. The
+captured frame shows the real message text (`李逍遥:`) drawn in the source
+colour, with the project's system-font candidate rather than original GDI pixel
+parity, and no input device, audio, save or original process is involved.
+
 ### Entry coverage over the real pool (2026-09-12)
 
 ### Chain-driven opening frame (2026-09-12)
