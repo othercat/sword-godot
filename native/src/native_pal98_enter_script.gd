@@ -31,6 +31,8 @@ var _entry: int = 0
 var _event_id: int = 0
 var _scene_receipt: Dictionary = {}
 var _pending: Dictionary = {}
+var _owner_queue: Array = []
+var _owner_resume: Dictionary = {}
 var _generation: int = 0
 var _serial: int = 0
 var _commands_run: int = 0
@@ -82,7 +84,7 @@ func _failure(message: String, step: Dictionary = {}, extra: Dictionary = {}) ->
 		"scene_source": _scene_receipt.duplicate(true)}
 	if step.has("trace"): diagnostic.trigger_trace = step.trace
 	diagnostic.merge(extra, true)
-	_phase = "failed"; _pending = {}
+	_phase = "failed"; _pending = {}; _owner_queue = []; _owner_resume = {}
 	return {"error": "pal98-enter: " + message, "diagnostic": diagnostic,
 		"effects": _effects.duplicate(true), "unimplemented": _unimplemented.duplicate(true),
 		"trace": _trace.duplicate(true)}
@@ -131,8 +133,24 @@ func start(state: Dictionary, scene_id, entry, event_id = 0) -> Dictionary:
 
 func cancel() -> void:
 	_generation += 1; _pending = {}
+	_owner_queue = []; _owner_resume = {}
 	if _trigger != null: _trigger.cancel()
 	_phase = "idle"
+
+## Relays one pending command-owner request. The trigger stays suspended until
+## every request of that command has been answered.
+func _relay_owner() -> Dictionary:
+	var request: Dictionary = _owner_queue.pop_front()
+	_serial += 1
+	_pending = {"id": "%s:%s:%s" % [str(get_instance_id()), _generation, _serial],
+		"owner": true, "kind": request.kind}
+	var relay: Dictionary = request.duplicate(true)
+	relay.id = _pending.id
+	relay.scene = _scene
+	relay.entry = _entry
+	relay.scene_source = _scene_receipt.duplicate(true)
+	return {"request": relay, "effects": _effects.duplicate(true),
+		"unimplemented": _unimplemented.duplicate(true), "trace": _trace.duplicate(true)}
 
 func _relay(step: Dictionary) -> Dictionary:
 	var request: Dictionary = step.request
@@ -183,6 +201,15 @@ func _advance(step: Dictionary) -> Dictionary:
 		_unimplemented.append_array(result.unimplemented)
 		_trace.append({"command": result.opcode, "effects": result.effects.duplicate(true),
 			"unimplemented": result.unimplemented.duplicate(true)})
+		var owner_requests: Array = result.get("requests", [])
+		if not owner_requests.is_empty():
+			# Command-owned work (sprite/equipment/member owners) must be answered
+			# by the host before the trigger continues with this command's result.
+			_owner_queue = owner_requests.duplicate(true)
+			_owner_resume = {"id": request.id, "state": result.state,
+				"entry": result.entry, "event_id": result.event_id}
+			_trace.append({"command": result.opcode, "requests": owner_requests.duplicate(true)})
+			return _relay_owner()
 		step = _trigger.resume(request.id, {"state": result.state, "entry": result.entry,
 			"event_id": result.event_id})
 	return _failure("enter script ended without a terminal phase")
@@ -191,9 +218,23 @@ func resume(request_id: String, response: Dictionary) -> Dictionary:
 	if _pending.is_empty() or request_id != _pending.id:
 		return {"error": "pal98-enter: stale or absent script completion"}
 	var kind: String = _pending.kind
-	var inner: String = _pending.inner
+	var owner_request: bool = _pending.get("owner", false)
+	var inner: String = _pending.get("inner", "")
 	_pending = {}
 	if response.has("error"): return _failure("host failed: " + str(response.error))
+	if owner_request:
+		if response.get("completed") != true or typeof(response.get("completed")) != TYPE_BOOL:
+			return _failure("command-owner request requires explicit completion")
+		var resume: Dictionary = _owner_resume.duplicate(true)
+		if response.has("state"):
+			if not response.state is Dictionary: return _failure("owner request state must be a dictionary")
+			var issue: String = _state_issue(response.state)
+			if not issue.is_empty(): return _failure(issue)
+			resume.state = response.state
+		if not _owner_queue.is_empty(): return _relay_owner()
+		_owner_resume = {}
+		return _advance(_trigger.resume(resume.id, {"state": resume.state, "entry": resume.entry,
+			"event_id": resume.event_id}))
 	if kind == "dialogue":
 		if response.size() != 1 or not response.get("event") is Dictionary:
 			return _failure("dialogue completion must carry exactly one explicit event")

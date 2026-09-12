@@ -46,14 +46,18 @@ const CASES = {
 	0x0065: {"range": ["0x0042477E", "0x004247CC"],
 		"sha256": "8f02d5a65015d7ddff5937ccf88a3484ef2e9e5f1fd73d47787aa8f22558a00c",
 		"effect": "G079C[A0,2] = A1; optional outside-battle sprite reload"},
-}
-# Named next gaps: not implemented, kept here so the diagnostic and the review
-# can name the same case identity.
-const NEXT_GAPS = {
 	0x0075: {"range": ["0x004255D8", "0x0042568C"],
 		"sha256": "ca7af492236a04d1336ed2e1081028a484fe05e497f91be694423d9703576207",
-		"effect": "rebuild up-to-three-member party, load resources, rebuild equipment, sync members"},
+		"effect": "rebuild up-to-three-member party, then LoadPlayerAndFollowerSprites (T99), InitializePartyBattleAndEquipmentState (T156) and SyncMembersFromTrail (T230)"},
 }
+# Owner procedures the party rebuild calls, kept by their original entry points
+# so the relayed requests name the same identities the review does.
+const LOAD_PARTY_SPRITES = "load_party_sprites"          # T99 0x0041C864
+const REBUILD_PARTY_EQUIPMENT = "rebuild_party_equipment" # T156 0x0041D374
+const SYNC_MEMBERS_FROM_TRAIL = "sync_members_from_trail" # T230 0x0041D2E4
+# Named next gaps: not implemented, kept here so the diagnostic and the review
+# can name the same case identity.
+const NEXT_GAPS = {}
 
 var error: String = ""
 var _events
@@ -136,6 +140,7 @@ func consume(state: Dictionary, request: Dictionary) -> Dictionary:
 		0x0048: return _result(state, request, [{"kind": "original_no_op", "source": source}])
 		0x0059: return _command_0059(state, request, source)
 		0x0065: return _command_0065(state, request, source)
+		0x0075: return _command_0075(state, request, source)
 	var facts: Dictionary = case_facts(opcode)
 	var details: Dictionary = {"effect": facts.get("effect"), "case_range": facts.get("range"),
 		"case_sha256": facts.get("sha256")}
@@ -231,3 +236,55 @@ func _command_0065(state: Dictionary, request: Dictionary, source: Dictionary) -
 	words[index] = sprite
 	return _result(state, request, [{"kind": "role_map_sprite", "role": role,
 		"field_index": ROLE_MAP_SPRITE_FIELD, "sprite_word": sprite, "source": source}])
+
+## 0x0075 rebuilds the active party from up to three role arguments, then runs
+## the sprite, equipment and member-sync owners. The composition is applied here;
+## the owner work is returned as explicit requests so the caller can fulfil it
+## with the real sprite and equipment owners.
+func _command_0075(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
+	if not state.get("party_records") is Array or not state.get("equipment") is Dictionary:
+		return _failure("party_backing", "0x0075 requires explicit party records and equipment state", request, source)
+	var roles: Array = []
+	for slot in range(3):
+		var argument: int = _signed(request.words[1 + slot])
+		if slot == 0:
+			# A nonpositive first argument selects role 0, not "no member".
+			roles.append((argument if argument > 0 else 1) - 1)
+		elif argument > 0:
+			roles.append(argument - 1)
+		else:
+			break
+	if not state.get("globals") is Dictionary:
+		return _failure("party_backing", "0x0075 requires explicit globals", request, source)
+	var equipment: Dictionary = state.equipment
+	if not equipment.get("party_roles") is Array or equipment.party_roles.size() != state.party_records.size():
+		return _failure("party_backing", "0x0075 requires party roles matching the party records", request, source)
+	for role in roles:
+		if role < 0 or role >= ROLES:
+			return _failure("party_backing", "0x0075 role argument is outside the source role table", request, source)
+	var records: Array = []
+	for slot in range(roles.size()):
+		var existing = state.party_records[slot] if slot < state.party_records.size() else {}
+		if not existing is Dictionary or not existing.get("current_frame") is int:
+			return _failure("party_backing", "0x0075 needs the slot's explicit frame word", request, source)
+		var record: Dictionary = existing.duplicate(true)
+		record.role_id = roles[slot]
+		records.append(record)
+	var dropped: Array = state.party_records.slice(roles.size())
+	state.party_records = records
+	equipment.party_roles = roles.duplicate()
+	state.globals.member_last = roles.size() - 1
+	var effect: Dictionary = {"kind": "party_composition", "roles": roles.duplicate(),
+		"member_last": state.globals.member_last, "dropped_slots": dropped.size(), "source": source}
+	var requests: Array = [
+		{"kind": LOAD_PARTY_SPRITES, "original_entry": "0x0041C864", "procedure": "LoadPlayerAndFollowerSprites",
+			"roles": roles.duplicate(), "follower_count": state.globals.get("follower_count", 0)},
+		{"kind": REBUILD_PARTY_EQUIPMENT, "original_entry": "0x0041D374", "procedure": "InitializePartyBattleAndEquipmentState",
+			"roles": roles.duplicate()},
+	]
+	# T230 member/trail sync has no Native owner yet; the command still applies its
+	# composition and reports the gap instead of pretending the members are synced.
+	var missing: Array = [{"sub_effect": "T230 SyncMembersFromTrail (0x0041D2E4)", "status": "not_implemented"}]
+	var result: Dictionary = _result(state, request, [effect], missing)
+	result.requests = requests
+	return result

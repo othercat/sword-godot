@@ -89,6 +89,7 @@ func _drive(owner, first: Dictionary) -> Dictionary:
 		if not result.has("request"): return {"result": result, "requests": requests}
 		var request: Dictionary = result.request; requests.append(request)
 		if request.kind == "dialogue": result = owner.resume(request.id, {"event": _dialogue_event(request.effect)})
+		elif request.has("state"): result = owner.resume(request.id, {"state": request.state, "completed": true})
 		else: result = owner.resume(request.id, {"completed": true})
 	return {"result": {"error": "enter script driver budget exceeded"}, "requests": requests}
 
@@ -116,23 +117,26 @@ func _synthetic_checks() -> void:
 	check(missing_run.has("error") and str(missing_run.error).contains("party screen anchor"),
 		"unknown party anchor fails 0x0046 explicitly: " + str(missing_run.get("error", "")))
 	var before = state.duplicate(true)
-	var run = owner.start(state, 1, 1)
+	var run = _drive(owner, owner.start(state, 1, 1))
 	check(state == before, "enter script never mutates the caller's state")
-	check(run.has("error") and str(run.error).contains("0x0075"),
-		"first unimplemented command names 0x0075 instead of a silent no-op: " + str(run.get("error", "")))
-	var diagnostic: Dictionary = run.get("diagnostic", {})
-	check(str(diagnostic.get("words", [])) == str([0x0075, 0x0001, 0x0000, 0x0000]), "unimplemented diagnostic carries the real instruction words")
-	check(str(run.get("effects", []).size()) == "3", "three reviewed entry commands executed before the named gap")
-	check(not run.has("state") and not run.has("return_entry"),
-		"failed invocation publishes no candidate state or ByRef entry")
-	var kinds: Array = run.effects.map(func(effect): return effect.kind)
-	check(kinds == ["party_map_position", "role_map_sprite", "party_direction_frame"], "entry effects keep the original instruction order")
-	check(run.effects[0].world_x == 1024 and run.effects[0].world_y == 1024, "0x0046 applies the original world formula")
-	check(run.effects[0].viewport_x == 864 and run.effects[0].viewport_y == 912, "0x0046 anchors the original viewport")
-	check(run.effects[1].sprite_word == 193 and run.effects[1].role == 0, "0x0065 writes role0 map sprite 193")
-	check(run.effects[2].frame_word == 0 and run.effects[2].direction_word == 0, "0x0015 writes direction 0 and frame 0")
-	check(run.unimplemented.size() == 3 and str(run.unimplemented[0].sub_effect).contains("G04AC"),
-		"0x0046 reports its named missing sub-effects")
+	var result: Dictionary = run.result
+	check(not result.has("error"), "the reviewed entry prefix completes: " + str(result.get("error", "")))
+	var kinds: Array = result.effects.map(func(effect): return effect.kind)
+	check(kinds == ["party_map_position", "role_map_sprite", "party_direction_frame", "party_composition"],
+		"entry effects keep the original instruction order including the party rebuild")
+	check(result.effects[0].world_x == 1024 and result.effects[0].world_y == 1024, "0x0046 applies the original world formula")
+	check(result.effects[0].viewport_x == 864 and result.effects[0].viewport_y == 912, "0x0046 anchors the original viewport")
+	check(result.effects[1].sprite_word == 193 and result.effects[1].role == 0, "0x0065 writes role0 map sprite 193")
+	check(result.effects[2].frame_word == 0 and result.effects[2].direction_word == 0, "0x0015 writes direction 0 and frame 0")
+	check(result.effects[3].roles == [0] and result.effects[3].member_last == 0,
+		"0x0075 rebuilds the single-member party from argument 1")
+	check(result.get("partial") == true and result.unimplemented.size() == 4,
+		"the run reports its named sub-effect gaps instead of a full success")
+	check(str(result.unimplemented[0].sub_effect).contains("G04AC") and str(result.unimplemented[3].sub_effect).contains("T230"),
+		"named gaps cover the 0x0046 sub-effects and the T230 member sync")
+	var owner_kinds: Array = run.requests.filter(func(request): return request.has("procedure")).map(func(request): return request.kind)
+	check(owner_kinds == ["load_party_sprites", "rebuild_party_equipment"],
+		"0x0075 asks the sprite and equipment owners before the trigger resumes")
 	# ByRef entry: a scene whose enter block returns advances the entry word.
 	var simple = _source([0, 0], [1, 0], [[0x0041, 0, 0, 0], [0x0001, 0, 0, 0]])
 	var simple_owner = _owner(simple)
@@ -196,6 +200,33 @@ func _synthetic_checks() -> void:
 	var reload_owner = _owner(reload_source)
 	var reload_result = reload_owner.start(_fixture(reload_source), 1, 1)
 	check(reload_result.has("error") and str(reload_result.error).contains("sprite reload"), "0x0065 refuses the outside-battle reload it cannot perform")
+	# 0x0075 party rebuild: multi-member, default role and out-of-range argument.
+	var multi_program: Array = [[0x0075, 0x0002, 0x0003, 0x0000], [0x0001, 0, 0, 0]]
+	var multi_source = _source([0, 0], [1, 0], multi_program)
+	var multi_owner = _owner(multi_source)
+	var multi_state = _fixture(multi_source)
+	while multi_state.party_records.size() < 3:
+		multi_state.party_records.append({"role_id": 0, "screen_x": 160, "screen_y": 112, "current_frame": 0})
+	multi_state.equipment.party_roles = [0, 1, 2]
+	var multi_result = _drive(multi_owner, multi_owner.start(multi_state, 1, 1))
+	check(not multi_result.result.has("error") and multi_result.result.effects[0].roles == [1, 2]
+		and multi_result.result.effects[0].member_last == 1 and multi_result.result.effects[0].dropped_slots == 1,
+		"0x0075 rebuilds a two-member party and drops the unused slot")
+	check(multi_result.result.state.equipment.party_roles == [1, 2]
+		and multi_result.result.state.party_records.size() == 2,
+		"the rebuilt composition reaches both the party records and the equipment roles")
+	var default_program: Array = [[0x0075, 0x0000, 0x0000, 0x0000], [0x0001, 0, 0, 0]]
+	var default_source = _source([0, 0], [1, 0], default_program)
+	var default_owner = _owner(default_source)
+	var default_result = _drive(default_owner, default_owner.start(_fixture(default_source), 1, 1))
+	check(not default_result.result.has("error") and default_result.result.effects[0].roles == [0],
+		"a nonpositive first 0x0075 argument selects role 0")
+	var bad_role_program: Array = [[0x0075, 0x0007, 0x0000, 0x0000], [0x0001, 0, 0, 0]]
+	var bad_role_source = _source([0, 0], [1, 0], bad_role_program)
+	var bad_role_owner = _owner(bad_role_source)
+	var bad_role = bad_role_owner.start(_fixture(bad_role_source), 1, 1)
+	check(bad_role.has("error") and str(bad_role.error).contains("outside the source role table"),
+		"0x0075 refuses a role argument outside the admitted role table")
 	# Relayed dialogue: the message instruction reaches the host, not a fake draw.
 	var message_program: Array = [[0xFFFF, 0x0000, 0x0000, 0x0000], [0x0001, 0, 0, 0]]
 	var message_source = _source([0, 0], [1, 0], message_program, ["hello".to_utf8_buffer()])
@@ -220,20 +251,29 @@ func _real_checks() -> void:
 	var owner = _owner(package.pal98_sources)
 	if owner == null: return
 	var state = _fixture(package.pal98_sources)
-	var run = owner.start(state, 1, 4)
-	check(run.has("error") and str(run.error).contains("0x0075") and str(run.error).contains("not implemented"),
-		"real opening entry runs the reviewed prefix and stops at the first unimplemented command")
-	var kinds: Array = run.effects.map(func(effect): return effect.kind)
-	check(kinds == ["party_map_position", "role_map_sprite", "party_direction_frame"],
-		"real opening executes 0x0046, 0x0065 and 0x0015 in original order")
-	check(run.effects[0].world_x == 1024 and run.effects[0].viewport_x == 864 and run.effects[0].viewport_y == 912,
+	var run = _drive(owner, owner.start(state, 1, 4))
+	var opening_result: Dictionary = run.result
+	check(opening_result.has("error") and str(opening_result.error).contains("0x003B") and str(opening_result.error).contains("not implemented"),
+		"real opening entry runs the reviewed prefix and stops at the first unimplemented command: " + str(opening_result.get("error", "")))
+	var kinds: Array = opening_result.effects.map(func(effect): return effect.kind)
+	check(kinds.slice(0, 4) == ["party_map_position", "role_map_sprite", "party_direction_frame", "party_composition"],
+		"real opening executes 0x0046, 0x0065, 0x0015 and 0x0075 in original order: " + str(kinds))
+	check(kinds.slice(4).all(func(kind): return kind == "dispatch_tail"),
+		"the local 0005 control reaches the shared T240 gate without a case body")
+	check(opening_result.effects[0].world_x == 1024 and opening_result.effects[0].viewport_x == 864 and opening_result.effects[0].viewport_y == 912,
 		"real opening world (1024,1024) yields viewport (864,912)")
-	check(run.effects[1].sprite_word == 193 and run.effects[2].frame_word == 0,
+	check(opening_result.effects[1].sprite_word == 193 and opening_result.effects[2].frame_word == 0,
 		"real opening writes role0 sprite 193 and frame 0")
-	var diagnostic: Dictionary = run.get("diagnostic", {})
-	check(str(diagnostic.get("words", [])) == str([0x0075, 0x0001, 0x0000, 0x0000]), "real stop point keeps the real 0x0075 operands")
+	check(opening_result.effects[3].roles == [0], "real opening rebuilds its single-member party from the real argument")
+	var diagnostic: Dictionary = opening_result.get("diagnostic", {})
+	check(str(diagnostic.get("words", [])) == str([0x003B, 0x0000, 0x0000, 0x0000]), "real stop point keeps the real 0x003B operands")
 	check(diagnostic.has("instruction_source") and diagnostic.instruction_source.get("file_sha256", "").length() == 64,
 		"real stop point keeps the admitted instruction receipt")
+	var opening_requests: Array = run.requests.map(func(request): return request.kind)
+	check(opening_requests.has("load_party_sprites") and opening_requests.has("rebuild_party_equipment"),
+		"real opening asks the sprite and equipment owners before the text command: " + str(opening_requests))
+	check(opening_requests.count("load_party_sprites") == 1 and opening_requests.count("rebuild_party_equipment") == 1,
+		"each party-owner request is answered exactly once")
 	# A scene record redirected to a real minimal entry block completes the chain.
 	var minimal := -1
 	var minimal_increments := true
@@ -281,11 +321,13 @@ func _real_checks() -> void:
 		var request_state: Dictionary = step.request.state.duplicate(true)
 		request_state.dialogue = _context(); request_state.rng = Random.create(0x12345)
 		var chained = _owner(package.pal98_sources)
-		var chained_result = chained.start(request_state, step.request.scene_id, step.request.entry, step.request.event_id)
-		check(chained_result.has("error") and str(chained_result.error).contains("0x0075"),
-			"T212 request is answered by the real entry script and stops at its named gap")
-		check(chained_result.effects.size() == 3 and chained_result.effects[0].world_x == 1024,
-			"chained entry still applies the real opening position")
+		var chained_run = _drive(chained, chained.start(request_state, step.request.scene_id, step.request.entry, step.request.event_id))
+		var chained_result: Dictionary = chained_run.result
+		check(chained_result.has("error") and str(chained_result.error).contains("0x003B"),
+			"T212 request is answered by the real entry script and stops at its named text gap")
+		check(chained_result.effects.size() >= 4 and chained_result.effects[0].world_x == 1024
+			and chained_result.effects[3].kind == "party_composition",
+			"chained entry still applies the real opening position and party rebuild")
 
 func _initialize() -> void:
 	var args = OS.get_cmdline_user_args()

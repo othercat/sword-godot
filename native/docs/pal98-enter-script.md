@@ -63,6 +63,7 @@ source bytes for every operand.
 | `0x0048` | `0x00423A16..0x00423A2C` | explicit original no-op |
 | `0x0059` | `0x004243B8..0x00424408` | for a valid changed scene: `G0306 |= 12`, `G026A = A0` |
 | `0x0065` | `0x0042477E..0x004247CC` | role `A0` map sprite field index 2 of the admitted role table becomes `A1` |
+| `0x0075` | `0x004255D8..0x0042568C` | rebuilds the active party from `A0..A2` (a nonpositive first argument selects role 0, later nonpositive arguments end the list), writes the member count and both role projections, then requests the sprite and equipment owners |
 
 Two boundaries are stated rather than hidden:
 
@@ -78,12 +79,23 @@ Two boundaries are stated rather than hidden:
 `0x0065` with a nonzero reload argument fails explicitly: outside-battle sprite
 loading belongs to the sprite-cache owner and is not implemented here.
 
-The next named gap is `0x0075` (`0x004255D8..0x0042568C`: rebuild an up-to-three
-member party, load resources, rebuild equipment state and sync members). The
-diagnostic carries that opcode, the real instruction words, the admitted
-instruction receipt and the cited case range/hash. `0x0002/0x0003/0x0004/
-0x0006/0x0007/0x0009/0x000A` and `0xFFFF` are dispatched by T258 itself and
-return through the consumer untouched, as the original shared tail does.
+`0x0075` applies its composition, then hands the original callees to the caller
+as owner requests: `load_party_sprites` (T99 `0x0041C864`,
+`LoadPlayerAndFollowerSprites`) and `rebuild_party_equipment` (T156
+`0x0041D374`, `InitializePartyBattleAndEquipmentState`). The trigger stays
+suspended until each request is answered with an explicit completion, so the
+real sprite cache and equipment kernel do the work rather than the consumer.
+The third callee, T230 `0x0041D2E4` `SyncMembersFromTrail`, has no Native owner
+yet and is reported as a named sub-effect gap while the composition still
+applies.
+
+The next named gap is `0x003B` (`mode0`, text origin 80/40), followed by
+`0x003D`, `0x008E` and the rest of the opening's text commands. Every diagnostic
+carries that opcode, the real instruction words, the admitted instruction
+receipt and the cited case range/hash when it is known.
+`0x0002/0x0003/0x0004/0x0006/0x0007/0x0009/0x000A` and `0xFFFF` are dispatched
+by T258 itself and return through the consumer untouched, as the original shared
+tail does; a run's trace shows those `dispatch_tail` receipts explicitly.
 
 ## Real opening entry
 
@@ -96,8 +108,10 @@ that entry through this owner produces, in original order:
 2. `role_map_sprite`: role 0 sprite word 193;
 3. `party_direction_frame`: direction 0, frame 0;
 
-and then stops on `0x0075` with the real operands. That is the current stop
-point of the ordinary opening path, and it is named rather than skipped.
+`0075 0001 0000 0000` then rebuilds the single-member party (role 0) and requests
+the sprite and equipment owners, the local `0005` control reaches the shared T240
+gate, and the entry stops on `0x003B` with its real operands. That is the current
+stop point of the ordinary opening path, and it is named rather than skipped.
 
 ## Evidence
 
