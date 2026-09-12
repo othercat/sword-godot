@@ -101,6 +101,27 @@ point of the ordinary opening path, and it is named rather than skipped.
 
 ## Evidence
 
+### Self-review follow-up (2026-09-12, commit 636e466)
+
+The first review of this owner found three things worth fixing and one worth
+pinning, all in the same chain:
+
+- a terminal success that still carries named sub-effect gaps now reports
+  `partial: true`, so a caller cannot read a partly implemented entry script as
+  full completion;
+- every relayed host effect now carries the pending explicit state (previously
+  only dialogue did), so a host can answer with the same backing the trigger
+  validates on the way back;
+- the failure path is pinned by a check: a failed invocation publishes neither a
+  candidate state nor a ByRef entry, and the caller's state stays untouched;
+- the clean-export check was repeated for this chain: the committed tree at
+  `636e466` was exported with `git archive` (no inspection drafts present, 25
+  `native_pal98_*.gd` files) and its 49 checks passed in that export, so the
+  earlier 45-check run was not the only evidence for the committed source.
+
+Files: `enter-script-07-review.json` (working tree, 49 checks) and
+`enter-script-clean-export-02.json` (export of `636e466`, 49 checks).
+
 Studio private root
 `artifacts/verification/original-v163-enter-script-20260912-01/`:
 
