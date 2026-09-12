@@ -121,6 +121,12 @@ const CASES = {
 	0x007F: {"range": ["0x00425A7C", "0x00425D24"],
 		"sha256": "7be521f4ef5c6221392088a10a8306064931e5bdc0b960c8f476f80cd1b365e3",
 		"effect": "viewport/member move state machine: the (-1,0,0) restore form, the re-anchor, absolute and delta modes, the anchor recompute and member shifts, then the frame, optional viewport/party update and scene render per round"},
+	0x0036: {"range": ["0x00422F52", "0x00422F80"],
+		"sha256": "441c8afb1dc2a29956c0dbae1c0809cdb4e8eb187c05dc0225d2138045c2339d",
+		"effect": "requests the RNG animation load (0x0041D134) with the argument word and sets the G0306 animation bit (16)"},
+	0x0037: {"range": ["0x00422F80", "0x00422FCA"],
+		"sha256": "63d0dd034848213aa7e7c969fcc1f37b9bf0b2c9acb54ba40da8b356957631ea",
+		"effect": "defaults the end to 999 and the speed to 10, then requests PlayCurrentRngAnimation (0x0041D464) with the three words"},
 	0x001F: {"range": ["0x00421EC4", "0x00421F00"],
 		"sha256": "79fa119ab6503c8516f2ac38ffe38c581b8630ad9f6072d3a3c1d1903e55d8b0",
 		"effect": "compresses the inventory (T152 0x0041C96C), defaults a nonpositive amount to 1 and adds the item through T140 (0x0041CCCC)"},
@@ -173,6 +179,9 @@ const UPDATE_VIEWPORT_AND_PARTY = "update_viewport_and_party_position" # 0x0041C
 const PLAY_CD_OR_MIDI = "play_cd_or_midi_track" # 0x0041D23C
 const DELAY_TICKS = "delay_ticks" # 0x004170C4
 const ViewportMove = preload("res://src/native_pal98_viewport_move.gd")
+const LOAD_RNG_ANIMATION = "load_rng_animation_data" # 0x0041D134
+const PLAY_RNG_ANIMATION = "play_current_rng_animation" # 0x0041D464
+const RNG_ANIMATION_MASK = 16 # G0306 bit4
 # Named next gaps: not implemented, kept here so the diagnostic and the review
 # can name the same case identity.
 const NEXT_GAPS = {}
@@ -294,6 +303,8 @@ func consume(state: Dictionary, request: Dictionary) -> Dictionary:
 		0x00A3: return _command_00A3(state, request, source)
 		0x0085: return _command_0085(state, request, source)
 		0x007F: return _command_007F(state, request, source)
+		0x0036: return _command_0036(state, request, source)
+		0x0037: return _command_0037(state, request, source)
 	var facts: Dictionary = case_facts(opcode)
 	var details: Dictionary = {"effect": facts.get("effect"), "case_range": facts.get("range"),
 		"case_sha256": facts.get("sha256")}
@@ -606,6 +617,36 @@ func _command_009A(state: Dictionary, request: Dictionary, source: Dictionary) -
 ## 0x00A3 normalizes the loop flag and requests the CD/MIDI track owner.
 ## 0x0085 requests the delay helper with the argument scaled by ten.
 ## 0x007F runs the viewport/member move state machine.
+## 0x0036 requests the RNG animation load and sets the G0306 animation bit.
+func _command_0036(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
+	if not state.get("globals") is Dictionary:
+		return _failure("animation_state", "0x0036 requires explicit globals", request, source)
+	var flags = state.globals.get("resource_flags")
+	if flags != null and not _u2(flags):
+		return _failure("resource_flags", "0x0036 requires the G0306 mask as a WORD", request, source)
+	var effect: Dictionary = {"kind": "rng_animation_load", "argument": request.words[1], "source": source}
+	var result: Dictionary = _result(state, request, [effect])
+	if flags != null:
+		state.globals.resource_flags = flags | RNG_ANIMATION_MASK
+		effect.resource_flags = state.globals.resource_flags
+	result.requests = [{"kind": LOAD_RNG_ANIMATION, "original_entry": "0x0041D134",
+		"procedure": "0x0041D134", "argument": request.words[1]}]
+	return result
+
+## 0x0037 requests the loaded RNG animation with the original defaults.
+func _command_0037(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
+	var first: int = request.words[1]
+	var last_word: int = request.words[2]
+	var speed_word: int = request.words[3]
+	if last_word == 0: last_word = 999
+	if speed_word == 0: speed_word = 10
+	var effect: Dictionary = {"kind": "rng_animation_play", "first": first, "end": last_word,
+		"speed": speed_word, "source": source}
+	var result: Dictionary = _result(state, request, [effect])
+	result.requests = [{"kind": PLAY_RNG_ANIMATION, "original_entry": "0x0041D464",
+		"procedure": "PlayCurrentRngAnimation", "first": first, "end": last_word, "speed": speed_word}]
+	return result
+
 func _command_007F(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
 	if not _viewport is Object: _viewport = ViewportMove.new()
 	var moved: Dictionary = _viewport.run(state, request.words)

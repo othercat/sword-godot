@@ -416,6 +416,22 @@ func _synthetic_checks() -> void:
 	# 0x009A event state range and its global fallback.
 	# 0x00A3 CD/MIDI loop normalization.
 	# 0x0085 delay request scaled by ten.
+	# 0x0036/0x0037 RNG animation load and play.
+	var anim_program: Array = [[0x0036, 0x0021, 0x0000, 0x0000], [0x0037, 0x0001, 0x0000, 0x0000], [0x0001, 0, 0, 0]]
+	var anim_source = _source([0, 0], [1, 0], anim_program)
+	var anim_owner = _owner(anim_source)
+	var anim_state = _fixture(anim_source)
+	var anim_adapter = EntryHost.new()
+	anim_adapter.bind(state_cache, state_kernel, _zero(1536), [0, 0, 0, 0, 0, 0])
+	anim_adapter.bind_display(DisplayDouble.new())
+	var anim_run = _drive_with_host(anim_owner, anim_owner.start(anim_state, 1, 1), anim_adapter)
+	var anim_effects: Array = anim_run.result.get("effects", [])
+	check(not anim_run.result.has("error") and anim_effects.size() == 2
+		and anim_effects[0].resource_flags == 16 and anim_effects[1].end == 999 and anim_effects[1].speed == 10,
+		"0x0036 sets the animation bit and 0x0037 defaults end/speed: " + str(anim_run.result.get("error", "")))
+	var anim_requests: Array = anim_run.requests.map(func(request): return request.kind)
+	check(anim_requests.has("load_rng_animation_data") and anim_requests.has("play_current_rng_animation"),
+		"the animation load and play reach the host: " + str(anim_requests))
 	# 0x007F viewport move: restore, delta rounds and member shifts.
 	var restore_program: Array = [[0x007F, 0xFFFF, 0x0000, 0x0000], [0x0001, 0, 0, 0]]
 	var restore_source = _source([0, 0], [1, 0], restore_program)
