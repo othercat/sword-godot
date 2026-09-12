@@ -70,19 +70,23 @@ func initial_state(party_roles: Array = [0]) -> Dictionary:
 	var effects: Array = []; effects.resize(MODIFIER_COUNT); effects.fill(0)
 	var entries: Array = []
 	for index in range(int(_receipt.object_count)): entries.append(_objects[index * 7 + 3])
-	var fields: Array = []; var statuses: Array = []
+	var fields: Array = []; var statuses: Array = []; var poisons: Array = []
 	for role in party_roles:
 		# A projection of the two consumed G05CC fields, not a guessed record stride.
 		fields.append({"battle_sprite_word": 0, "cooperative_magic_word": 0})
-		var row: Array = []; row.resize(9); row.fill(0); statuses.append(row)
+		# G06C4 keeps sixteen status columns per party slot; the original status
+		# records beyond the verified nine stay zero and are no separate truth.
+		var row: Array = []; row.resize(16); row.fill(0); statuses.append(row)
+		# G0704: sixteen 4-byte poison records per party slot (WORD id + WORD script).
+		var poison: PackedByteArray = PackedByteArray(); poison.resize(16 * 4); poisons.append(poison)
 	return {"source_id": _receipt.source_id, "role_words": _roles.duplicate(),
 		"modifiers": effects, "equip_entries": entries, "previous_item": 0,
 		"party_roles": party_roles.duplicate(), "party_fields": fields,
-		"party_statuses": statuses, "trigger_success_word": 0}
+		"party_statuses": statuses, "party_poisons": poisons, "trigger_success_word": 0}
 
 func validate_state(state: Dictionary) -> String:
 	if _receipt.is_empty(): return "source tables have not been read"
-	if state.size() != 9 or state.get("source_id") != _receipt.source_id:
+	if state.size() != 10 or state.get("source_id") != _receipt.source_id:
 		return "equipment state source or shape mismatch"
 	for field in ["role_words", "modifiers", "equip_entries"]:
 		if not state.get(field) is Array: return "equipment state requires word arrays"
@@ -106,9 +110,16 @@ func validate_state(state: Dictionary) -> String:
 		if not fields is Dictionary or fields.size() != 2: return "source party field projection has the wrong shape"
 		for key in ["battle_sprite_word", "cooperative_magic_word"]:
 			if typeof(fields.get(key)) != TYPE_INT or fields[key] < 0 or fields[key] > 65535: return "source party field is not a WORD"
-		if not statuses is Array or statuses.size() != 9: return "source party status row requires nine I2 values"
+		if not statuses is Array or statuses.size() != 16: return "source party status row requires sixteen I2 values"
 		for duration in statuses:
 			if typeof(duration) != TYPE_INT or duration < -32768 or duration > 32767: return "source status duration is not signed I2"
+	if not state.get("party_poisons") is Array:
+		return "source party poison backing must be an array"
+	if state.party_poisons.size() != state.party_roles.size():
+		return "source party poison backing must match member count"
+	for poison in state.party_poisons:
+		if not poison is PackedByteArray or poison.size() != 16 * 4:
+			return "source party poison row requires sixteen id/script WORD records"
 	if typeof(state.get("trigger_success_word")) != TYPE_INT or state.trigger_success_word < -32768 or state.trigger_success_word > 32767:
 		return "trigger success word is not signed I2"
 	return ""

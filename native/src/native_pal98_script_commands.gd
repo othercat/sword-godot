@@ -1527,16 +1527,23 @@ func _command_0075(state: Dictionary, request: Dictionary, source: Dictionary) -
 	# the real equipment owner then fills every row from the current base table.
 	# Requiring the old rows to already cover the new count made a shrunken
 	# party impossible to re-expand.
-	for key in ["party_fields", "party_statuses"]:
+	for key in ["party_fields", "party_statuses", "party_poisons"]:
 		if not equipment.get(key) is Array:
 			return _failure("party_backing", "0x0075 needs the equipment projection for every member", request, source)
 	while equipment.party_fields.size() < roles.size():
 		equipment.party_fields.append({"battle_sprite_word": 0, "cooperative_magic_word": 0})
 	while equipment.party_statuses.size() < roles.size():
-		var row: Array = []; row.resize(9); row.fill(0); equipment.party_statuses.append(row)
-	for key in ["party_fields", "party_statuses"]:
+		var row: Array = []; row.resize(16); row.fill(0); equipment.party_statuses.append(row)
+	while equipment.party_poisons.size() < roles.size():
+		var poison: PackedByteArray = PackedByteArray(); poison.resize(16 * 4); equipment.party_poisons.append(poison)
+	for key in ["party_fields", "party_statuses", "party_poisons"]:
 		if equipment[key].size() > roles.size():
 			equipment[key] = equipment[key].slice(0, roles.size())
+	for slot in range(roles.size()):
+		if not equipment.party_statuses[slot] is Array or equipment.party_statuses[slot].size() != 16:
+			return _failure("party_backing", "0x0075 status rows require sixteen I2 values", request, source)
+		if not equipment.party_poisons[slot] is PackedByteArray or equipment.party_poisons[slot].size() != 16 * 4:
+			return _failure("party_backing", "0x0075 poison rows require sixteen id/script WORD records", request, source)
 	equipment.party_roles = roles.duplicate()
 	state.globals.member_last = roles.size() - 1
 	var effect: Dictionary = {"kind": "party_composition", "roles": roles.duplicate(),

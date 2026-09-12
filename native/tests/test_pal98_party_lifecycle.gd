@@ -78,9 +78,13 @@ func _initialize() -> void:
 			and fresh.equipment.party_statuses == state.equipment.party_statuses,
 			"the %s lifecycle rows equal a direct rebuild of the same party" % str(step.roles))
 		var statuses_ok: bool = true
+		var poisons_ok: bool = true
 		for slot in range(step.roles.size()):
-			statuses_ok = statuses_ok and state.equipment.party_statuses[slot].size() == 9
-		check(statuses_ok, "every %s status row keeps nine I2 values" % str(step.roles))
+			statuses_ok = statuses_ok and state.equipment.party_statuses[slot].size() == 16
+			poisons_ok = poisons_ok and state.equipment.party_poisons[slot] is PackedByteArray
+			poisons_ok = poisons_ok and state.equipment.party_poisons[slot].size() == 64
+		check(statuses_ok, "every %s status row keeps sixteen I2 values" % str(step.roles))
+		check(poisons_ok, "every %s slot keeps sixteen 4-byte poison records" % str(step.roles))
 		check(state.inventory_bytes.decode_u16(2) == 3, "the seeded quantity survives the %s rebuild" % str(step.roles))
 
 	# The re-expanded 1 -> 2 step is the reviewed failure; prove it again through

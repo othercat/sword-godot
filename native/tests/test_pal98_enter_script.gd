@@ -233,7 +233,10 @@ func _synthetic_checks() -> void:
 	for slot in range(5): fields.append(map_state.equipment.party_fields[0].duplicate(true))
 	map_state.equipment.party_fields = fields
 	map_state.equipment.party_roles = [0, 0, 0, 0, 0]
-	map_state.equipment.party_statuses = fields.duplicate(true)
+	var map_statuses: Array = []
+	for slot in range(5):
+		var row: Array = []; row.resize(16); row.fill(0); map_statuses.append(row)
+	map_state.equipment.party_statuses = map_statuses
 	var map_run = _drive(map_owner, map_owner.start(map_state, 1, 1))
 	check(not map_run.result.has("error"), "0x0046 completes with five backed slots: " + str(map_run.result.get("error", "")))
 	check(map_run.result.state.party_records[0].screen_x == 160 and map_run.result.state.party_records[0].screen_y == 112
@@ -859,7 +862,10 @@ func _synthetic_checks() -> void:
 	var multi_fields: Array = []
 	for slot in range(3): multi_fields.append(multi_state.equipment.party_fields[0].duplicate(true))
 	multi_state.equipment.party_fields = multi_fields
-	multi_state.equipment.party_statuses = multi_fields.duplicate(true)
+	var multi_statuses: Array = []
+	for slot in range(3):
+		var row: Array = []; row.resize(16); row.fill(0); multi_statuses.append(row)
+	multi_state.equipment.party_statuses = multi_statuses
 	multi_state.equipment.party_roles = [0, 1, 2]
 	var multi_result = _drive(multi_owner, multi_owner.start(multi_state, 1, 1))
 	check(not multi_result.result.has("error") and multi_result.result.effects[0].roles == [1, 2]
