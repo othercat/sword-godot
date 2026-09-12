@@ -40,6 +40,9 @@ const CASES = {
 	0x003C: {"range": ["0x00423272", "0x0042331A"],
 		"sha256": "14e1e16b5fd89ef4b78445898d329e0195fc0e5b269a6500d2665505e7b3b71f",
 		"effect": "upper dialog globals: mode 1, title (12,8), origin (44,26); a positive A0 adds the capture path, the 0x41D44C call and the 80/96 anchors, a positive A1 writes the colour word"},
+	0x003E: {"range": ["0x004233C2", "0x004233FA"],
+		"sha256": "85d1b0e9bd656f1aec7710b5b15e90be10b224e20ecbf052b4464ab442e96777",
+		"effect": "center-window dialog globals: mode 10, origin (152,32) and the restore gate (G02CA) takes A0"},
 	0x003D: {"range": ["0x0042331A", "0x004233C2"],
 		"sha256": "cd726d7203549f9ca44af334f1ee5223228b14719914b049918c133c44c8f6d8",
 		"effect": "lower dialog globals: mode 2, title (12,108), body origin (44,126)"},
@@ -313,6 +316,7 @@ func consume(state: Dictionary, request: Dictionary) -> Dictionary:
 		0x0036: return _command_0036(state, request, source)
 		0x0037: return _command_0037(state, request, source)
 		0x001A: return _command_001A(state, request, source)
+		0x003E: return _command_003E(state, request, source)
 	var facts: Dictionary = case_facts(opcode)
 	var details: Dictionary = {"effect": facts.get("effect"), "case_range": facts.get("range"),
 		"case_sha256": facts.get("sha256")}
@@ -629,6 +633,20 @@ func _command_009A(state: Dictionary, request: Dictionary, source: Dictionary) -
 ## 0x001A writes a role numeric field: fields 1 and 65 route to the two consumed
 ## G05CC projection words, every other field goes to the G079C word table. A
 ## positive A2 selects role A2-1; otherwise the explicit current-role slot is used.
+## 0x003E selects the center-window dialog globals and writes the restore gate.
+func _command_003E(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
+	var context: Dictionary = _dialog_context(state, request, source)
+	if context.has("error"): return context
+	var dialogue: Dictionary = context.dialogue
+	if not _u2(dialogue.get("restore_gate")):
+		return _failure("dialogue_backing", "0x003E requires the explicit G02CA restore gate", request, source)
+	dialogue.mode = 10
+	dialogue.origin_x = 152
+	dialogue.origin_y = 32
+	dialogue.restore_gate = request.words[1]
+	return _result(state, request, [{"kind": "dialog_globals", "mode": 10, "origin_x": 152,
+		"origin_y": 32, "restore_gate": dialogue.restore_gate, "source": source}])
+
 func _command_001A(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
 	if not state.get("equipment") is Dictionary:
 		return _failure("role_backing", "0x001A requires the explicit role word table", request, source)

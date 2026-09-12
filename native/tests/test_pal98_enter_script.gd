@@ -416,6 +416,17 @@ func _synthetic_checks() -> void:
 	# 0x009A event state range and its global fallback.
 	# 0x00A3 CD/MIDI loop normalization.
 	# 0x0085 delay request scaled by ten.
+	# 0x003E center-window dialog globals and the restore gate.
+	var window_program: Array = [[0x003E, 0x0001, 0x0000, 0x0000], [0x0001, 0, 0, 0]]
+	var window_source = _source([0, 0], [1, 0], window_program)
+	var window_owner = _owner(window_source)
+	var window_run = _drive(window_owner, window_owner.start(_fixture(window_source), 1, 1))
+	var window_effects: Array = window_run.result.get("effects", [])
+	check(not window_run.result.has("error") and window_effects.size() == 1
+		and window_effects[0].mode == 10 and window_effects[0].origin_x == 152
+		and window_effects[0].origin_y == 32 and window_effects[0].restore_gate == 1,
+		"0x003E selects the center-window globals and sets the restore gate: "
+			+ str(window_run.result.get("error", "")))
 	# 0x001A role numeric and projection field writes.
 	var field_program: Array = [[0x001A, 0x0001, 0x002A, 0x0001], [0x001A, 0x0005, 0x0064, 0x0001], [0x0001, 0, 0, 0]]
 	var field_source = _source([0, 0], [1, 0], field_program)
