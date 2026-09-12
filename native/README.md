@@ -1,5 +1,20 @@
 # PAL Wanxiang Native preview
 
+## Original EnterScript owner (2026-09-12)
+
+The [EnterScript owner](docs/pal98-enter-script.md) answers the T212
+`enter_script` request with the real entry script: it re-reads the loaded scene
+record's enter word, runs the reviewed T258 driver over the admitted SSS4
+instruction pool, consumes a bounded set of T240 entry commands (`0x0015`,
+`0x0041`, `0x0046`, `0x0048`, `0x0059`, `0x0065`) through explicit state writes
+and finishes every other command with a named diagnostic instead of a silent
+no-op. The real opening entry now applies world `(1024,1024)`, viewport
+`(864,912)`, role 0 map sprite 193 and direction/frame 0 in original order and
+stops at the named `0x0075` party-rebuild gap;45 checks pass on the private
+ordinary author build. No ordinary Session, rendering, audio, save or gameplay
+is activated, and the cited P-Code case ranges were re-hashed from the fixed
+private PAL.EXE before the code was written.
+
 ## Original trigger control flow (2026-09-12)
 
 The [T258 trigger driver](docs/pal98-trigger.md) fetches and dispatches the

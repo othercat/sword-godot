@@ -116,6 +116,16 @@ No original scene art, font or indexed raster implementation is included. The
 source-message probe uses an explicit synthetic background, not a replacement
 for original-game scene validation; see `docs/pal98-dialogue-surface.md`.
 
+The EnterScript owner independently expresses the reviewed T212 caller fact and
+the T240 command cases it implements: it re-reads the loaded scene record's enter
+word, runs the existing T258 driver over the admitted SSS4 pool, consumes the
+reviewed entry commands through explicit state writes and diagnoses every other
+command with its opcode and source receipt. Case ranges and hashes come from the
+product's fixed-source review of the same PAL.EXE identity and were re-hashed
+from a private copy; no recovered procedure, original payload, host effect or
+ordinary Session is included or activated. See `docs/pal98-enter-script.md` for
+the implemented subset, the named gaps and the explicit sub-effect boundaries.
+
 Build with this directory as the project root. Parent root exports are not Native
 releases. `.gdignore` prevents the parent editor from scanning this nested project.
 The Native rendering path uses its own TileMapLayer adapter; the parent's
