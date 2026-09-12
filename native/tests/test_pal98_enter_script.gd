@@ -69,10 +69,13 @@ func _fixture(source, scene_id: int = 1) -> Dictionary:
 	equipment.read_tables(source.copy_chunk("data",3), source.copy_chunk("sss",2), source.copy_chunk("sss",4))
 	return {"globals": {"current_scene": scene_id, "requested_scene": scene_id, "party_x": 160, "party_y": 112,
 			"viewport_x": 864, "viewport_y": 912, "resource_flags": 0, "direction_word": 0, "loaded_map_id": 0,
-			"member_last": 0, "follower_count": 0},
+			"member_last": 0, "follower_count": 0, "battle_mode": 0},
 		"events": events.source_state(), "dialogue": _context(), "rng": Random.create(0x12345),
 		"equipment": equipment.initial_state([0]),
-		"party_records": [{"role_id": 0, "screen_x": 160, "screen_y": 112, "current_frame": 3}]}
+		"party_records": [{"role_id": 0, "screen_x": 160, "screen_y": 112, "current_frame": 3}],
+		"party_trail": [{"x": 0, "y": 0, "direction_word": 0}, {"x": 0, "y": 0, "direction_word": 0},
+			{"x": 0, "y": 0, "direction_word": 0}, {"x": 0, "y": 0, "direction_word": 0},
+			{"x": 0, "y": 0, "direction_word": 0}]}
 
 func _dialogue_event(effect: Dictionary) -> Dictionary:
 	match effect.get("kind"):
@@ -126,17 +129,53 @@ func _synthetic_checks() -> void:
 		"entry effects keep the original instruction order including the party rebuild")
 	check(result.effects[0].world_x == 1024 and result.effects[0].world_y == 1024, "0x0046 applies the original world formula")
 	check(result.effects[0].viewport_x == 864 and result.effects[0].viewport_y == 912, "0x0046 anchors the original viewport")
+	check(result.effects[0].previous_x == 1024 and result.effects[0].previous_y == 1024,
+		"0x0046 copies the new world position into the previous-position words")
+	check(result.effects[0].trail_slots == 5 and result.effects[0].party_slots == 1,
+		"0x0046 writes the fixed trail array and the backed party slots")
+	# 0x0046 with full five-slot backing, formation steps and the replay request.
+	var map_program: Array = [[0x0046, 0x0020, 0x0040, 0x0000], [0x0001, 0, 0, 0]]
+	var map_source = _source([0, 0], [1, 0], map_program)
+	var map_owner = _owner(map_source)
+	var map_state = _fixture(map_source)
+	while map_state.party_records.size() < 5:
+		map_state.party_records.append({"role_id": 0, "screen_x": 0, "screen_y": 0, "current_frame": 3})
+	var fields: Array = []
+	for slot in range(5): fields.append(map_state.equipment.party_fields[0].duplicate(true))
+	map_state.equipment.party_fields = fields
+	map_state.equipment.party_roles = [0, 0, 0, 0, 0]
+	map_state.equipment.party_statuses = fields.duplicate(true)
+	var map_run = _drive(map_owner, map_owner.start(map_state, 1, 1))
+	check(not map_run.result.has("error"), "0x0046 completes with five backed slots: " + str(map_run.result.get("error", "")))
+	check(map_run.result.state.party_records[0].screen_x == 160 and map_run.result.state.party_records[0].screen_y == 112
+		and map_run.result.state.party_records[1].screen_x == 176 and map_run.result.state.party_records[1].screen_y == 104,
+		"0x0046 steps the member screen positions with the direction-0 formation table")
+	check(map_run.result.state.party_records[4].current_frame == 3
+		and map_run.result.state.party_records[2].current_frame == 3,
+		"0x0046 copies the leader frame word to every member slot")
+	check(map_run.result.state.party_trail[0].x == 1024 and map_run.result.state.party_trail[0].y == 1024
+		and map_run.result.state.party_trail[1].x == 1040 and map_run.result.state.party_trail[1].y == 1016
+		and map_run.result.state.party_trail[4].direction_word == 0,
+		"0x0046 writes the five trail entries from member position plus viewport")
+	check(map_run.result.unimplemented.is_empty(), "a fully backed 0x0046 reports no sub-effect gap")
+	check(map_run.requests.map(func(request): return request.kind).has("render_current_map_background"),
+		"non-battle 0x0046 asks the host to re-render the map background")
+	var far_program: Array = [[0x0046, 0x0020, 0x0190, 0x0000], [0x0001, 0, 0, 0]]
+	var far_source = _source([0, 0], [1, 0], far_program)
+	var far_owner = _owner(far_source)
+	var far = far_owner.start(_fixture(far_source), 1, 1)
+	check(far.has("error") and str(far.error).contains("ffxy"), "0x0046 refuses a viewport outside the reviewed ffxy bounds")
 	check(result.effects[1].sprite_word == 193 and result.effects[1].role == 0, "0x0065 writes role0 map sprite 193")
 	check(result.effects[2].frame_word == 0 and result.effects[2].direction_word == 0, "0x0015 writes direction 0 and frame 0")
 	check(result.effects[3].roles == [0] and result.effects[3].member_last == 0,
 		"0x0075 rebuilds the single-member party from argument 1")
-	check(result.get("partial") == true and result.unimplemented.size() == 4,
+	check(result.get("partial") == true and result.unimplemented.size() == 2,
 		"the run reports its named sub-effect gaps instead of a full success")
-	check(str(result.unimplemented[0].sub_effect).contains("G04AC") and str(result.unimplemented[3].sub_effect).contains("T230"),
-		"named gaps cover the 0x0046 sub-effects and the T230 member sync")
+	check(str(result.unimplemented[0].sub_effect).contains("G04AC") and str(result.unimplemented[1].sub_effect).contains("T230"),
+		"named gaps cover the 0x0046 unbacked slots and the T230 member sync")
 	var owner_kinds: Array = run.requests.filter(func(request): return request.has("procedure")).map(func(request): return request.kind)
-	check(owner_kinds == ["load_party_sprites", "rebuild_party_equipment"],
-		"0x0075 asks the sprite and equipment owners before the trigger resumes")
+	check(owner_kinds == ["render_current_map_background", "load_party_sprites", "rebuild_party_equipment"],
+		"0x0046 asks for the background replay and 0x0075 asks the sprite and equipment owners before the trigger resumes")
 	# ByRef entry: a scene whose enter block returns advances the entry word.
 	var simple = _source([0, 0], [1, 0], [[0x0041, 0, 0, 0], [0x0001, 0, 0, 0]])
 	var simple_owner = _owner(simple)
@@ -207,14 +246,22 @@ func _synthetic_checks() -> void:
 	var multi_state = _fixture(multi_source)
 	while multi_state.party_records.size() < 3:
 		multi_state.party_records.append({"role_id": 0, "screen_x": 160, "screen_y": 112, "current_frame": 0})
+	var multi_fields: Array = []
+	for slot in range(3): multi_fields.append(multi_state.equipment.party_fields[0].duplicate(true))
+	multi_state.equipment.party_fields = multi_fields
+	multi_state.equipment.party_statuses = multi_fields.duplicate(true)
 	multi_state.equipment.party_roles = [0, 1, 2]
 	var multi_result = _drive(multi_owner, multi_owner.start(multi_state, 1, 1))
 	check(not multi_result.result.has("error") and multi_result.result.effects[0].roles == [1, 2]
-		and multi_result.result.effects[0].member_last == 1 and multi_result.result.effects[0].dropped_slots == 1,
-		"0x0075 rebuilds a two-member party and drops the unused slot")
+		and multi_result.result.effects[0].member_last == 1 and multi_result.result.effects[0].inactive_slots == 1,
+		"0x0075 rebuilds a two-member party and leaves the inactive slot untouched")
 	check(multi_result.result.state.equipment.party_roles == [1, 2]
-		and multi_result.result.state.party_records.size() == 2,
-		"the rebuilt composition reaches both the party records and the equipment roles")
+		and multi_result.result.state.party_records.size() == 3
+		and multi_result.result.state.party_records[0].role_id == 1 and multi_result.result.state.party_records[1].role_id == 2,
+		"the rebuilt composition writes the fixed party slots and the active equipment roles")
+	check(multi_result.result.state.equipment.party_fields.size() == 2
+		and multi_result.result.state.equipment.party_statuses.size() == 2,
+		"the equipment projections follow the active member set")
 	var default_program: Array = [[0x0075, 0x0000, 0x0000, 0x0000], [0x0001, 0, 0, 0]]
 	var default_source = _source([0, 0], [1, 0], default_program)
 	var default_owner = _owner(default_source)
@@ -304,6 +351,8 @@ func _real_checks() -> void:
 		"real opening relays the background restore and the five FFFF dialogues to the host")
 	check(opening_result.get("partial") == true and opening_result.unimplemented.size() >= 5,
 		"the completed opening still reports its named sub-effect gaps")
+	check(opening_requests.has("render_current_map_background") and opening_requests.has("render_scene"),
+		"the opening replays the map background and the scene frame through the host")
 	check(opening_result.trace.size() >= 16, "real opening executes the whole 16-instruction entry sequence")
 	check(opening_requests.count("load_party_sprites") == 1 and opening_requests.count("rebuild_party_equipment") == 1,
 		"each party-owner request is answered exactly once")

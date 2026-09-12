@@ -26,6 +26,12 @@ const ROLE_MAP_SPRITE_FIELD = 2
 const FX_MAX_X = 1696
 const FX_MAX_Y = 1840
 const SCENE_EVENT_MASK = 12 # G0306 bits4|8: event reload and EnterScript
+# Party formation step tables from the generated initializer (G041C/G0434).
+# The original subtracts them from the running member position per direction.
+const FORMATION_STEP_X = [-16, -16, 16, 16]
+const FORMATION_STEP_Y = [8, -8, -8, 8]
+const PARTY_SLOTS = 5
+const TRAIL_SLOTS = 5
 
 const CASES = {
 	0x003B: {"range": ["0x0042322E", "0x00423272"],
@@ -65,6 +71,7 @@ const LOAD_PARTY_SPRITES = "load_party_sprites"          # T99 0x0041C864
 const REBUILD_PARTY_EQUIPMENT = "rebuild_party_equipment" # T156 0x0041D374
 const SYNC_MEMBERS_FROM_TRAIL = "sync_members_from_trail" # T230 0x0041D2E4
 const RESTORE_DIALOG_BACKGROUND = "restore_dialog_background" # 0x0041D2B4
+const RENDER_CURRENT_MAP_BACKGROUND = "render_current_map_background" # 0x0041CB34
 # Named next gaps: not implemented, kept here so the diagnostic and the review
 # can name the same case identity.
 const NEXT_GAPS = {}
@@ -237,6 +244,8 @@ func _command_0046(state: Dictionary, request: Dictionary, source: Dictionary) -
 	for key in ["party_x", "party_y"]:
 		if not _i2(globals.get(key)):
 			return _failure("party_anchor", "0x0046 requires the explicit party screen anchor", request, source)
+	if not _i2(globals.get("direction_word")):
+		return _failure("party_direction", "0x0046 requires the explicit G026E direction word", request, source)
 	var arg0: int = _signed(request.words[1])
 	var arg1: int = _signed(request.words[2])
 	var arg2: int = _signed(request.words[3])
@@ -249,19 +258,62 @@ func _command_0046(state: Dictionary, request: Dictionary, source: Dictionary) -
 	var viewport_y: int = world_y - globals.party_y
 	if viewport_x < 0 or viewport_x > FX_MAX_X or viewport_y < 0 or viewport_y > FX_MAX_Y:
 		return _failure("ffxy_clamp_unimplemented",
-			"0x0046 viewport outside the original ffxy bounds; Native does not implement the clamp",
+			"0x0046 viewport outside the original ffxy bounds; the 0x0041739C clamp is not implemented",
 			request, source)
-	var previous = [globals.get("world_x"), globals.get("world_y")]
+	# G0274/G0276 copy the new world position, so the next frame does not
+	# interpolate from the position before this teleport.
+	var direction: int = _signed(globals.direction_word)
+	if direction < 0 or direction >= FORMATION_STEP_X.size():
+		return _failure("party_direction", "0x0046 direction outside the reviewed formation tables", request, source)
+	if not state.get("party_records") is Array or state.party_records.size() < 1:
+		return _failure("party_backing", "0x0046 requires explicit party records", request, source)
+	if not state.get("party_trail") is Array or state.party_trail.size() != TRAIL_SLOTS:
+		return _failure("party_trail", "0x0046 requires the explicit five-entry trail array", request, source)
+	var leader = state.party_records[0]
+	if not leader is Dictionary or not leader.get("current_frame") is int:
+		return _failure("party_backing", "0x0046 requires the leader's explicit frame word", request, source)
 	globals.world_x = world_x; globals.world_y = world_y
+	globals.previous_x = world_x; globals.previous_y = world_y
 	globals.viewport_x = viewport_x; globals.viewport_y = viewport_y
 	var effect: Dictionary = {"kind": "party_map_position", "world_x": world_x, "world_y": world_y,
-		"viewport_x": viewport_x, "viewport_y": viewport_y, "previous_world": previous, "source": source}
-	var missing: Array = [
-		{"sub_effect": "G04AC party viewport records", "status": "not_implemented"},
-		{"sub_effect": "G04C4 five-entry trail", "status": "not_implemented"},
-		{"sub_effect": "non-battle map background redraw", "status": "not_implemented"},
-	]
-	return _result(state, request, [effect], missing)
+		"viewport_x": viewport_x, "viewport_y": viewport_y,
+		"previous_x": world_x, "previous_y": world_y, "source": source}
+	# Fixed G04AC/G04C4 writes for indices 0..4. Slots without explicit Native
+	# backing are reported instead of being invented.
+	var member_x: int = globals.party_x; var member_y: int = globals.party_y
+	var written: int = 0
+	var unbacked: Array = []
+	for slot in range(TRAIL_SLOTS):
+		if slot < state.party_records.size():
+			var record = state.party_records[slot]
+			if not record is Dictionary or not record.get("screen_x") is int or not record.get("screen_y") is int:
+				return _failure("party_backing", "0x0046 requires explicit member screen positions", request, source)
+			record.screen_x = member_x
+			record.screen_y = member_y
+			record.current_frame = leader.current_frame
+			written += 1
+		else:
+			unbacked.append(slot)
+		var trail = state.party_trail[slot]
+		if not trail is Dictionary:
+			return _failure("party_trail", "0x0046 requires explicit trail entries", request, source)
+		trail.x = member_x + viewport_x
+		trail.y = member_y + viewport_y
+		trail.direction_word = direction
+		member_x -= FORMATION_STEP_X[direction]
+		member_y -= FORMATION_STEP_Y[direction]
+	effect.party_slots = written
+	effect.trail_slots = TRAIL_SLOTS
+	var missing: Array = []
+	if not unbacked.is_empty():
+		missing.append({"sub_effect": "G04AC party slots without explicit backing: " + str(unbacked),
+			"status": "not_implemented"})
+	var result: Dictionary = _result(state, request, [effect], missing)
+	if _signed(globals.get("battle_mode", -1)) == 0:
+		# The original re-renders the map background after a non-battle teleport.
+		result.requests = [{"kind": RENDER_CURRENT_MAP_BACKGROUND, "original_entry": "0x0041CB34",
+			"procedure": "RenderCurrentMapBackground", "viewport_x": viewport_x, "viewport_y": viewport_y}]
+	return result
 
 func _command_0059(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
 	var globals: Dictionary = state.globals
@@ -325,20 +377,25 @@ func _command_0075(state: Dictionary, request: Dictionary, source: Dictionary) -
 	for role in roles:
 		if role < 0 or role >= ROLES:
 			return _failure("party_backing", "0x0075 role argument is outside the source role table", request, source)
-	var records: Array = []
+	# G04AC is a fixed array: the command writes the active slots and leaves the
+	# inactive ones untouched, while the equipment projections follow the active
+	# member set that the original T156 call rebuilds.
+	if state.party_records.size() < roles.size():
+		return _failure("party_backing", "0x0075 needs explicit records for every requested member", request, source)
 	for slot in range(roles.size()):
-		var existing = state.party_records[slot] if slot < state.party_records.size() else {}
+		var existing = state.party_records[slot]
 		if not existing is Dictionary or not existing.get("current_frame") is int:
 			return _failure("party_backing", "0x0075 needs the slot's explicit frame word", request, source)
-		var record: Dictionary = existing.duplicate(true)
-		record.role_id = roles[slot]
-		records.append(record)
-	var dropped: Array = state.party_records.slice(roles.size())
-	state.party_records = records
+		existing.role_id = roles[slot]
+	for key in ["party_fields", "party_statuses"]:
+		if not equipment.get(key) is Array or equipment[key].size() < roles.size():
+			return _failure("party_backing", "0x0075 needs the equipment projection for every member", request, source)
+		equipment[key] = equipment[key].slice(0, roles.size())
 	equipment.party_roles = roles.duplicate()
 	state.globals.member_last = roles.size() - 1
 	var effect: Dictionary = {"kind": "party_composition", "roles": roles.duplicate(),
-		"member_last": state.globals.member_last, "dropped_slots": dropped.size(), "source": source}
+		"member_last": state.globals.member_last,
+		"inactive_slots": state.party_records.size() - roles.size(), "source": source}
 	var requests: Array = [
 		{"kind": LOAD_PARTY_SPRITES, "original_entry": "0x0041C864", "procedure": "LoadPlayerAndFollowerSprites",
 			"roles": roles.duplicate(), "follower_count": state.globals.get("follower_count", 0)},

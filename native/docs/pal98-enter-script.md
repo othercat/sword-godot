@@ -61,7 +61,7 @@ source bytes for every operand.
 | `0x003B` | `0x0042322E..0x00423272` | dialog globals: mode 0, text origin (80,40) |
 | `0x003D` | `0x0042331A..0x004233C2` | lower dialog globals: mode 2, title (12,108), body origin (44,126) |
 | `0x0041` | `0x004234D6..0x004234F0` | `G0302 = 0` |
-| `0x0046` | `0x00423834..0x004239F4` | world position `((2*A0+A2)*16, (2*A1+A2)*8)`, previous world words, and the viewport `world - (party_x, party_y)` |
+| `0x0046` | `0x00423834..0x004239F4` | world position `((2*A0+A2)*16, (2*A1+A2)*8)`, previous-position copies, viewport `world - (party_x, party_y)`, the fixed five-slot party/trail writes and the non-battle background replay |
 | `0x0048` | `0x00423A16..0x00423A2C` | explicit original no-op |
 | `0x0059` | `0x004243B8..0x00424408` | for a valid changed scene: `G0306 |= 12`, `G026A = A0` |
 | `0x0065` | `0x0042477E..0x004247CC` | role `A0` map sprite field index 2 of the admitted role table becomes `A1` |
@@ -71,11 +71,10 @@ source bytes for every operand.
 Three boundaries are stated rather than hidden:
 
 - `0x0046` is implemented for the world/previous/viewport words only. The
-  original also rewrites the `G04AC` party viewport records and the `G04C4`
-  five-entry trail and re-renders the map background in non-battle mode; those
-  three sub-effects are reported per invocation as `unimplemented` entries. A
-  viewport outside the recovered ffxy bounds (1696x1840) fails the invocation
-  instead of inventing a clamp.
+  original rewrites the fixed `G04AC` party records for indices `0..4`; Native
+  writes the slots it has explicit backing for and reports the rest as a named
+  gap, because slots beyond the active party are not consumed by any reviewed
+  owner yet.
 - `0x0059` records that the unnamed `G028A = 0` write has no reviewed Native
   field; the mask and requested scene are applied, and the gap is reported.
 - `0x003B` writes the three reviewed dialog globals and reports the `G022A`
@@ -135,6 +134,28 @@ real blocker after the entry script itself; the text and scene-request commands
 are no longer the stop point.
 
 ## Evidence
+
+### Decoded facts behind the 0x0046 loop
+
+The full case body was decoded with the pinned token table before the loop was
+written, which corrected three separate things:
+
+- `G0274/G0276` receive **copies of the new** world position, not the previous
+  one, so the next frame does not interpolate across the teleport; the earlier
+  `previous_world` receipt stored the old value and was wrong.
+- the member step tables come from the generated initializer
+  (`0x00418350..0x00418448`): `G041C = [-16,-16,16,16]` and
+  `G0434 = [8,-8,-8,8]` per direction, subtracted from the running member
+  screen position, and `G04AC[i]` keeps the leader's `+6` frame word.
+- the loop bound is `For i = 0 To 4` (`PushI2Const0`,
+  `PushAddressOfLocal 0xFF66`, `PushI4Const4`, `ForI2Initialize`), matching the
+  five-entry `G04C4` trail rather than an arbitrary party size.
+
+Token names, the `PushI4Const<N>` family and the relative-branch base
+`0x420FC0` come from the pinned research verifier tables; the two tables above
+came from re-decoding the private image, and the values in the module reproduce
+the documented `G050C = {0,3,1,5,2,4}` initializer exactly, which is what makes
+the decode trustworthy.
 
 ### Self-review follow-up (2026-09-12, commit 636e466)
 
