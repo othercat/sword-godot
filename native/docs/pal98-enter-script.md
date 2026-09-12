@@ -158,6 +158,21 @@ the member equipment state, and the display double records the
 requests. 85 checks pass; the sprite/equipment results are asserted from the
 adapter's own receipts rather than from the host's acknowledgements.
 
+### Dialogue host (2026-09-12)
+
+`native_pal98_dialogue_host.gd` answers the T258 dialogue caller's requests and
+keeps the real text: `draw_string`/`draw_glyph` runs are decoded with the
+admitted CP936/CP950 codec (the caller's trailing NUL load sentinel is stripped
+before decoding), the other draw/capture/restore requests are recorded, and
+`poll_input`/`wait` follow an explicitly declared input policy and an explicit
+tick counter. It renders nothing and polls no device, so pixels, physical input
+and a wall clock stay with their owners.
+
+With this host bound, the ordinary opening's five messages run through the real
+decoder: the typewriter path emits per-glyph draws with decoded codepoints and
+the title path draws message 1 as one whole string whose composed text equals
+the decoded source bytes. 91 checks pass.
+
 ### Decoded facts behind the 0x0046 loop
 
 The full case body was decoded with the pinned token table before the loop was

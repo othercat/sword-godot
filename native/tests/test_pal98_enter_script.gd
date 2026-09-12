@@ -14,6 +14,7 @@ const Sources = preload("res://src/native_pal98_sources.gd")
 const Schema = preload("res://src/native_schema.gd")
 const Package = preload("res://src/native_package.gd")
 const EntryHost = preload("res://src/native_pal98_entry_host.gd")
+const DialogueHost = preload("res://src/native_pal98_dialogue_host.gd")
 var checks: Array = []
 var failed: int = 0
 var package
@@ -107,13 +108,16 @@ func _drive(owner, first: Dictionary) -> Dictionary:
 
 ## Drives an invocation with the real owner adapter for command-owned requests
 ## and the display double for render/restore/audio requests.
-func _drive_with_host(owner, first: Dictionary, adapter) -> Dictionary:
+func _drive_with_host(owner, first: Dictionary, adapter, dialogue_host = null) -> Dictionary:
 	var result: Dictionary = first; var requests: Array = []
 	for step in range(4096):
 		if not result.has("request"): return {"result": result, "requests": requests}
 		var request: Dictionary = result.request; requests.append(request)
 		if request.kind == "dialogue":
-			result = owner.resume(request.id, {"event": _dialogue_event(request.effect)})
+			if dialogue_host != null:
+				result = owner.resume(request.id, {"event": dialogue_host.answer(request.effect)})
+			else:
+				result = owner.resume(request.id, {"event": _dialogue_event(request.effect)})
 		elif request.has("original_entry"):
 			result = owner.resume(request.id, adapter.answer(request))
 		elif request.has("state"):
@@ -438,8 +442,11 @@ func _real_checks() -> void:
 		check(adapter.bind(host_cache, host_kernel, request_state.inventory_bytes, [0, 0, 0, 0, 0, 0]),
 			"real owner adapter binds the sprite cache, equipment kernel and inventory")
 		var display = DisplayDouble.new(); adapter.bind_display(display)
+		var dialogue_host = DialogueHost.new()
+		check(dialogue_host.bind(package.pal98_sources), "dialogue host binds the admitted text encoding")
+		dialogue_host.set_input_policy([2], 2)
 		var chained_run = _drive_with_host(chained, chained.start(request_state, step.request.scene_id,
-			step.request.entry, step.request.event_id), adapter)
+			step.request.entry, step.request.event_id), adapter, dialogue_host)
 		var chained_result: Dictionary = chained_run.result
 		var answers: Array = adapter.answered()
 		var sprite_answer: Dictionary = {}
@@ -457,6 +464,27 @@ func _real_checks() -> void:
 		check(usage_clear, "the real equipment kernel clears all 256 inventory usage fields")
 		check(display.requests.has("render_current_map_background") or display.requests.has("render_scene"),
 			"the display double records the render requests the chain emitted: " + str(display.requests))
+		var drawn: Array = dialogue_host.texts()
+		var receipt_kinds: Array = dialogue_host.receipts().map(func(receipt): return receipt.kind)
+		check(drawn.size() >= 5, "the dialogue host composes the opening's real message text: "
+			+ str(drawn.size()) + " of " + str(receipt_kinds))
+		var codec = preload("res://src/native_pal98_text_codec.gd").new()
+		codec.open(package.pal98_sources.metadata().text_encoding)
+		# The title path draws message 1 as one whole string, so its composed text
+		# can be compared with the decoded source bytes directly.
+		var whole: Dictionary = {}
+		for receipt in dialogue_host.receipts():
+			if receipt.kind == "draw_string": whole = receipt
+		var title = records.message_bytes(1)
+		check(not title.has("error"), "the source title message is readable")
+		var expected: Dictionary = codec.decode(title.value.bytes)
+		check(not expected.has("error") and not whole.is_empty() and whole.text == expected.text,
+			"the whole-string draw matches the decoded source title message")
+		var glyph_receipts: Array = dialogue_host.receipts().filter(func(receipt): return receipt.kind == "draw_glyph")
+		check(glyph_receipts.size() >= 40 and glyph_receipts[0].codepoints.size() >= 1,
+			"the typewriter path emits per-glyph draws with decoded codepoints: " + str(glyph_receipts.size()))
+		check(dialogue_host.receipts().size() >= drawn.size() and dialogue_host.ticks() >= 0,
+			"the dialogue host keeps a receipt per composed run")
 		check(not chained_result.has("error") and chained_result.state.globals.requested_scene == 2,
 			"T212 request is answered by the real entry script up to its scene request")
 		check(chained_result.effects.size() >= 4 and chained_result.effects[0].world_x == 1024
