@@ -5,9 +5,10 @@
 The [T258 trigger driver](docs/pal98-trigger.md) fetches and dispatches the
 original 0000–000A local controls and FFFF dialogue calls, routing every
 continuing path through the public command gate and isolating host effects
-behind explicit requests and receipts. Line-by-line review against the fixed
-original bytes found the inherited draft matching on all checked points, so
-the draft is unchanged;69 new checks and the 48-check random regression pass.
+behind explicit requests and receipts. Follow-up review corrected recursive
+event-reference propagation and stale failure state, and established the original
+local-coordinate evidence;83 checks now pass. The earlier69-check adoption and
+48-check random regression remain historical evidence with their stated scope.
 EnterScript callers, real command owners, display/audio/save backends and
 ordinary original Session integration remain pending.
 

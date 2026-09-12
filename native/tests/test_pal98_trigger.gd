@@ -94,6 +94,7 @@ func _initialize() -> void:
 	_yes_no()
 	_idle()
 	_recursion()
+	_recursion_state_ownership()
 	_random()
 	_message()
 	_redraw_and_battle()
@@ -178,7 +179,7 @@ func _idle() -> void:
 	source = _source(4, [0, 4], [[2, 3, 0, 0], [1, 0, 0, 0], [1, 0, 0, 0]])
 	trigger.load_source(source)
 	run = _drive(trigger, trigger.start(_state(source, 1), 1, 1))
-	check(run.result.return_entry == 3 and _idle_counter(source, run.result.state.events, 1) == 0, "zero-target 0002 yields without touching the idle count")
+	check(run.result.return_entry == 3 and _idle_counter(source, run.result.state.events, 1) == 0, "zero-limit 0002 yields without touching the idle count")
 	source = _source(4, [0, 4], [[3, 1, 3, 0], [1, 0, 0, 0]])
 	trigger.load_source(source)
 	run = _drive(trigger, trigger.start(_state(source, 1), 1, 1))
@@ -188,7 +189,7 @@ func _idle() -> void:
 	source = _source(4, [0, 4], [[3, 2, 0, 0], [1, 0, 0, 0]])
 	trigger.load_source(source)
 	run = _drive(trigger, trigger.start(_state(source, 1), 1, 1))
-	check(run.result.return_entry == 3 and run.result.steps == 2 and run.requests.is_empty(), "zero-target 0003 restarts in-call without T240")
+	check(run.result.return_entry == 3 and run.result.steps == 2 and run.requests.is_empty(), "zero-limit 0003 restarts in-call without T240")
 	trigger.load_source(source)
 	var bounded: Dictionary = _drive(trigger, trigger.start(_state(source, 1), 1, 1, 1))
 	check(bounded.result.has("error") and str(bounded.result.error).contains("budget"), "instruction budget is an explicit bounded diagnostic")
@@ -220,6 +221,35 @@ func _recursion() -> void:
 	trigger.load_source(source)
 	run = _drive(trigger, trigger.start(_state(source, 1), 1, 1))
 	check(run.result.has("error") and str(run.result.error).contains("current scene"), "positive Arg1 without a known current scene diagnoses")
+
+func _recursion_state_ownership() -> void:
+	# 417E0C passes the existing event-context pointer; 417DFA instead passes
+	# the converted local's address. A child's T240 ByRef write distinguishes them.
+	for argument in [0, -1, 5]:
+		var source = _source(7, [3, 7], [[4, 4, argument, 0], [1, 0, 0, 0], [0, 0, 0, 0], [11, 0, 0, 0], [1, 0, 0, 0]])
+		var trigger = Trigger.new(); trigger.load_source(source)
+		var first: Dictionary = trigger.start(_state(source, 1, 0x12345, {}, {"current_scene": 1}), 1, 1)
+		var changed: Dictionary = first.request.state.duplicate(true)
+		changed.dialogue.local_x = 300; changed.dialogue.local_y = 301
+		changed.dialogue.origin_x = 77; changed.dialogue.origin_y = 78
+		changed.dialogue.colours[0] = 22; changed.globals.trigger_success_word = 0
+		var next: Dictionary = trigger.resume(first.request.id, {"state": changed, "entry": 4, "event_id": 7})
+		var expected_event: int = 7 if argument <= 0 else 1
+		check(next.request.event_id == expected_event, "recursive event ByRef aliases only nonpositive Arg1: " + str(argument))
+		check(next.request.state.dialogue.local_x == 101 and next.request.state.dialogue.local_y == 102,
+			"parent retains its T258 local coordinates after child return: " + str(argument))
+		check(next.request.state.dialogue.origin_x == 77 and next.request.state.dialogue.origin_y == 78
+			and next.request.state.dialogue.colours[0] == 22 and next.request.state.globals.trigger_success_word == 0,
+			"child writes to shared dialogue and success globals survive recursion: " + str(argument))
+		var run: Dictionary = _drive(trigger, next)
+		check(run.result.get("return_event_id") == expected_event, "completion exposes the final ByRef event context: " + str(argument))
+	var source = _source(7, [3, 7], [[4, 4, 0, 0], [1, 0, 0, 0], [0, 0, 0, 0], [4, 7, 0, 0], [1, 0, 0, 0], [0, 0, 0, 0], [11, 0, 0, 0], [1, 0, 0, 0]])
+	var trigger = Trigger.new(); trigger.load_source(source)
+	var first: Dictionary = trigger.start(_state(source, 1), 1, 1)
+	var next: Dictionary = trigger.resume(first.request.id, {"state": first.request.state, "entry": 7, "event_id": -2})
+	var run: Dictionary = _drive(trigger, next)
+	check(run.requests.all(func(request): return request.event_id == -2) and run.result.get("return_event_id") == -2,
+		"shared signed event-context writes propagate through multiple recursion levels")
 
 func _random() -> void:
 	# 0006: strict signedI2(Arg0) < CSng(Rnd*100), consumed before the target is read.
@@ -316,6 +346,7 @@ func _isolation() -> void:
 	var failed_run: Dictionary = trigger.resume(first.request.id, {"error": "host blew up"})
 	check(str(failed_run.error).contains("host failed") and not trigger.error.is_empty(), "host errors fail the trigger with diagnostics")
 	check(trigger.start(state, 1, 1).has("request"), "failed trigger accepts a fresh start")
+	check(trigger.error.is_empty(), "fresh accepted invocation clears the previous failure diagnostic")
 	check(trigger.start(state, 1, 1).has("error"), "a second start while active is rejected")
 	trigger.cancel()
 	run = _drive(trigger, trigger.start(state, 1, 1))

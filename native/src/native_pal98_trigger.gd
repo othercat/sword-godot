@@ -61,6 +61,7 @@ func start(state: Dictionary, entry, event_id, step_budget: int = MAX_STEPS) -> 
 		return {"error":"trigger requires U2 entry, I2 event context and bounded instruction budget"}
 	var issue = _state_issue(state)
 	if not issue.is_empty(): return {"error":issue}
+	error = ""
 	_state = state.duplicate(true); _frames = []; _trace = []; _pending = {}; _child = {}
 	_steps = 0; _budget = step_budget; _serial = 0; _generation += 1
 	_enter(entry, event_id); return _advance()
@@ -68,8 +69,8 @@ func start(state: Dictionary, entry, event_id, step_budget: int = MAX_STEPS) -> 
 func cancel() -> void:
 	_generation += 1; _phase = "idle"; _pending = {}; _child = {}; _frames = []; _state = {}; _trace = []
 
-func _enter(entry: int, event_id: int) -> void:
-	_frames.append({"pc":entry,"saved":entry,"event_id":event_id,"words":[],"receipt":{}})
+func _enter(entry: int, event_id: int, shares_event_context: bool = false) -> void:
+	_frames.append({"pc":entry,"saved":entry,"event_id":event_id,"words":[],"receipt":{},"shares_event_context":shares_event_context})
 	_state.globals.trigger_success_word = -1
 	_state.dialogue = Dialogue.enter_trigger_context(_state.dialogue).context
 	_phase = "fetch"
@@ -188,7 +189,9 @@ func _recurse(frame: Dictionary) -> Dictionary:
 	# Only these two coordinates are T258 locals. Other dialogue values are
 	# globals and keep the child invocation's changes after it returns.
 	frame.local_x = _state.dialogue.local_x; frame.local_y = _state.dialogue.local_y
-	_enter(frame.words[1],event_id); return {}
+	# Nonpositive Arg1 passes the caller's existing ByRef event pointer.
+	# Positive Arg1 passes the address of a separate converted local instead.
+	_enter(frame.words[1],event_id,argument <= 0); return {}
 
 func _advance() -> Dictionary:
 	while true:
@@ -256,9 +259,10 @@ func _advance() -> Dictionary:
 				_frames.pop_back()
 				if _frames.is_empty():
 					_phase = "complete"; _pending = {}
-					return {"state":_state.duplicate(true),"return_entry":entry,"steps":_steps,"trace":_trace.duplicate(true)}
+					return {"state":_state.duplicate(true),"return_entry":entry,"return_event_id":frame.event_id,"steps":_steps,"trace":_trace.duplicate(true)}
 				var parent: Dictionary = _frames.back()
 				parent.words[1] = entry # Recursive ByRef targets the local Arg0, not the SSS row.
+				if frame.shares_event_context: parent.event_id = frame.event_id
 				_state.dialogue.local_x = parent.local_x; _state.dialogue.local_y = parent.local_y
 				_phase = "command"
 			_: return _fail("invalid trigger phase")
