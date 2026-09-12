@@ -1330,17 +1330,37 @@ func _command_0046(state: Dictionary, request: Dictionary, source: Dictionary) -
 	var arg0: int = _signed(request.words[1])
 	var arg1: int = _signed(request.words[2])
 	var arg2: int = _signed(request.words[3])
-	# (worldX, worldY) = ((2*A0+A2)*16, (2*A1+A2)*8) from the original body.
-	var world_x: int = (arg0 * 2 + arg2) * 16
-	var world_y: int = (arg1 * 2 + arg2) * 8
-	if not _u2(world_x) or not _u2(world_y):
+	# (worldX, worldY) = ((2*A0+A2)*16, (2*A1+A2)*8); the original body runs the
+	# doubling, argument add and scale as checked I2 operations.
+	var sum_x: int = arg0 + arg0
+	var sum_y: int = arg1 + arg1
+	if not _i2(sum_x) or not _i2(sum_y):
+		return _failure("checked_i2", "0x0046 doubled argument leaves I2 range", request, source)
+	sum_x += arg2
+	sum_y += arg2
+	if not _i2(sum_x) or not _i2(sum_y):
+		return _failure("checked_i2", "0x0046 world position sum leaves I2 range", request, source)
+	var world_x: int = sum_x * 16
+	var world_y: int = sum_y * 8
+	if not _i2(world_x) or not _i2(world_y):
 		return _failure("checked_i2", "0x0046 world position leaves WORD range", request, source)
 	var viewport_x: int = world_x - globals.party_x
 	var viewport_y: int = world_y - globals.party_y
-	if viewport_x < 0 or viewport_x > FX_MAX_X or viewport_y < 0 or viewport_y > FX_MAX_Y:
-		return _failure("ffxy_clamp_unimplemented",
-			"0x0046 viewport outside the original ffxy bounds; the 0x0041739C clamp is not implemented",
-			request, source)
+	if not _i2(viewport_x) or not _i2(viewport_y):
+		return _failure("checked_i2", "0x0046 viewport subtraction leaves I2 range", request, source)
+	# PALOLD 0x1000352B (ffxy, 0x49 bytes, sha256 f62992c5...) clamps the two
+	# ByRef viewport words independently to 0..max. The 0046 case passes the
+	# loaded map's G030A/G030C bounds, not literals, and SubMain's whole-step
+	# clamp rollback has no part in this case.
+	var max_x = globals.get("ffxy_max_x")
+	var max_y = globals.get("ffxy_max_y")
+	if not _i2(max_x) or not _i2(max_y) or max_x < 0 or max_y < 0:
+		return _failure("ffxy_bounds",
+			"0x0046 requires the explicit nonnegative G030A/G030C map viewport bounds", request, source)
+	var clamped_x: bool = viewport_x < 0 or viewport_x > max_x
+	var clamped_y: bool = viewport_y < 0 or viewport_y > max_y
+	viewport_x = clampi(viewport_x, 0, max_x)
+	viewport_y = clampi(viewport_y, 0, max_y)
 	# G0274/G0276 copy the new world position, so the next frame does not
 	# interpolate from the position before this teleport.
 	var direction: int = _signed(globals.direction_word)
@@ -1358,19 +1378,40 @@ func _command_0046(state: Dictionary, request: Dictionary, source: Dictionary) -
 	globals.viewport_x = viewport_x; globals.viewport_y = viewport_y
 	var effect: Dictionary = {"kind": "party_map_position", "world_x": world_x, "world_y": world_y,
 		"viewport_x": viewport_x, "viewport_y": viewport_y,
+		"clamped_x": clamped_x, "clamped_y": clamped_y,
 		"previous_x": world_x, "previous_y": world_y, "source": source}
 	# Fixed G04AC/G04C4 writes for indices 0..4. Slots without explicit Native
 	# backing are reported instead of being invented.
 	var member_x: int = globals.party_x; var member_y: int = globals.party_y
 	var written: int = 0
 	var unbacked: Array = []
+	# The original interleaves the checked position arithmetic with the G04C4
+	# writes; Native pre-validates all five slots so a checked failure applies
+	# nothing, then applies the same values in the same slot order.
+	var slot_screen_x: Array = []
+	var slot_screen_y: Array = []
+	var slot_member_x: Array = []
+	var slot_member_y: Array = []
+	for slot in range(TRAIL_SLOTS):
+		var screen_x: int = member_x + viewport_x
+		var screen_y: int = member_y + viewport_y
+		if not _i2(screen_x) or not _i2(screen_y):
+			return _failure("checked_i2", "0x0046 member screen position leaves I2 range", request, source)
+		slot_screen_x.append(screen_x)
+		slot_screen_y.append(screen_y)
+		slot_member_x.append(member_x)
+		slot_member_y.append(member_y)
+		member_x -= FORMATION_STEP_X[direction]
+		member_y -= FORMATION_STEP_Y[direction]
+		if not _i2(member_x) or not _i2(member_y):
+			return _failure("checked_i2", "0x0046 formation step leaves I2 range", request, source)
 	for slot in range(TRAIL_SLOTS):
 		if slot < state.party_records.size():
 			var record = state.party_records[slot]
 			if not record is Dictionary or not record.get("screen_x") is int or not record.get("screen_y") is int:
 				return _failure("party_backing", "0x0046 requires explicit member screen positions", request, source)
-			record.screen_x = member_x
-			record.screen_y = member_y
+			record.screen_x = slot_member_x[slot]
+			record.screen_y = slot_member_y[slot]
 			record.current_frame = leader.current_frame
 			written += 1
 		else:
@@ -1378,11 +1419,9 @@ func _command_0046(state: Dictionary, request: Dictionary, source: Dictionary) -
 		var trail = state.party_trail[slot]
 		if not trail is Dictionary:
 			return _failure("party_trail", "0x0046 requires explicit trail entries", request, source)
-		trail.x = member_x + viewport_x
-		trail.y = member_y + viewport_y
+		trail.x = slot_screen_x[slot]
+		trail.y = slot_screen_y[slot]
 		trail.direction_word = direction
-		member_x -= FORMATION_STEP_X[direction]
-		member_y -= FORMATION_STEP_Y[direction]
 	effect.party_slots = written
 	effect.trail_slots = TRAIL_SLOTS
 	var missing: Array = []

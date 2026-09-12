@@ -115,6 +115,8 @@ func _fixture(source, scene_id: int = 1) -> Dictionary:
 			"viewport_x": 864, "viewport_y": 912, "resource_flags": 0, "direction_word": 0, "loaded_map_id": 0,
 			"member_last": 2, "follower_count": 0, "battle_mode": 0, "midi_track": 0, "battle_music_track": 0,
 			"day_night_word": 0, "fade_gate_word": 0,
+			# G030A/G030C: the loaded map's ffxy viewport bounds consumed by 0x0046.
+			"ffxy_max_x": 1696, "ffxy_max_y": 1840,
 			# The fixture keeps the documented viewport/world/anchor relation so
 			# movement commands see consistent explicit words.
 			"world_x": 1024, "world_y": 1024, "previous_x": 1024, "previous_y": 1024,
@@ -250,8 +252,17 @@ func _synthetic_checks() -> void:
 	var far_program: Array = [[0x0046, 0x0020, 0x0190, 0x0000], [0x0001, 0, 0, 0]]
 	var far_source = _source([0, 0], [1, 0], far_program)
 	var far_owner = _owner(far_source)
-	var far = far_owner.start(_fixture(far_source), 1, 1)
-	check(far.has("error") and str(far.error).contains("ffxy"), "0x0046 refuses a viewport outside the reviewed ffxy bounds")
+	var far_state = _fixture(far_source)
+	var far = _drive(far_owner, far_owner.start(far_state, 1, 1))
+	var far_effect: Dictionary = far.result.effects[0]
+	check(not far.result.has("error") and far_effect.clamped_y == true and far_effect.clamped_x == false
+		and far_effect.viewport_y == 1840 and far_effect.world_y == 6400
+		and far.result.state.globals.viewport_y == 1840,
+		"0x0046 clamps an overflowing viewport axis to the map bound and keeps the world word")
+	var bare = _fixture(far_source); bare.globals.erase("ffxy_max_y")
+	var unbounded = far_owner.start(bare, 1, 1)
+	check(unbounded.has("error") and str(unbounded.get("diagnostic", {}).get("code")) == "ffxy_bounds",
+		"0x0046 without the explicit map bounds fails named")
 	check(result.effects[1].sprite_word == 193 and result.effects[1].role == 0, "0x0065 writes role0 map sprite 193")
 	check(result.effects[2].frame_word == 0 and result.effects[2].direction_word == 0, "0x0015 writes direction 0 and frame 0")
 	check(result.effects[3].roles == [0] and result.effects[3].member_last == 0,
