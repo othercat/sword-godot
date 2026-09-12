@@ -78,6 +78,9 @@ source bytes for every operand.
 | `0x0071` | `0x00425400..0x00425426` | `G0298 = A0`, `G029A = A1` (screen-wave phase and amplitude) |
 | `0x0077` | `0x004256AC..0x004256FE` | `A0` defaults to 1; a zero `A1` requests the CD-track query, then the media stop request runs and a non-battle context clears `G027C` |
 | `0x0050` / `0x0051` | `0x004240E6..0x0042411C` / `0x0042411C..0x00424152` | requests `FadePaletteToBlackOnce` (`0x0041CDD4`) and `FadePaletteToRepeatedColorBlock` (`0x0041CDEC`) with `A0` defaulting to 1 |
+| `0x0025` | `0x00422336..0x004223F6` | same target resolution as `0x0016`, writing the resolved record's `+8` word |
+| `0x008B` | `0x00426338..0x0042637A` | requests the palette selection (`0x0041D11C`) and, when the explicit `G0250` fade gate is zero, the palette apply (`0x004174D0`) at the `G026C` day/night offset |
+| `0x0093` | `0x004266E8..0x00426704` | requests `FadeScenePaletteAndUpdateFrames` (`0x0041CE04`) with the instruction's argument |
 
 Three boundaries are stated rather than hidden:
 
@@ -196,13 +199,13 @@ synthetic lifecycle state, the current report is:
 | Metric | Value |
 | --- | --- |
 | Scenes with a nonzero enter word | 160 |
-| Scene entries that run to a return | 103 |
-| Average applied-command depth | 12.32 |
+| Scene entries that run to a return | 112 |
+| Average applied-command depth | 13.16 |
 | Deepest entries | scene 39 (23 commands), scene 1 (15 commands) |
 
-The remaining blockers, by scene count: `0x0075` 9 (scenes whose arguments need
-the party/equipment backing the coverage fixture does not model), `0x008B` 6,
-`0x007B` 4, `0x007F` 4, `0x0093` 4, `0x0025` 4, `0x0036` 4 and a tail of
+The remaining blockers, by scene count: `0x0075` 10 (scenes whose arguments need
+the party/equipment backing the coverage fixture does not model), `0x007F` 6,
+`0x007B` 4, `0x0036` 4, `0x001F` 3 and a tail of
 single-scene commands. The coverage fixture now models the fixed five-slot
 `G04AC`/`G04C4` projection, so `0x0046` and `0x0015` no longer report unbacked
 slots. This table is a coverage report

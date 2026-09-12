@@ -80,7 +80,8 @@ func _fixture(source, scene_id: int = 1) -> Dictionary:
 	equipment.read_tables(source.copy_chunk("data",3), source.copy_chunk("sss",2), source.copy_chunk("sss",4))
 	return {"globals": {"current_scene": scene_id, "requested_scene": scene_id, "party_x": 160, "party_y": 112,
 			"viewport_x": 864, "viewport_y": 912, "resource_flags": 0, "direction_word": 0, "loaded_map_id": 0,
-			"member_last": 0, "follower_count": 0, "battle_mode": 0, "midi_track": 0, "battle_music_track": 0},
+			"member_last": 0, "follower_count": 0, "battle_mode": 0, "midi_track": 0, "battle_music_track": 0,
+			"day_night_word": 0, "fade_gate_word": 0},
 		"events": events.source_state(), "dialogue": _context(), "rng": Random.create(0x12345),
 		"equipment": equipment.initial_state([0]),
 		"inventory_bytes": _zero(1536),

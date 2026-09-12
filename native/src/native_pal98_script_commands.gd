@@ -52,6 +52,9 @@ const CASES = {
 	0x0024: {"range": ["0x00422276", "0x00422336"],
 		"sha256": "8a43d83100b9aaa6191cbe5afbdcb54c4e1873620c3030933b1f225fd3366156",
 		"effect": "same target resolution as 0x0016, writing the resolved record's +10 word (AutoScript/TriggerScript family)"},
+	0x0025: {"range": ["0x00422336", "0x004223F6"],
+		"sha256": "fdf265acb90d295e120a24a90b9031f8207e1e027fab632542f2cba4181418e0",
+		"effect": "same target resolution, writing the resolved record's +8 word"},
 	0x0049: {"range": ["0x00423A2C", "0x00423AEC"],
 		"sha256": "e74b03b5e84ab52df630e2933fb93f79a63482d5030a8c738e2daad5a903a1fd",
 		"effect": "same target resolution, writing the resolved record's +12 word (event state)"},
@@ -112,6 +115,12 @@ const CASES = {
 	0x008E: {"range": ["0x004264EE", "0x00426506"],
 		"sha256": "282fc769a7cbac2159090b9fc1217aebc4cb32598fcae4b1f15fd51953bc5187",
 		"effect": "RestoreDialogBackground (0x0041D2B4) and clear the two capture/restore gates"},
+	0x008B: {"range": ["0x00426338", "0x0042637A"],
+		"sha256": "039ec2c5ba429c40b2f89b7b43af4ec48d4b223365afeab6d56182a1fd00165e",
+		"effect": "sets the palette through 0x0041D11C and, when the fade gate is zero, applies the palette at the day/night offset through 0x004174D0"},
+	0x0093: {"range": ["0x004266E8", "0x00426704"],
+		"sha256": "016ec32ec874da9eef00d94ed9340c0d2aaa1d734b72cba175d9fe372e499604",
+		"effect": "FadeScenePaletteAndUpdateFrames (0x0041CE04) with the instruction's argument"},
 }
 # Owner procedures the party rebuild calls, kept by their original entry points
 # so the relayed requests name the same identities the review does.
@@ -129,6 +138,9 @@ const STOP_CD_OR_MUSIC = "stop_cd_or_music" # 0x0041D254, identity inferred from
 const QUERY_CD_TRACK_PLAYING = "query_cd_track_playing" # 0x0041D224, identity inferred from its call site
 const FADE_TO_BLACK = "fade_palette_to_black" # 0x0041CDD4
 const FADE_TO_REPEATED_BLOCK = "fade_palette_to_repeated_color_block" # 0x0041CDEC
+const SET_PALETTE = "set_palette" # 0x0041D11C
+const APPLY_PALETTE = "apply_palette" # 0x004174D0
+const FADE_SCENE_PALETTE = "fade_scene_palette_and_update_frames" # 0x0041CE04
 # Named next gaps: not implemented, kept here so the diagnostic and the review
 # can name the same case identity.
 const NEXT_GAPS = {}
@@ -214,6 +226,7 @@ func consume(state: Dictionary, request: Dictionary) -> Dictionary:
 		0x003D: return _command_003D(state, request, source)
 		0x0016: return _command_0016(state, request, source)
 		0x0024: return _command_0024(state, request, source)
+		0x0025: return _command_0025(state, request, source)
 		0x0015: return _command_0015(state, request, source)
 		0x0041: return _command_0041(state, request, source)
 		0x0043: return _command_0043(state, request, source)
@@ -234,6 +247,8 @@ func consume(state: Dictionary, request: Dictionary) -> Dictionary:
 		0x0075: return _command_0075(state, request, source)
 		0x0077: return _command_0077(state, request, source)
 		0x008E: return _command_008E(state, request, source)
+		0x008B: return _command_008B(state, request, source)
+		0x0093: return _command_0093(state, request, source)
 	var facts: Dictionary = case_facts(opcode)
 	var details: Dictionary = {"effect": facts.get("effect"), "case_range": facts.get("range"),
 		"case_sha256": facts.get("sha256")}
@@ -441,6 +456,38 @@ func _command_0016(state: Dictionary, request: Dictionary, source: Dictionary) -
 ## 0x0024 and 0x0049 share 0x0016's target resolution but write one word.
 func _command_0024(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
 	return _event_field_write(state, request, source, 10, [request.words[2]])
+
+func _command_0025(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
+	return _event_field_write(state, request, source, 8, [request.words[2]])
+
+## 0x0093 runs the scene palette fade owner with the instruction's argument.
+func _command_0093(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
+	var result: Dictionary = _result(state, request, [{"kind": "scene_palette_fade",
+		"argument": request.words[1], "source": source}])
+	result.requests = [{"kind": FADE_SCENE_PALETTE, "original_entry": "0x0041CE04",
+		"procedure": "FadeScenePaletteAndUpdateFrames", "argument": request.words[1]}]
+	return result
+
+## 0x008B selects a palette and, when the fade gate is zero, applies the palette
+## at the current day/night offset.
+func _command_008B(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
+	var globals: Dictionary = state.globals
+	if not _u2(globals.get("day_night_word")):
+		return _failure("palette_state", "0x008B requires the explicit G026C day/night offset", request, source)
+	var fade_gate = globals.get("fade_gate_word")
+	if not _i2(fade_gate):
+		return _failure("palette_state", "0x008B requires the explicit G0250 fade gate", request, source)
+	var requests: Array = [{"kind": SET_PALETTE, "original_entry": "0x0041D11C",
+		"procedure": "0x0041D11C", "argument": request.words[1]}]
+	var effect: Dictionary = {"kind": "palette_select", "argument": request.words[1],
+		"offset": globals.day_night_word, "applied": false, "source": source}
+	if fade_gate == 0:
+		requests.append({"kind": APPLY_PALETTE, "original_entry": "0x004174D0",
+			"procedure": "0x004174D0", "offset": globals.day_night_word})
+		effect.applied = true
+	var result: Dictionary = _result(state, request, [effect])
+	result.requests = requests
+	return result
 
 func _command_0049(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
 	return _event_field_write(state, request, source, 12, [request.words[2]])
