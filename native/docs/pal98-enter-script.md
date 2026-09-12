@@ -77,6 +77,7 @@ source bytes for every operand.
 | `0x0049` | `0x00423A2C..0x00423AEC` | same target resolution, writing the resolved record's `+12` word |
 | `0x0071` | `0x00425400..0x00425426` | `G0298 = A0`, `G029A = A1` (screen-wave phase and amplitude) |
 | `0x0077` | `0x004256AC..0x004256FE` | `A0` defaults to 1; a zero `A1` requests the CD-track query, then the media stop request runs and a non-battle context clears `G027C` |
+| `0x0050` / `0x0051` | `0x004240E6..0x0042411C` / `0x0042411C..0x00424152` | requests `FadePaletteToBlackOnce` (`0x0041CDD4`) and `FadePaletteToRepeatedColorBlock` (`0x0041CDEC`) with `A0` defaulting to 1 |
 
 Three boundaries are stated rather than hidden:
 
@@ -195,14 +196,16 @@ synthetic lifecycle state, the current report is:
 | Metric | Value |
 | --- | --- |
 | Scenes with a nonzero enter word | 160 |
-| Scene entries that run to a return | 99 |
-| Average applied-command depth | 11.88 |
+| Scene entries that run to a return | 103 |
+| Average applied-command depth | 12.32 |
 | Deepest entries | scene 39 (23 commands), scene 1 (15 commands) |
 
-The remaining blockers, by scene count: `0x0050` 7, `0x0075` 7 (scenes whose
-arguments need more explicit party/equipment backing), `0x008B` 5, `0x007B` 4,
-`0x007F` 4, `0x0093` 4, `0x0036` 3, `0x0015` 3 and a tail of single-scene
-commands. This table is a coverage report
+The remaining blockers, by scene count: `0x0075` 9 (scenes whose arguments need
+the party/equipment backing the coverage fixture does not model), `0x008B` 6,
+`0x007B` 4, `0x007F` 4, `0x0093` 4, `0x0025` 4, `0x0036` 4 and a tail of
+single-scene commands. The coverage fixture now models the fixed five-slot
+`G04AC`/`G04C4` projection, so `0x0046` and `0x0015` no longer report unbacked
+slots. This table is a coverage report
 over the admitted pool with synthetic state; it is not an original Session,
 gameplay or acceptance claim.
 

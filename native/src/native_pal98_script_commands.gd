@@ -85,6 +85,12 @@ const CASES = {
 	0x004A: {"range": ["0x00423AEC", "0x00423B08"],
 		"sha256": "ade90cc13b3ccc4149656913c8d4351ccc36c20e2ed0c188b5a9747a19fca588",
 		"effect": "G0280 = A0 (battlefield selector word)"},
+	0x0050: {"range": ["0x004240E6", "0x0042411C"],
+		"sha256": "6d376704c4f69b7fe918fa9d16bb06f4addfdb821485734e6a4c83bfd3e25710",
+		"effect": "A0 defaults to 1, then FadePaletteToBlackOnce (0x0041CDD4) runs"},
+	0x0051: {"range": ["0x0042411C", "0x00424152"],
+		"sha256": "00e052e759aee099ac5397f956839d68bcc559f54395c6452f23d6b201669fb7",
+		"effect": "A0 defaults to 1, then FadePaletteToRepeatedColorBlock (0x0041CDEC) runs"},
 	0x0053: {"range": ["0x004241B4", "0x004241CE"],
 		"sha256": "391a28859adbc4c28a573632f1903d4f9a5ac7e9635c8795806973c0e7e7c2f3",
 		"effect": "G026C = 0 (day palette offset)"},
@@ -121,6 +127,8 @@ const CAPTURE_DIALOG_BACKGROUND = "capture_dialog_background" # 0x0041D29C
 const UPPER_DIALOG_LAYOUT = "upper_dialog_layout" # 0x0041D44C, identity not established
 const STOP_CD_OR_MUSIC = "stop_cd_or_music" # 0x0041D254, identity inferred from its call site
 const QUERY_CD_TRACK_PLAYING = "query_cd_track_playing" # 0x0041D224, identity inferred from its call site
+const FADE_TO_BLACK = "fade_palette_to_black" # 0x0041CDD4
+const FADE_TO_REPEATED_BLOCK = "fade_palette_to_repeated_color_block" # 0x0041CDEC
 # Named next gaps: not implemented, kept here so the diagnostic and the review
 # can name the same case identity.
 const NEXT_GAPS = {}
@@ -217,6 +225,8 @@ func consume(state: Dictionary, request: Dictionary) -> Dictionary:
 		0x0049: return _command_0049(state, request, source)
 		0x0053: return _command_0053(state, request, source)
 		0x0054: return _command_0054(state, request, source)
+		0x0050: return _command_0050(state, request, source)
+		0x0051: return _command_0051(state, request, source)
 		0x0059: return _command_0059(state, request, source)
 		0x0065: return _command_0065(state, request, source)
 		0x0073: return _command_0073(state, request, source)
@@ -496,6 +506,25 @@ func _command_0071(state: Dictionary, request: Dictionary, source: Dictionary) -
 	return _result(state, request, [{"kind": "screen_wave", "phase": request.words[1],
 		"amplitude": request.words[2], "source": source}])
 
+## 0x0050/0x0051 request the palette fade owners with the original default 1.
+func _command_0050(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
+	return _fade_request(state, request, source, FADE_TO_BLACK, "0x0041CDD4",
+		"FadePaletteToBlackOnce", "fade_to_black")
+
+func _command_0051(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
+	return _fade_request(state, request, source, FADE_TO_REPEATED_BLOCK, "0x0041CDEC",
+		"FadePaletteToRepeatedColorBlock", "fade_to_repeated_block")
+
+func _fade_request(state: Dictionary, request: Dictionary, source: Dictionary, kind: String,
+		entry: String, procedure: String, effect_kind: String) -> Dictionary:
+	var argument: int = request.words[1]
+	if argument == 0: argument = 1
+	var result: Dictionary = _result(state, request, [{"kind": effect_kind, "argument": argument,
+		"procedure": procedure, "source": source}])
+	result.requests = [{"kind": kind, "original_entry": entry, "procedure": procedure,
+		"argument": argument}]
+	return result
+
 ## 0x0077 stops the media owner's music; the field track clears outside battle.
 func _command_0077(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
 	var first: int = request.words[1]
@@ -669,8 +698,8 @@ func _command_0075(state: Dictionary, request: Dictionary, source: Dictionary) -
 	if not state.get("globals") is Dictionary:
 		return _failure("party_backing", "0x0075 requires explicit globals", request, source)
 	var equipment: Dictionary = state.equipment
-	if not equipment.get("party_roles") is Array or equipment.party_roles.size() != state.party_records.size():
-		return _failure("party_backing", "0x0075 requires party roles matching the party records", request, source)
+	if not equipment.get("party_roles") is Array:
+		return _failure("party_backing", "0x0075 requires the explicit active role projection", request, source)
 	for role in roles:
 		if role < 0 or role >= ROLES:
 			return _failure("party_backing", "0x0075 role argument is outside the source role table", request, source)

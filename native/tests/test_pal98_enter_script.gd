@@ -84,7 +84,13 @@ func _fixture(source, scene_id: int = 1) -> Dictionary:
 		"events": events.source_state(), "dialogue": _context(), "rng": Random.create(0x12345),
 		"equipment": equipment.initial_state([0]),
 		"inventory_bytes": _zero(1536),
-		"party_records": [{"role_id": 0, "screen_x": 160, "screen_y": 112, "current_frame": 3}],
+		# The fixed G04AC projection: five slots, of which the active count is
+		# carried by globals.member_last and the equipment role projection.
+		"party_records": [{"role_id": 0, "screen_x": 160, "screen_y": 112, "current_frame": 3},
+			{"role_id": 0, "screen_x": 176, "screen_y": 104, "current_frame": 3},
+			{"role_id": 0, "screen_x": 192, "screen_y": 96, "current_frame": 3},
+			{"role_id": 0, "screen_x": 208, "screen_y": 88, "current_frame": 3},
+			{"role_id": 0, "screen_x": 224, "screen_y": 80, "current_frame": 3}],
 		"party_trail": [{"x": 0, "y": 0, "direction_word": 0}, {"x": 0, "y": 0, "direction_word": 0},
 			{"x": 0, "y": 0, "direction_word": 0}, {"x": 0, "y": 0, "direction_word": 0},
 			{"x": 0, "y": 0, "direction_word": 0}]}
@@ -163,7 +169,7 @@ func _synthetic_checks() -> void:
 	check(result.effects[0].viewport_x == 864 and result.effects[0].viewport_y == 912, "0x0046 anchors the original viewport")
 	check(result.effects[0].previous_x == 1024 and result.effects[0].previous_y == 1024,
 		"0x0046 copies the new world position into the previous-position words")
-	check(result.effects[0].trail_slots == 5 and result.effects[0].party_slots == 1,
+	check(result.effects[0].trail_slots == 5 and result.effects[0].party_slots == 5,
 		"0x0046 writes the fixed trail array and the backed party slots")
 	# 0x0046 with full five-slot backing, formation steps and the replay request.
 	var map_program: Array = [[0x0046, 0x0020, 0x0040, 0x0000], [0x0001, 0, 0, 0]]
@@ -201,10 +207,10 @@ func _synthetic_checks() -> void:
 	check(result.effects[2].frame_word == 0 and result.effects[2].direction_word == 0, "0x0015 writes direction 0 and frame 0")
 	check(result.effects[3].roles == [0] and result.effects[3].member_last == 0,
 		"0x0075 rebuilds the single-member party from argument 1")
-	check(result.get("partial") == true and result.unimplemented.size() == 2,
+	check(result.get("partial") == true and result.unimplemented.size() == 1,
 		"the run reports its named sub-effect gaps instead of a full success")
-	check(str(result.unimplemented[0].sub_effect).contains("G04AC") and str(result.unimplemented[1].sub_effect).contains("T230"),
-		"named gaps cover the 0x0046 unbacked slots and the T230 member sync")
+	check(str(result.unimplemented[0].sub_effect).contains("T230"),
+		"named gaps cover the T230 member sync")
 	var owner_kinds: Array = run.requests.filter(func(request): return request.has("procedure")).map(func(request): return request.kind)
 	check(owner_kinds == ["render_current_map_background", "load_party_sprites", "rebuild_party_equipment"],
 		"0x0046 asks for the background replay and 0x0075 asks the sprite and equipment owners before the trigger resumes")
@@ -237,7 +243,12 @@ func _synthetic_checks() -> void:
 	var slot_source = _source([0, 0], [1, 0], slot_program)
 	var slot_owner = _owner(slot_source)
 	var slot_result = slot_owner.start(_fixture(slot_source), 1, 1)
-	check(slot_result.has("error") and str(slot_result.error).contains("party record"), "0x0015 refuses an unknown party slot")
+	check(not slot_result.has("error"), "0x0015 accepts a backed party slot inside the fixed array")
+	var beyond_program: Array = [[0x0015, 0x0000, 0x0000, 0x0009], [0x0001, 0, 0, 0]]
+	var beyond_source = _source([0, 0], [1, 0], beyond_program)
+	var beyond_owner = _owner(beyond_source)
+	var beyond = beyond_owner.start(_fixture(beyond_source), 1, 1)
+	check(beyond.has("error") and str(beyond.error).contains("party record"), "0x0015 refuses a slot beyond the fixed array")
 	# 0x0059 valid changed scene and unchanged scene.
 	var scene_program: Array = [[0x0059, 0x0002, 0x0000, 0x0000], [0x0001, 0, 0, 0]]
 	var scene_source = _source([0, 0, 0], [1, 0, 0], scene_program)
@@ -367,10 +378,10 @@ func _synthetic_checks() -> void:
 	multi_state.equipment.party_roles = [0, 1, 2]
 	var multi_result = _drive(multi_owner, multi_owner.start(multi_state, 1, 1))
 	check(not multi_result.result.has("error") and multi_result.result.effects[0].roles == [1, 2]
-		and multi_result.result.effects[0].member_last == 1 and multi_result.result.effects[0].inactive_slots == 1,
+		and multi_result.result.effects[0].member_last == 1 and multi_result.result.effects[0].inactive_slots == 3,
 		"0x0075 rebuilds a two-member party and leaves the inactive slot untouched")
 	check(multi_result.result.state.equipment.party_roles == [1, 2]
-		and multi_result.result.state.party_records.size() == 3
+		and multi_result.result.state.party_records.size() == 5
 		and multi_result.result.state.party_records[0].role_id == 1 and multi_result.result.state.party_records[1].role_id == 2,
 		"the rebuilt composition writes the fixed party slots and the active equipment roles")
 	check(multi_result.result.state.equipment.party_fields.size() == 2
@@ -667,7 +678,7 @@ func _real_checks() -> void:
 		"real opening asks the sprite and equipment owners: " + str(opening_requests))
 	check(opening_requests.has("restore_dialog_background") and opening_requests.count("dialogue") >= 5,
 		"real opening relays the background restore and the five FFFF dialogues to the host")
-	check(opening_result.get("partial") == true and opening_result.unimplemented.size() >= 5,
+	check(opening_result.get("partial") == true and opening_result.unimplemented.size() >= 4,
 		"the completed opening still reports its named sub-effect gaps")
 	check(opening_requests.has("render_current_map_background") and opening_requests.has("render_scene"),
 		"the opening replays the map background and the scene frame through the host")
