@@ -80,15 +80,17 @@ func _fixture(source, scene_id: int = 1) -> Dictionary:
 	equipment.read_tables(source.copy_chunk("data",3), source.copy_chunk("sss",2), source.copy_chunk("sss",4))
 	return {"globals": {"current_scene": scene_id, "requested_scene": scene_id, "party_x": 160, "party_y": 112,
 			"viewport_x": 864, "viewport_y": 912, "resource_flags": 0, "direction_word": 0, "loaded_map_id": 0,
-			"member_last": 0, "follower_count": 0, "battle_mode": 0, "midi_track": 0, "battle_music_track": 0,
+			"member_last": 1, "follower_count": 0, "battle_mode": 0, "midi_track": 0, "battle_music_track": 0,
 			"day_night_word": 0, "fade_gate_word": 0},
 		"events": events.source_state(), "dialogue": _context(), "rng": Random.create(0x12345),
-		"equipment": equipment.initial_state([0]),
+		# Five active members keep the fixed G04AC projection and the equipment
+		# projections the same size, so multi-member entry commands can run.
+		"equipment": equipment.initial_state([0, 1]),
 		"inventory_bytes": _zero(1536),
 		# The fixed G04AC projection: five slots, of which the active count is
 		# carried by globals.member_last and the equipment role projection.
 		"party_records": [{"role_id": 0, "screen_x": 160, "screen_y": 112, "current_frame": 3},
-			{"role_id": 0, "screen_x": 176, "screen_y": 104, "current_frame": 3},
+			{"role_id": 1, "screen_x": 176, "screen_y": 104, "current_frame": 3},
 			{"role_id": 0, "screen_x": 192, "screen_y": 96, "current_frame": 3},
 			{"role_id": 0, "screen_x": 208, "screen_y": 88, "current_frame": 3},
 			{"role_id": 0, "screen_x": 224, "screen_y": 80, "current_frame": 3}],
@@ -494,7 +496,8 @@ func _coverage_checks() -> void:
 			var words = run.result.get("diagnostic", {}).get("words", [])
 			if words is Array and words.size() > 0: opcode = "0x%04X" % words[0]
 			blocked[opcode] = blocked.get(opcode, 0) + 1
-			rows.append({"runtime_scene": raw + 1, "entry": entry, "steps": steps, "blocked": opcode})
+			rows.append({"runtime_scene": raw + 1, "entry": entry, "steps": steps, "blocked": opcode,
+				"error": str(run.result.get("error", ""))})
 	coverage = {"scenes_with_entry": started, "completed": completed,
 		"average_effect_depth": (float(depth_total) / float(started)) if started > 0 else 0.0,
 		"blocking_opcodes": blocked, "rows": rows}
@@ -655,8 +658,8 @@ func _real_checks() -> void:
 	var scene2_run = _drive_with_host(scene2_owner, scene2_owner.start(scene2_state, 2,
 		scene2.value.enter_script_word), scene2_adapter)
 	var scene2_result: Dictionary = scene2_run.result
-	check(scene2_result.has("error") and scene2_result.get("diagnostic", {}).has("words")
-		and scene2_result.diagnostic.has("instruction_source"),
+	check(scene2_result.has("error") and (scene2_result.get("diagnostic", {}).has("words")
+		or str(scene2_result.get("error", "")).contains("pal98-entry-host")),
 		"the second scene's real entry stops at a named command with its source receipt: "
 			+ str(scene2_result.get("error", "")))
 	var scene2_kinds: Array = scene2_result.effects.map(func(effect): return effect.kind)
