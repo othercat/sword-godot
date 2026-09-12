@@ -206,6 +206,26 @@ the decoded source bytes. 91 checks pass.
 
 ### Decoded grounds for the shared party-walk body (next package)
 
+### Remaining-entry triage (2026-09-12)
+
+The latest coverage report separates the sixteen scenes that still stop without
+a named command opcode from the ones that do, so the next packages have a ranked
+input:
+
+| Blocker | Scenes | Nature |
+| --- | --- | --- |
+| walk step budget | 7 | the host double only approximates the external `extf` facing, so long real walks exhaust the Native 512-step guard |
+| `paksize header unavailable` | 9 | the admitted DATA3 has no map sprite (value 0) for the roles those scenes select; the sprite cache diagnoses the empty chunk instead of inventing a load |
+| `0x009B` FBP / cross-fade | 2 | unimplemented; the research carries a recovered body (`FbpMode`, view offsets, `mode 0` map reload, `mode 1/2` FBP chunk load and the `speed` default 2) |
+| `0x0075` equipment projection | 2 | the fixture models three active members; these scenes ask for more |
+| `0x001A` role slot | 1 | same three-member projection limit |
+| `0x001D`, `0x0020`, `0x0023`, `0x0080`, `0x008C` | 1 each | unimplemented single-scene commands (HP/MP clamps, inventory count/remove and branch, unequip, day/night palette fade, colour fade) |
+
+That ranking is the next package's starting order: `0x009B` first (it has a
+recovered body and two scenes), then the single-scene commands, while the walk
+budget and DATA3 sprite limits stay documented data/host boundaries rather than
+engine gaps.
+
 ### Party walk (2026-09-12, implemented)
 
 `native_pal98_party_walk.gd` implements the shared body for `0x0070` (speed 2)
