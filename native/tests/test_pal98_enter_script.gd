@@ -410,6 +410,30 @@ func _synthetic_checks() -> void:
 	# 0x001F through the real inventory owner.
 	# 0x006E party step: position copies, viewport delta, layer and owners.
 	# 0x009A event state range and its global fallback.
+	# 0x00A3 CD/MIDI loop normalization.
+	var track_program: Array = [[0x00A3, 0x0001, 0x0002, 0x0000], [0x0001, 0, 0, 0]]
+	var track_source = _source([0, 0], [1, 0], track_program)
+	var track_owner = _owner(track_source)
+	var track_adapter = EntryHost.new()
+	track_adapter.bind(state_cache, state_kernel, _zero(1536), [0, 0, 0, 0, 0, 0])
+	track_adapter.bind_display(DisplayDouble.new())
+	var track_run = _drive_with_host(track_owner, track_owner.start(_fixture(track_source), 1, 1), track_adapter)
+	var track_effects: Array = track_run.result.get("effects", [])
+	check(not track_run.result.has("error") and track_effects.size() == 1
+		and track_effects[0].third == 1 and track_effects[0].first == 1 and track_effects[0].second == 2,
+		"0x00A3 normalizes the loop flag for the track owner: " + str(track_run.result.get("error", "")))
+	check(track_run.requests.size() == 1 and track_run.requests[0].kind == "play_cd_or_midi_track"
+		and track_run.requests[0].third == 1,
+		"the normalized track request reaches the host")
+	var keep_program: Array = [[0x00A3, 0x0004, 0x0000, 0x0002], [0x0001, 0, 0, 0]]
+	var keep_source = _source([0, 0], [1, 0], keep_program)
+	var keep_owner = _owner(keep_source)
+	var keep_adapter = EntryHost.new()
+	keep_adapter.bind(state_cache, state_kernel, _zero(1536), [0, 0, 0, 0, 0, 0])
+	keep_adapter.bind_display(DisplayDouble.new())
+	var keep_run = _drive_with_host(keep_owner, keep_owner.start(_fixture(keep_source), 1, 1), keep_adapter)
+	check(not keep_run.result.has("error") and keep_run.result.effects[0].third == 2,
+		"an argument above one keeps its value")
 	# 0x0070 party walk through the real continuation protocol.
 	var walk_program: Array = [[0x0070, 0x0021, 0x0041, 0x0000], [0x0001, 0, 0, 0]]
 	var walk_source = _source([0, 0], [1, 0], walk_program)

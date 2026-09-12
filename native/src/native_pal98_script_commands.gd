@@ -112,6 +112,9 @@ const CASES = {
 	0x009A: {"range": ["0x0042694E", "0x00426A56"],
 		"sha256": "2c21b7afb612569200ad2e9991adcb32b92cc0f5736d8c25b469ded47aef59a4",
 		"effect": "resolves A0/A1 against the scene event base and writes the state word (+12) for the inclusive range, falling back to the global event record when the start is out of range"},
+	0x00A3: {"range": ["0x0042759A", "0x004275D6"],
+		"sha256": "2bc79a19fb39bd185fbd4f9a9abea9af97f0abe6f18ae5ca63b826619d1983a1",
+		"effect": "normalizes the third argument (at most 1 becomes Arg2 Xor 1) and requests PlayCdOrMidiTrack (0x0041D23C) with the three ByRef words"},
 	0x001F: {"range": ["0x00421EC4", "0x00421F00"],
 		"sha256": "79fa119ab6503c8516f2ac38ffe38c581b8630ad9f6072d3a3c1d1903e55d8b0",
 		"effect": "compresses the inventory (T152 0x0041C96C), defaults a nonpositive amount to 1 and adds the item through T140 (0x0041CCCC)"},
@@ -161,6 +164,7 @@ const ADD_INVENTORY_ITEM = "add_inventory_item" # T152 0x0041C96C then T140 0x00
 const Walk = preload("res://src/native_pal98_party_walk.gd")
 const POST_MOVE_UPDATE = "post_move_update" # 0x0041D2CC
 const UPDATE_VIEWPORT_AND_PARTY = "update_viewport_and_party_position" # 0x0041CC3C
+const PLAY_CD_OR_MIDI = "play_cd_or_midi_track" # 0x0041D23C
 # Named next gaps: not implemented, kept here so the diagnostic and the review
 # can name the same case identity.
 const NEXT_GAPS = {}
@@ -278,6 +282,7 @@ func consume(state: Dictionary, request: Dictionary) -> Dictionary:
 		0x0093: return _command_0093(state, request, source)
 		0x0099: return _command_0099(state, request, source)
 		0x009A: return _command_009A(state, request, source)
+		0x00A3: return _command_00A3(state, request, source)
 	var facts: Dictionary = case_facts(opcode)
 	var details: Dictionary = {"effect": facts.get("effect"), "case_range": facts.get("range"),
 		"case_sha256": facts.get("sha256")}
@@ -586,6 +591,19 @@ func _command_009A(state: Dictionary, request: Dictionary, source: Dictionary) -
 	state.events.global_events.encode_u16(at, value)
 	return _result(state, request, [{"kind": "event_state_range", "scope": "global_table",
 		"from": _signed(request.words[1]), "to": finish, "value": value, "offset": at, "source": source}])
+
+## 0x00A3 normalizes the loop flag and requests the CD/MIDI track owner.
+func _command_00A3(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
+	var first: int = request.words[1]
+	var second: int = request.words[2]
+	var third: int = _signed(request.words[3])
+	if third <= 1: third = third ^ 1
+	var effect: Dictionary = {"kind": "cd_or_midi_track", "first": first, "second": second,
+		"third": third & 65535, "normalized": true, "source": source}
+	var result: Dictionary = _result(state, request, [effect])
+	result.requests = [{"kind": PLAY_CD_OR_MIDI, "original_entry": "0x0041D23C",
+		"procedure": "PlayCdOrMidiTrack", "first": first, "second": second, "third": third & 65535}]
+	return result
 
 func _command_0099(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
 	var argument: int = _signed(request.words[1])
