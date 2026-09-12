@@ -49,6 +49,18 @@ const CASES = {
 	0x0016: {"range": ["0x004214DC", "0x004215E0"],
 		"sha256": "97d5870a01db9368720b7a49812dceec9ffe99cef587f9f2603b623a95cb6a7a",
 		"effect": "A0==0 no-op; a negative A0 targets the current event, a positive one resolves against the scene event base; fields +20/+22 are written or the global table falls back to G0138+(A0-1)*32"},
+	0x0024: {"range": ["0x00422276", "0x00422336"],
+		"sha256": "8a43d83100b9aaa6191cbe5afbdcb54c4e1873620c3030933b1f225fd3366156",
+		"effect": "same target resolution as 0x0016, writing the resolved record's +10 word (AutoScript/TriggerScript family)"},
+	0x0049: {"range": ["0x00423A2C", "0x00423AEC"],
+		"sha256": "e74b03b5e84ab52df630e2933fb93f79a63482d5030a8c738e2daad5a903a1fd",
+		"effect": "same target resolution, writing the resolved record's +12 word (event state)"},
+	0x0071: {"range": ["0x00425400", "0x00425426"],
+		"sha256": "74f0007bd082b1a319179bc64968d2abc6c6ab6c66206d37d31af0b0354d94af",
+		"effect": "G0298 = A0, G029A = A1 (screen-wave state)"},
+	0x0077: {"range": ["0x004256AC", "0x004256FE"],
+		"sha256": "679bb8101add55d44cf71111cb9a0130c1c69ca9ed28b78e10b2e40dd0ff03c2",
+		"effect": "A0 defaults to 1; a zero A1 queries the CD track, then the media stop runs and a non-battle context clears G027C"},
 	0x0035: {"range": ["0x00422F16", "0x00422F52"],
 		"sha256": "873a78738f09dd6511e58f5a57a3bb27ce0b4a26c68a7b39ba9e0cf0a3532144",
 		"effect": "screen-shake count = A0 and amplitude = A1 with the original default 4"},
@@ -107,6 +119,8 @@ const CLEAR_EFFECTIVE_CROSS_FADE = "clear_effective_cross_fade" # 0x0041CEC4
 const PLAY_SOUND_EFFECT = "play_sound_effect" # PlaySoundEffectIfEnabled 0x0041D284
 const CAPTURE_DIALOG_BACKGROUND = "capture_dialog_background" # 0x0041D29C
 const UPPER_DIALOG_LAYOUT = "upper_dialog_layout" # 0x0041D44C, identity not established
+const STOP_CD_OR_MUSIC = "stop_cd_or_music" # 0x0041D254, identity inferred from its call site
+const QUERY_CD_TRACK_PLAYING = "query_cd_track_playing" # 0x0041D224, identity inferred from its call site
 # Named next gaps: not implemented, kept here so the diagnostic and the review
 # can name the same case identity.
 const NEXT_GAPS = {}
@@ -191,6 +205,7 @@ func consume(state: Dictionary, request: Dictionary) -> Dictionary:
 		0x0035: return _command_0035(state, request, source)
 		0x003D: return _command_003D(state, request, source)
 		0x0016: return _command_0016(state, request, source)
+		0x0024: return _command_0024(state, request, source)
 		0x0015: return _command_0015(state, request, source)
 		0x0041: return _command_0041(state, request, source)
 		0x0043: return _command_0043(state, request, source)
@@ -199,12 +214,15 @@ func consume(state: Dictionary, request: Dictionary) -> Dictionary:
 		0x0047: return _command_0047(state, request, source)
 		0x0048: return _result(state, request, [{"kind": "original_no_op", "source": source}])
 		0x004A: return _command_004A(state, request, source)
+		0x0049: return _command_0049(state, request, source)
 		0x0053: return _command_0053(state, request, source)
 		0x0054: return _command_0054(state, request, source)
 		0x0059: return _command_0059(state, request, source)
 		0x0065: return _command_0065(state, request, source)
 		0x0073: return _command_0073(state, request, source)
+		0x0071: return _command_0071(state, request, source)
 		0x0075: return _command_0075(state, request, source)
+		0x0077: return _command_0077(state, request, source)
 		0x008E: return _command_008E(state, request, source)
 	var facts: Dictionary = case_facts(opcode)
 	var details: Dictionary = {"effect": facts.get("effect"), "case_range": facts.get("range"),
@@ -408,27 +426,45 @@ func _command_0016(state: Dictionary, request: Dictionary, source: Dictionary) -
 	if target == 0:
 		return _result(state, request, [{"kind": "event_fields_skipped",
 			"detail": "zero target is the original no-op", "source": source}])
+	return _event_field_write(state, request, source, 20, [request.words[2], request.words[3]])
+
+## 0x0024 and 0x0049 share 0x0016's target resolution but write one word.
+func _command_0024(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
+	return _event_field_write(state, request, source, 10, [request.words[2]])
+
+func _command_0049(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
+	return _event_field_write(state, request, source, 12, [request.words[2]])
+
+## Shared resolution for the script-field commands: zero is a no-op, negative
+## targets the current runtime event slot, positive resolves against the current
+## scene's event base, and anything else falls back to the global table record.
+func _event_field_write(state: Dictionary, request: Dictionary, source: Dictionary,
+		field_offset: int, values: Array) -> Dictionary:
+	var target: int = _signed(request.words[1])
+	if target == 0:
+		return _result(state, request, [{"kind": "event_fields_skipped",
+			"detail": "zero target is the original no-op", "source": source}])
 	if not state.get("events") is Dictionary:
-		return _failure("event_backing", "0x0016 requires the explicit event state", request, source)
-	var first: int = request.words[2]
-	var second: int = request.words[3]
-	if not _u2(first) or not _u2(second):
-		return _failure("event_backing", "0x0016 requires U2 field words", request, source)
+		return _failure("event_backing", "script field command requires the explicit event state", request, source)
+	for value in values:
+		if not _u2(value):
+			return _failure("event_backing", "script field command requires U2 field words", request, source)
 	if target < 0:
 		var event_id: int = request.event_id
 		if event_id < 1:
 			return _failure("event_context",
-				"0x0016 current-event target needs a runtime event slot; the scene-entry context 0 has no owned Native slot",
+				"current-event target needs a runtime event slot; the scene-entry context 0 has no owned Native slot",
 				request, source)
 		var row: Dictionary = _events.event_record(state.events, event_id)
 		if row.has("error"): return _failure("event_record", str(row.error), request, source)
 		var bytes: PackedByteArray = row.value
-		bytes.encode_u16(20, first); bytes.encode_u16(22, second)
+		for index in range(values.size()):
+			bytes.encode_u16(field_offset + index * 2, values[index])
 		var replaced: Dictionary = _events.replace_event_record(state.events, event_id, bytes)
 		if replaced.has("error"): return _failure("event_writeback", str(replaced.error), request, source)
 		state.events = replaced.state
 		return _result(state, request, [{"kind": "event_fields", "scope": "current_event",
-			"event_id": event_id, "first": first, "second": second, "source": source}])
+			"event_id": event_id, "offset": field_offset, "values": values.duplicate(), "source": source}])
 	var base: int = state.events.scene_records.decode_u16((state.globals.current_scene - 1) * 8 + 6)
 	var index: int = target - base
 	var count: int = state.events.event_count
@@ -436,21 +472,48 @@ func _command_0016(state: Dictionary, request: Dictionary, source: Dictionary) -
 		var active: Dictionary = _events.event_record(state.events, index)
 		if active.has("error"): return _failure("event_record", str(active.error), request, source)
 		var active_bytes: PackedByteArray = active.value
-		active_bytes.encode_u16(20, first); active_bytes.encode_u16(22, second)
+		for value_index in range(values.size()):
+			active_bytes.encode_u16(field_offset + value_index * 2, values[value_index])
 		var written: Dictionary = _events.replace_event_record(state.events, index, active_bytes)
 		if written.has("error"): return _failure("event_writeback", str(written.error), request, source)
 		state.events = written.state
 		return _result(state, request, [{"kind": "event_fields", "scope": "current_scene",
-			"event_id": index, "first": first, "second": second, "source": source}])
+			"event_id": index, "offset": field_offset, "values": values.duplicate(), "source": source}])
 	var global_bytes: PackedByteArray = state.events.global_events
-	var at: int = (target - 1) * 32 + 20
-	if at < 0 or at + 4 > global_bytes.size():
-		return _failure("event_backing", "0x0016 global fallback target is outside the event table", request, source)
+	var at: int = (target - 1) * 32 + field_offset
+	if at < 0 or at + values.size() * 2 > global_bytes.size():
+		return _failure("event_backing", "global event fallback target is outside the event table", request, source)
 	state.events.global_events = global_bytes
-	state.events.global_events.encode_u16(at, first)
-	state.events.global_events.encode_u16(at + 2, second)
+	for global_index in range(values.size()):
+		state.events.global_events.encode_u16(at + global_index * 2, values[global_index])
 	return _result(state, request, [{"kind": "event_fields", "scope": "global_table",
-		"event_id": target, "offset": at, "first": first, "second": second, "source": source}])
+		"event_id": target, "offset": at, "values": values.duplicate(), "source": source}])
+
+## 0x0071 stores the screen-wave phase and amplitude (G0298/G029A).
+func _command_0071(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
+	state.globals.wave_phase = request.words[1]
+	state.globals.wave_amplitude = request.words[2]
+	return _result(state, request, [{"kind": "screen_wave", "phase": request.words[1],
+		"amplitude": request.words[2], "source": source}])
+
+## 0x0077 stops the media owner's music; the field track clears outside battle.
+func _command_0077(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
+	var first: int = request.words[1]
+	var second: int = request.words[2]
+	if first == 0: first = 1
+	var requests: Array = []
+	if second == 0:
+		requests.append({"kind": QUERY_CD_TRACK_PLAYING, "original_entry": "0x0041D224",
+			"procedure": "0x0041D224"})
+	requests.append({"kind": STOP_CD_OR_MUSIC, "original_entry": "0x0041D254", "procedure": "0x0041D254"})
+	var effect: Dictionary = {"kind": "stop_music", "first": first, "second": second,
+		"cleared_field_track": false, "source": source}
+	var result: Dictionary = _result(state, request, [effect])
+	result.requests = requests
+	if _signed(state.globals.get("battle_mode", -1)) == 0:
+		state.globals.midi_track = 0
+		effect.cleared_field_track = true
+	return result
 
 ## 0x0053/0x0054 select the day (0) and night (384) palette offsets in G026C.
 func _command_0053(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:

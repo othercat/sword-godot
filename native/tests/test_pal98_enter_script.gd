@@ -472,7 +472,7 @@ func _coverage_checks() -> void:
 		adapter.bind_display(DisplayDouble.new())
 		var dialogue_host = DialogueHost.new(); dialogue_host.bind(package.pal98_sources)
 		var run = _drive_with_host(owner, owner.start(state, raw + 1, entry), adapter, dialogue_host)
-		var steps: int = run.result.effects.size()
+		var steps: int = run.result.get("effects", []).size()
 		depth_total += steps
 		if not run.result.has("error"):
 			completed += 1

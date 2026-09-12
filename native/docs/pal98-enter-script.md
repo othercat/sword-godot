@@ -73,6 +73,10 @@ source bytes for every operand.
 | `0x004A` | `0x00423AEC..0x00423B08` | `G0280 = A0` (battlefield selector) |
 | `0x0053` / `0x0054` | `0x004241B4..0x004241CE` / `0x004241CE..0x004241EA` | `G026C = 0` / `G026C = 384` (day and night palette offsets) |
 | `0x0073` | `0x004254E4..0x00425516` | requests `ClearEffectiveCrossFade` (`0x0041CEC4`) with `A0` defaulting to 1 |
+| `0x0024` | `0x00422276..0x00422336` | same target resolution as `0x0016`, writing the resolved record's `+10` word |
+| `0x0049` | `0x00423A2C..0x00423AEC` | same target resolution, writing the resolved record's `+12` word |
+| `0x0071` | `0x00425400..0x00425426` | `G0298 = A0`, `G029A = A1` (screen-wave phase and amplitude) |
+| `0x0077` | `0x004256AC..0x004256FE` | `A0` defaults to 1; a zero `A1` requests the CD-track query, then the media stop request runs and a non-battle context clears `G027C` |
 
 Three boundaries are stated rather than hidden:
 
@@ -191,14 +195,14 @@ synthetic lifecycle state, the current report is:
 | Metric | Value |
 | --- | --- |
 | Scenes with a nonzero enter word | 160 |
-| Scene entries that run to a return | 92 |
-| Average applied-command depth | 7.22 |
+| Scene entries that run to a return | 99 |
+| Average applied-command depth | 11.88 |
 | Deepest entries | scene 39 (23 commands), scene 1 (15 commands) |
 
-The remaining blockers, by scene count: `0x0024` 9, `0x0049` 9, `0x0077` 5,
-`0x008B` 5, `0x0071` 4, `0x0075` 4 (scenes whose arguments need more explicit
-party/equipment backing), `0x007F` 4, `0x0036` 3, `0x0093` 3 and a tail of
-single-scene commands. This table is a coverage report
+The remaining blockers, by scene count: `0x0050` 7, `0x0075` 7 (scenes whose
+arguments need more explicit party/equipment backing), `0x008B` 5, `0x007B` 4,
+`0x007F` 4, `0x0093` 4, `0x0036` 3, `0x0015` 3 and a tail of single-scene
+commands. This table is a coverage report
 over the admitted pool with synthetic state; it is not an original Session,
 gameplay or acceptance claim.
 
