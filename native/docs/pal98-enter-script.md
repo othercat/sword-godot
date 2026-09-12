@@ -88,6 +88,7 @@ source bytes for every operand.
 | `0x009A` | `0x0042694E..0x00426A56` | resolves `A0/A1` against the scene event base and writes the state word (`+12`) for the inclusive range, falling back to the global event record when the start is out of range |
 | `0x00A3` | `0x0042759A..0x004275D6` | normalizes the third argument (at most 1 becomes `Arg2 Xor 1`) and requests `PlayCdOrMidiTrack` (`0x0041D23C`) with the three ByRef words |
 | `0x0085` | `0x004261A4..0x004261C6` | a nonzero argument requests the delay helper (`0x004170C4`) with `Arg0 * 10`; the pinned bytes show the small constant 10, not the reference summary's factor 80 |
+| `0x007F` | `0x00425A7C..0x00425D24` | viewport/member move state machine: the `(-1,0,0)` restore form puts the anchor back at `(160,112)`, otherwise `A0` rounds (zero defaults to one, negative runs zero) apply the re-anchor, absolute (`A2 < 0`: `(A0*32-160, A1*16-112)`) or delta mode, recompute the anchor as `world - viewport`, shift every member by the anchor delta and then request the frame, the optional viewport/party update and the scene render |
 
 Three boundaries are stated rather than hidden:
 

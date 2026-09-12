@@ -114,7 +114,11 @@ func _fixture(source, scene_id: int = 1) -> Dictionary:
 	return {"globals": {"current_scene": scene_id, "requested_scene": scene_id, "party_x": 160, "party_y": 112,
 			"viewport_x": 864, "viewport_y": 912, "resource_flags": 0, "direction_word": 0, "loaded_map_id": 0,
 			"member_last": 1, "follower_count": 0, "battle_mode": 0, "midi_track": 0, "battle_music_track": 0,
-			"day_night_word": 0, "fade_gate_word": 0},
+			"day_night_word": 0, "fade_gate_word": 0,
+			# The fixture keeps the documented viewport/world/anchor relation so
+			# movement commands see consistent explicit words.
+			"world_x": 1024, "world_y": 1024, "previous_x": 1024, "previous_y": 1024,
+			"previous_viewport_x": 864, "previous_viewport_y": 912, "party_layer_word": 0},
 		"events": events.source_state(), "dialogue": _context(), "rng": Random.create(0x12345),
 		# Five active members keep the fixed G04AC projection and the equipment
 		# projections the same size, so multi-member entry commands can run.
@@ -412,6 +416,48 @@ func _synthetic_checks() -> void:
 	# 0x009A event state range and its global fallback.
 	# 0x00A3 CD/MIDI loop normalization.
 	# 0x0085 delay request scaled by ten.
+	# 0x007F viewport move: restore, delta rounds and member shifts.
+	var restore_program: Array = [[0x007F, 0xFFFF, 0x0000, 0x0000], [0x0001, 0, 0, 0]]
+	var restore_source = _source([0, 0], [1, 0], restore_program)
+	var restore_owner = _owner(restore_source)
+	var restore_state = _fixture(restore_source)
+	restore_state.globals.world_x = 1200; restore_state.globals.world_y = 1300
+	restore_state.globals.party_x = 200; restore_state.globals.party_y = 150
+	restore_state.globals.viewport_x = 500; restore_state.globals.viewport_y = 500
+	var restore_adapter = EntryHost.new()
+	restore_adapter.bind(state_cache, state_kernel, _zero(1536), [0, 0, 0, 0, 0, 0])
+	restore_adapter.bind_display(DisplayDouble.new())
+	var restore_run = _drive_with_host(restore_owner, restore_owner.start(restore_state, 1, 1), restore_adapter)
+	check(not restore_run.result.has("error")
+		and restore_run.result.state.globals.viewport_x == 1040
+		and restore_run.result.state.globals.viewport_y == 1188
+		and restore_run.result.state.globals.party_x == 160
+		and restore_run.result.effects[0].kind == "viewport_restore",
+		"0x007F restores the default anchor and viewport: " + str(restore_run.result.get("error", "")))
+	check(restore_run.requests.map(func(request): return request.kind).has("render_current_map_background"),
+		"the restore form replays the map background")
+	var move_program: Array = [[0x007F, 0x0002, 0x0003, 0x0001], [0x0001, 0, 0, 0]]
+	var move_source = _source([0, 0], [1, 0], move_program)
+	var move_owner = _owner(move_source)
+	var move_state = _fixture(move_source)
+	move_state.globals.world_x = 1024; move_state.globals.world_y = 1024
+	move_state.globals.viewport_x = 864; move_state.globals.viewport_y = 912
+	var move_adapter = EntryHost.new()
+	move_adapter.bind(state_cache, state_kernel, _zero(1536), [0, 0, 0, 0, 0, 0])
+	move_adapter.bind_display(DisplayDouble.new())
+	var move_run = _drive_with_host(move_owner, move_owner.start(move_state, 1, 1), move_adapter)
+	var move_effects: Array = move_run.result.get("effects", [])
+	check(not move_run.result.has("error") and move_effects.size() == 2
+		and move_effects[1].viewport_x == 868 and move_effects[1].viewport_y == 918
+		and move_effects[1].anchor_x == 156 and move_effects[1].anchor_y == 106,
+		"the delta form advances the viewport and recomputes the anchor per round: "
+			+ str(move_run.result.get("error", "")))
+	check(move_effects[1].members_shifted == 4 and move_run.result.state.party_records[1].screen_x == 172
+		and move_run.result.state.party_records[1].screen_y == 98,
+		"the member records shift by the anchor delta")
+	check(move_run.requests.map(func(request): return request.kind).count("render_scene_frame") == 2
+		and move_run.requests.map(func(request): return request.kind).count("update_viewport_and_party_position") == 2,
+		"each delta round renders and updates the viewport/party")
 	var delay_program: Array = [[0x0085, 0x0003, 0x0000, 0x0000], [0x0001, 0, 0, 0]]
 	var delay_source = _source([0, 0], [1, 0], delay_program)
 	var delay_owner = _owner(delay_source)

@@ -118,6 +118,9 @@ const CASES = {
 	0x0085: {"range": ["0x004261A4", "0x004261C6"],
 		"sha256": "dcf309b3657b242c5c39313b4c04174188c81f8d87b80b1be3c09ec60cc764f4",
 		"effect": "a nonzero argument requests the delay helper (0x004170C4) with Arg0 times the small constant 10; the reference summary's factor 80 is not what the pinned bytes show"},
+	0x007F: {"range": ["0x00425A7C", "0x00425D24"],
+		"sha256": "7be521f4ef5c6221392088a10a8306064931e5bdc0b960c8f476f80cd1b365e3",
+		"effect": "viewport/member move state machine: the (-1,0,0) restore form, the re-anchor, absolute and delta modes, the anchor recompute and member shifts, then the frame, optional viewport/party update and scene render per round"},
 	0x001F: {"range": ["0x00421EC4", "0x00421F00"],
 		"sha256": "79fa119ab6503c8516f2ac38ffe38c581b8630ad9f6072d3a3c1d1903e55d8b0",
 		"effect": "compresses the inventory (T152 0x0041C96C), defaults a nonpositive amount to 1 and adds the item through T140 (0x0041CCCC)"},
@@ -169,6 +172,7 @@ const POST_MOVE_UPDATE = "post_move_update" # 0x0041D2CC
 const UPDATE_VIEWPORT_AND_PARTY = "update_viewport_and_party_position" # 0x0041CC3C
 const PLAY_CD_OR_MIDI = "play_cd_or_midi_track" # 0x0041D23C
 const DELAY_TICKS = "delay_ticks" # 0x004170C4
+const ViewportMove = preload("res://src/native_pal98_viewport_move.gd")
 # Named next gaps: not implemented, kept here so the diagnostic and the review
 # can name the same case identity.
 const NEXT_GAPS = {}
@@ -178,6 +182,7 @@ var _events
 var _identity: String = ""
 var _scene_count: int = 0
 var _walk = Walk.new()
+var _viewport
 
 static func _i2(value) -> bool:
 	return typeof(value) == TYPE_INT and value >= -32768 and value <= 32767
@@ -288,6 +293,7 @@ func consume(state: Dictionary, request: Dictionary) -> Dictionary:
 		0x009A: return _command_009A(state, request, source)
 		0x00A3: return _command_00A3(state, request, source)
 		0x0085: return _command_0085(state, request, source)
+		0x007F: return _command_007F(state, request, source)
 	var facts: Dictionary = case_facts(opcode)
 	var details: Dictionary = {"effect": facts.get("effect"), "case_range": facts.get("range"),
 		"case_sha256": facts.get("sha256")}
@@ -599,6 +605,18 @@ func _command_009A(state: Dictionary, request: Dictionary, source: Dictionary) -
 
 ## 0x00A3 normalizes the loop flag and requests the CD/MIDI track owner.
 ## 0x0085 requests the delay helper with the argument scaled by ten.
+## 0x007F runs the viewport/member move state machine.
+func _command_007F(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
+	if not _viewport is Object: _viewport = ViewportMove.new()
+	var moved: Dictionary = _viewport.run(state, request.words)
+	if moved.has("error"): return _failure("viewport_move", str(moved.error), request, source)
+	var effects: Array = []
+	for effect in moved.effects:
+		var entry: Dictionary = effect.duplicate(true); entry.source = source; effects.append(entry)
+	var result: Dictionary = _result(state, request, effects)
+	if not moved.requests.is_empty(): result.requests = moved.requests
+	return result
+
 func _command_0085(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
 	var argument: int = _signed(request.words[1])
 	var effect: Dictionary = {"kind": "delay", "argument": argument, "ticks": 0, "requested": false, "source": source}
