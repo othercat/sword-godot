@@ -34,6 +34,28 @@ func _shape_issue(palette_bytes) -> String:
 func save_current(palette_bytes: PackedByteArray, day_night: int) -> void:
 	save_block(palette_bytes, day_night * WORD_BYTES, WORK)
 
+## Cold load from the admitted PAT pair: the day palette (variant 0) fills the
+## first block, the night palette (variant 1) the second, and the work/target
+## scratch blocks start zeroed. The real admitted PAT chunks carry exactly this
+## day-then-night pair (chunk 0 variant 1 is the dark pair of variant 0), so
+## the fade endpoints come from the same admitted content as the renderer.
+func load_day_night(palette_bytes: PackedByteArray, day: PackedByteArray, night: PackedByteArray) -> Dictionary:
+	var issue: String = _shape_issue(palette_bytes)
+	if not issue.is_empty(): return _failure(issue)
+	var blocks: Array = [["day", day], ["night", night]]
+	for pair in blocks:
+		var block = pair[1]
+		if not block is PackedByteArray or block.size() != LENGTH:
+			return _failure(pair[0] + " palette requires exactly 0x300 RGB6 bytes")
+		for channel in block:
+			if channel > 63:
+				return _failure(pair[0] + " palette channel above RGB6 63")
+	palette_bytes.fill(0)
+	for index in range(LENGTH):
+		palette_bytes[index] = day[index]
+		palette_bytes[DAY_NIGHT_MAX * WORD_BYTES + index] = night[index]
+	return {"loaded": ["day", "night"]}
+
 ## copymen(dst=&buf[dst_offset], src=&buf[src_offset], 0x300): the original
 ## forward byte copy; the windows may overlap, so bytes are copied strictly
 ## in ascending order.
