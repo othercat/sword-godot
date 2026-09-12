@@ -262,9 +262,9 @@ func _synthetic_checks() -> void:
 	var scene_result = _drive(scene_owner, scene_owner.start(scene_state, 1, 1))
 	check(not scene_result.result.has("error") and scene_result.result.state.globals.requested_scene == 2
 		and scene_result.result.state.globals.resource_flags == 12, "0x0059 requests scene 2 and sets the original event/EnterScript mask")
-	check(scene_result.result.unimplemented.size() == 1 and str(scene_result.result.unimplemented[0].sub_effect).contains("G028A"),
-		"0x0059 reports the unnamed G028A word instead of guessing")
-	check(scene_result.result.get("partial") == true, "named sub-effect gaps mark the terminal result partial")
+	check(scene_result.result.state.globals.party_layer_word == 0 and scene_result.result.unimplemented.is_empty(),
+		"0x0059 clears the party layer word without a sub-effect gap")
+	check(scene_result.result.get("partial") == false, "a run without named gaps is not partial")
 	var same_program: Array = [[0x0059, 0x0001, 0x0000, 0x0000], [0x0001, 0, 0, 0]]
 	var same_source = _source([0, 0], [1, 0], same_program)
 	var same_owner = _owner(same_source)
@@ -370,6 +370,42 @@ func _synthetic_checks() -> void:
 	check(state_run.requests.map(func(request): return request.kind).has("play_sound_effect"),
 		"0x0047 asks the audio owner to play the effect")
 	# 0x001F through the real inventory owner.
+	# 0x006E party step: position copies, viewport delta, layer and owners.
+	var step_program: Array = [[0x006E, 0x0010, 0xFFF8, 0x0002], [0x0001, 0, 0, 0]]
+	var step_source = _source([0, 0], [1, 0], step_program)
+	var step_owner = _owner(step_source)
+	var step_state = _fixture(step_source)
+	step_state.globals.world_x = 1024; step_state.globals.world_y = 1024
+	var step_adapter = EntryHost.new()
+	var step_cache = Cache.new(); step_cache.load_source(package.pal98_graphics, package.pal98_sources)
+	var step_kernel = Equipment.new()
+	step_kernel.read_tables(package.pal98_sources.copy_chunk("data", 3),
+		package.pal98_sources.copy_chunk("sss", 2), package.pal98_sources.copy_chunk("sss", 4))
+	step_adapter.bind(step_cache, step_kernel, step_state.inventory_bytes, [0, 0, 0, 0, 0, 0])
+	step_adapter.bind_display(DisplayDouble.new())
+	var step_run = _drive_with_host(step_owner, step_owner.start(step_state, 1, 1), step_adapter)
+	var step_effects: Array = step_run.result.get("effects", [])
+	check(not step_run.result.has("error") and step_effects.size() == 1
+		and step_effects[0].delta_x == 16 and step_effects[0].delta_y == -8 and step_effects[0].moved == true,
+		"0x006E applies the party step deltas: " + str(step_run.result.get("error", "")))
+	check(step_run.result.state.globals.viewport_x == 880 and step_run.result.state.globals.viewport_y == 904
+		and step_run.result.state.globals.previous_viewport_x == 864
+		and step_run.result.state.globals.party_layer_word == 16
+		and step_run.result.state.globals.previous_x == 1024,
+		"0x006E keeps the previous copies and stores the layer word")
+	var step_requests: Array = step_run.requests.map(func(request): return request.kind)
+	check(step_requests.has("post_move_update") and step_requests.has("update_viewport_and_party_position"),
+		"a moving 0x006E requests both movement owners: " + str(step_requests))
+	var idle_program: Array = [[0x006E, 0x0000, 0x0000, 0x0001], [0x0001, 0, 0, 0]]
+	var idle_source = _source([0, 0], [1, 0], idle_program)
+	var idle_owner = _owner(idle_source)
+	var idle_state = _fixture(idle_source)
+	idle_state.globals.world_x = 1024; idle_state.globals.world_y = 1024
+	var idle_run = _drive(idle_owner, idle_owner.start(idle_state, 1, 1))
+	var idle_effects: Array = idle_run.result.get("effects", [])
+	check(not idle_run.result.has("error") and idle_effects.size() == 1 and idle_effects[0].moved == false
+		and idle_run.requests.is_empty(),
+		"a zero-delta 0x006E stores the layer word without movement requests")
 	# 0x006D scene script words: set the pair, then clear it.
 	var scene_words_program: Array = [[0x006D, 0x0001, 0x0DD9, 0x0014], [0x0001, 0, 0, 0]]
 	var scene_words_source = _source([0, 0], [1, 0], scene_words_program)
@@ -804,7 +840,7 @@ func _real_checks() -> void:
 		"real opening asks the sprite and equipment owners: " + str(opening_requests))
 	check(opening_requests.has("restore_dialog_background") and opening_requests.count("dialogue") >= 5,
 		"real opening relays the background restore and the five FFFF dialogues to the host")
-	check(opening_result.get("partial") == true and opening_result.unimplemented.size() >= 4,
+	check(opening_result.get("partial") == true and opening_result.unimplemented.size() >= 3,
 		"the completed opening still reports its named sub-effect gaps")
 	check(opening_requests.has("render_current_map_background") and opening_requests.has("render_scene"),
 		"the opening replays the map background and the scene frame through the host")

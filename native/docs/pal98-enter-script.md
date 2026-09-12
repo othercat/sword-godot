@@ -84,6 +84,7 @@ source bytes for every operand.
 | `0x0099` | `0x004268EC..0x0042694E` | writes the scene record's map word; a negative `A0` means the current scene and additionally requests `EnsureMapResourcesLoaded` (`0x0041C834`) |
 | `0x001F` | `0x00421EC4..0x00421F00` | defaults a nonpositive amount to 1 and requests `CompressInventoryAndReturnLastSlot` (T152 `0x0041C96C`) plus `AddInventoryItemAmount` (T140 `0x0041CCCC`) from the inventory owner |
 | `0x006D` | `0x004250D8..0x00425178` | for a positive scene writes the record's enter (`+2`) and leave (`+4`) script words, or clears the pair when both arguments are zero |
+| `0x006E` | `0x00425178..0x00425206` | copies the world position and viewport into their previous slots, adds the `A0/A1` deltas to the viewport, stores `A2*8` as the party layer word and, when the party actually moves, requests `PostMoveUpdate` (`0x0041D2CC`) and `UpdateViewportAndPartyPosition` (`0x0041CC3C`) |
 
 Three boundaries are stated rather than hidden:
 
@@ -92,8 +93,9 @@ Three boundaries are stated rather than hidden:
   writes the slots it has explicit backing for and reports the rest as a named
   gap, because slots beyond the active party are not consumed by any reviewed
   owner yet.
-- `0x0059` records that the unnamed `G028A = 0` write has no reviewed Native
-  field; the mask and requested scene are applied, and the gap is reported.
+- `0x0059` clears the same party layer word (`G028A`) that `0x006E` sets to
+  `A2*8`, so that earlier named gap is closed rather than guessed: the mask, the
+  requested scene and the layer clear are applied together.
 - `0x003B` writes the three reviewed dialog globals and reports the `G022A`
   colour word as a named gap instead of guessing its value; `0x003D` applies its
   geometry and reports the `0x0041D29C` capture and `0x0041D44C` layout calls,

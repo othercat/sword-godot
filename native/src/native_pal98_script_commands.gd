@@ -106,6 +106,9 @@ const CASES = {
 	0x006D: {"range": ["0x004250D8", "0x00425178"],
 		"sha256": "d69bf04eef9fcda8ad8f7a3dd6f9d587d0b9a1e0572e40a7433eff43b6ba2668",
 		"effect": "for a positive scene: writes the record's enter (+2) and leave (+4) script words, or clears the pair when both arguments are zero"},
+	0x006E: {"range": ["0x00425178", "0x00425206"],
+		"sha256": "8b13d7703f032edde9e259c8491c84c6a86c674dc295405f1af189599284a8ea",
+		"effect": "copies the world position into the previous-position words and the viewport into its previous copies, adds the A0/A1 deltas to the viewport, stores A2*8 as the party layer word and, when either delta is nonzero, requests PostMoveUpdate (0x0041D2CC) and UpdateViewportAndPartyPosition (0x0041CC3C)"},
 	0x001F: {"range": ["0x00421EC4", "0x00421F00"],
 		"sha256": "79fa119ab6503c8516f2ac38ffe38c581b8630ad9f6072d3a3c1d1903e55d8b0",
 		"effect": "compresses the inventory (T152 0x0041C96C), defaults a nonpositive amount to 1 and adds the item through T140 (0x0041CCCC)"},
@@ -152,6 +155,8 @@ const APPLY_PALETTE = "apply_palette" # 0x004174D0
 const FADE_SCENE_PALETTE = "fade_scene_palette_and_update_frames" # 0x0041CE04
 const ENSURE_MAP_RESOURCES = "ensure_map_resources_loaded" # 0x0041C834
 const ADD_INVENTORY_ITEM = "add_inventory_item" # T152 0x0041C96C then T140 0x0041CCCC
+const POST_MOVE_UPDATE = "post_move_update" # 0x0041D2CC
+const UPDATE_VIEWPORT_AND_PARTY = "update_viewport_and_party_position" # 0x0041CC3C
 # Named next gaps: not implemented, kept here so the diagnostic and the review
 # can name the same case identity.
 const NEXT_GAPS = {}
@@ -255,6 +260,7 @@ func consume(state: Dictionary, request: Dictionary) -> Dictionary:
 		0x0059: return _command_0059(state, request, source)
 		0x0065: return _command_0065(state, request, source)
 		0x006D: return _command_006D(state, request, source)
+		0x006E: return _command_006E(state, request, source)
 		0x0073: return _command_0073(state, request, source)
 		0x0071: return _command_0071(state, request, source)
 		0x0075: return _command_0075(state, request, source)
@@ -627,6 +633,40 @@ func _fade_request(state: Dictionary, request: Dictionary, source: Dictionary, k
 
 ## 0x0077 stops the media owner's music; the field track clears outside battle.
 ## 0x006D writes a scene record's enter/leave script words, or clears the pair.
+## 0x006E steps the party: position copies, viewport deltas, the party layer word
+## and, when the party actually moves, the two movement owners.
+func _command_006E(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
+	var globals: Dictionary = state.globals
+	for key in ["world_x", "world_y", "viewport_x", "viewport_y"]:
+		if not _i2(globals.get(key)):
+			return _failure("party_position", "0x006E requires the explicit world/viewport words", request, source)
+	var delta_x: int = _signed(request.words[1])
+	var delta_y: int = _signed(request.words[2])
+	var layer: int = _signed(request.words[3])
+	var viewport_x: int = globals.viewport_x + delta_x
+	var viewport_y: int = globals.viewport_y + delta_y
+	if not _i2(viewport_x) or not _i2(viewport_y):
+		return _failure("checked_i2", "0x006E viewport delta leaves I2 range", request, source)
+	var layer_word: int = layer * 8
+	if not _i2(layer_word):
+		return _failure("checked_i2", "0x006E layer word leaves I2 range", request, source)
+	globals.previous_x = globals.world_x; globals.previous_y = globals.world_y
+	globals.previous_viewport_x = globals.viewport_x; globals.previous_viewport_y = globals.viewport_y
+	globals.viewport_x = viewport_x; globals.viewport_y = viewport_y
+	globals.party_layer_word = layer_word
+	var moved: bool = delta_x != 0 or delta_y != 0
+	var effect: Dictionary = {"kind": "party_step", "delta_x": delta_x, "delta_y": delta_y,
+		"viewport_x": viewport_x, "viewport_y": viewport_y, "layer_word": layer_word,
+		"moved": moved, "source": source}
+	var result: Dictionary = _result(state, request, [effect])
+	if moved:
+		result.requests = [
+			{"kind": POST_MOVE_UPDATE, "original_entry": "0x0041D2CC", "procedure": "PostMoveUpdate"},
+			{"kind": UPDATE_VIEWPORT_AND_PARTY, "original_entry": "0x0041CC3C",
+				"procedure": "UpdateViewportAndPartyPosition"},
+		]
+	return result
+
 func _command_006D(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
 	var scene: int = _signed(request.words[1])
 	if scene <= 0 or scene > _scene_count:
@@ -764,9 +804,10 @@ func _command_0059(state: Dictionary, request: Dictionary, source: Dictionary) -
 		return _failure("resource_flags", "0x0059 requires the explicit G0306 mask", request, source)
 	globals.resource_flags = globals.resource_flags | SCENE_EVENT_MASK
 	globals.requested_scene = requested
-	var missing: Array = [{"sub_effect": "G028A = 0 (no reviewed Native field)", "status": "not_implemented"}]
+	# G028A is the party layer word that 0x006E sets to A2*8; this case clears it.
+	globals.party_layer_word = 0
 	return _result(state, request, [{"kind": "scene_request", "scene": requested,
-		"resource_flags": globals.resource_flags, "source": source}], missing)
+		"resource_flags": globals.resource_flags, "layer_word": 0, "source": source}])
 
 func _command_0065(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
 	var role: int = request.words[1]
