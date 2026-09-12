@@ -46,6 +46,9 @@ const CASES = {
 	0x0080: {"range": ["0x00425D24", "0x00425E24"],
 		"sha256": "b1c6d6e5fe1103d0409bf88fb6d67267205776acdaf136342ace4d7c1ee11f92",
 		"effect": "day/night palette toggle: saves the active window into the work area with copymen, runs 32 cvpate rounds toward the opposite block with an install plus event/frame (A0<=0) or wait (A0>0) per round, then adopts the target offset, installs it and clears G0250"},
+	0x008C: {"range": ["0x0042637A", "0x00426496"],
+		"sha256": "2a38b1b1f8a4d443427ecd6942ff7e15617467355036c0a0d09144e232d772c2",
+		"effect": "color fade: saves the active window into the work area and the target block, corpate fills the work area with the A0 color, a nonzero A2 swaps the two offsets, then 63 cvpate rounds each install the target and wait A1; no day/night or gate side effects"},
 	0x003B: {"range": ["0x0042322E", "0x00423272"],
 		"sha256": "484d663d6609be35e3f751d9ffd339139334eb4d09b80749cfba723871e1f842",
 		"effect": "centered dialog globals: mode 0, text origin (80,40), colour word when A0 is positive"},
@@ -315,6 +318,7 @@ func consume(state: Dictionary, request: Dictionary) -> Dictionary:
 		0x0023: return _command_0023(state, request, source)
 		0x0022: return _command_0022(state, request, source)
 		0x0080: return _command_0080(state, request, source)
+		0x008C: return _command_008C(state, request, source)
 		0x001D: return _command_001D(state, request, source)
 		0x003D: return _command_003D(state, request, source)
 		0x0016: return _command_0016(state, request, source)
@@ -856,6 +860,12 @@ func continue_command(pending: Dictionary, state: Dictionary) -> Dictionary:
 			"event_id": pending.get("event_id", 0), "effects": [], "unimplemented": [],
 			"opcode": pending.get("opcode", 0), "pending": pending}
 		return _continue_day_night(result, state)
+	if pending.get("color_fade") is Dictionary:
+		if not _palette is Object: _palette = Palette.new()
+		var result: Dictionary = {"state": state, "entry": pending.get("entry", 0),
+			"event_id": pending.get("event_id", 0), "effects": [], "unimplemented": [],
+			"opcode": pending.get("opcode", 0), "pending": pending}
+		return _continue_color_fade(result, state)
 	return {"error": "pal98-command: unknown command continuation"}
 
 ## 0x0080 toggles the day/night palette: the active G026C window is saved into
@@ -912,6 +922,64 @@ func _continue_day_night(result: Dictionary, state: Dictionary) -> Dictionary:
 	result.requests = [{"kind": APPLY_PALETTE, "original_entry": "0x004174D0",
 		"procedure": "intpate", "offset": plan.step, "length": Palette.LENGTH,
 		"bytes": state.palette_bytes.slice(plan.step, plan.step + Palette.LENGTH)}]
+	return result
+
+## 0x008C fades the palette toward a single color. The active window is saved
+## into both the work area and the target block, corpate fills the work area
+## with the 3-byte color sampled at the 16-bit wrapped offset A0*3 (an A0
+## whose sample would leave the window is a named refusal where the native
+## code would read past the array), a nonzero A2 swaps the two offsets so the
+## gradient runs the other way, and 63 rounds each run cvpate between the two
+## blocks, install the target block and wait A1 (only a zero A1 defaults to
+## one). Unlike 0x0080 there is no day/night write, no gate clear and no
+## extra terminal install; the display install stays a host request.
+func _command_008C(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
+	if not state.get("palette_bytes") is PackedByteArray or state.palette_bytes.size() != Palette.BUFFER:
+		return _failure("palette_backing", "0x008C requires the explicit 0x780-byte G0150 buffer", request, source)
+	var day_night = state.globals.get("day_night_word")
+	if not _i2(day_night) or day_night < 0 or day_night > Palette.DAY_NIGHT_MAX:
+		return _failure("palette_state", "0x008C requires the explicit G026C offset within 0..0x180", request, source)
+	if not _palette is Object: _palette = Palette.new()
+	# The copies and the color fill run on a duplicate so a refused color
+	# sample publishes nothing and leaves the caller's buffer untouched.
+	var buffer: PackedByteArray = state.palette_bytes.duplicate()
+	_palette.save_block(buffer, day_night, Palette.WORK)
+	_palette.save_block(buffer, day_night, Palette.TARGET)
+	var color: int = _signed(request.words[1])
+	var filled: Dictionary = _palette.fill_color(buffer, color)
+	if filled.has("error"): return _failure("palette_color", str(filled.error), request, source)
+	state.palette_bytes = buffer
+	var delay: int = _signed(request.words[2])
+	if delay == 0: delay = 1
+	var current: int = Palette.WORK
+	var target: int = Palette.TARGET
+	if _signed(request.words[3]) != 0:
+		current = Palette.TARGET
+		target = Palette.WORK
+	var result: Dictionary = _result(state, request,
+		[{"kind": "color_fade_start", "color": color, "sample": filled.sample_offset,
+		"current": current, "target": target, "source": source}])
+	result.pending = {"color_fade": {"round": 0, "current": current, "target": target, "delay": delay},
+		"entry": request.entry, "event_id": request.event_id, "opcode": request.words[0]}
+	return _continue_color_fade(result, state)
+
+func _continue_color_fade(result: Dictionary, state: Dictionary) -> Dictionary:
+	var pending: Dictionary = result.pending
+	var plan: Dictionary = pending.color_fade
+	plan.round = int(plan.round) + 1
+	var converged: Dictionary = _palette.converge_pair(state.palette_bytes, plan.current, plan.target)
+	if converged.has("error"): return {"error": "pal98-command: " + str(converged.error)}
+	result.effects = [{"kind": "color_fade_step", "round": plan.round, "moved": converged.moved}]
+	var install: Dictionary = {"kind": APPLY_PALETTE, "original_entry": "0x004174D0",
+		"procedure": "intpate", "offset": plan.target, "length": Palette.LENGTH,
+		"bytes": state.palette_bytes.slice(plan.target, plan.target + Palette.LENGTH)}
+	result.requests = [install,
+		{"kind": FADE_WAIT, "original_entry": "0x004170E0", "procedure": "wtime", "delay": plan.delay}]
+	if plan.round < Palette.COLOR_ROUNDS:
+		result.pending = pending
+		return result
+	result.erase("pending")
+	result.rounds = Palette.COLOR_ROUNDS
 	return result
 
 func _continue_walk(result: Dictionary, state: Dictionary) -> Dictionary:
