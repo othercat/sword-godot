@@ -113,7 +113,7 @@ func _fixture(source, scene_id: int = 1) -> Dictionary:
 	equipment.read_tables(source.copy_chunk("data",3), source.copy_chunk("sss",2), source.copy_chunk("sss",4))
 	return {"globals": {"current_scene": scene_id, "requested_scene": scene_id, "party_x": 160, "party_y": 112,
 			"viewport_x": 864, "viewport_y": 912, "resource_flags": 0, "direction_word": 0, "loaded_map_id": 0,
-			"member_last": 1, "follower_count": 0, "battle_mode": 0, "midi_track": 0, "battle_music_track": 0,
+			"member_last": 2, "follower_count": 0, "battle_mode": 0, "midi_track": 0, "battle_music_track": 0,
 			"day_night_word": 0, "fade_gate_word": 0,
 			# The fixture keeps the documented viewport/world/anchor relation so
 			# movement commands see consistent explicit words.
@@ -122,13 +122,13 @@ func _fixture(source, scene_id: int = 1) -> Dictionary:
 		"events": events.source_state(), "dialogue": _context(), "rng": Random.create(0x12345),
 		# Five active members keep the fixed G04AC projection and the equipment
 		# projections the same size, so multi-member entry commands can run.
-		"equipment": equipment.initial_state([0, 1]),
+		"equipment": equipment.initial_state([0, 1, 3]),
 		"inventory_bytes": _zero(1536),
 		# The fixed G04AC projection: five slots, of which the active count is
 		# carried by globals.member_last and the equipment role projection.
 		"party_records": [{"role_id": 0, "screen_x": 160, "screen_y": 112, "current_frame": 3},
 			{"role_id": 1, "screen_x": 176, "screen_y": 104, "current_frame": 3},
-			{"role_id": 0, "screen_x": 192, "screen_y": 96, "current_frame": 3},
+			{"role_id": 3, "screen_x": 192, "screen_y": 96, "current_frame": 3},
 			{"role_id": 0, "screen_x": 208, "screen_y": 88, "current_frame": 3},
 			{"role_id": 0, "screen_x": 224, "screen_y": 80, "current_frame": 3}],
 		"party_trail": [{"x": 0, "y": 0, "direction_word": 0}, {"x": 0, "y": 0, "direction_word": 0},
