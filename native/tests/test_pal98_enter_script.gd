@@ -416,6 +416,26 @@ func _synthetic_checks() -> void:
 	# 0x009A event state range and its global fallback.
 	# 0x00A3 CD/MIDI loop normalization.
 	# 0x0085 delay request scaled by ten.
+	# 0x007D/0x007E event deltas, layer and the global mirror.
+	var delta_program: Array = [[0x007D, 0x0001, 0x0005, 0xFFFE], [0x007E, 0x0001, 0x0009, 0x0000], [0x0001, 0, 0, 0]]
+	var delta_source = _source([0, 2], [1, 0], delta_program, [], 2)
+	var delta_owner = _owner(delta_source)
+	var delta_state = _fixture(delta_source)
+	var delta_storage = Events.new(); delta_storage.load_source(delta_source)
+	delta_state.events = delta_storage.load_scene_events(delta_state.events, 1).state
+	var delta_run = _drive(delta_owner, delta_owner.start(delta_state, 1, 1))
+	var delta_effects: Array = delta_run.result.get("effects", [])
+	check(not delta_run.result.has("error") and delta_effects.size() == 2
+		and delta_effects[0].kind == "event_delta" and delta_effects[0].values == [5, -2]
+		and delta_effects[0].global_index == 0,
+		"0x007D adds the deltas and mirrors the record into the global table: "
+			+ str(delta_run.result.get("error", "")))
+	check(delta_run.result.state.events.active_slots[0].decode_s16(2) == 5
+		and delta_run.result.state.events.global_events.decode_s16(2) == 5,
+		"the mirrored global record carries the same delta")
+	check(delta_effects[1].kind == "event_layer" and delta_effects[1].values == [9]
+		and delta_run.result.state.events.active_slots[0].decode_u16(6) == 9,
+		"0x007E writes the layer word from A1")
 	# 0x003E center-window dialog globals and the restore gate.
 	var window_program: Array = [[0x003E, 0x0001, 0x0000, 0x0000], [0x0001, 0, 0, 0]]
 	var window_source = _source([0, 0], [1, 0], window_program)

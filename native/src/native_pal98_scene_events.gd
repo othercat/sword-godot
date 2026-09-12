@@ -108,6 +108,17 @@ func event_record(state: Dictionary, event_id: int) -> Dictionary:
 	if bytes == null: return _failure("runtime event slot has no known source bytes")
 	return {"value": bytes.duplicate(), "runtime_event_id": event_id, "inside_current_count": event_id <= state.event_count}
 
+## The original event array always has 160 records, so a caller that materializes
+## a record into an Unknown slot is writing real bytes. This differs from
+## replace_event_record, which requires a prior known record.
+func write_event_record(state: Dictionary, event_id: int, bytes: PackedByteArray) -> Dictionary:
+	var issue: String = validate_state(state)
+	if not issue.is_empty(): return _failure(issue)
+	if event_id < 1 or event_id > CAPACITY: return _failure("runtime event slot outside owned1..160")
+	if bytes.size() != RECORD_BYTES: return _failure("written event requires32 bytes")
+	var candidate: Dictionary = state.duplicate(true); candidate.active_slots[event_id - 1] = bytes.duplicate()
+	return {"state": candidate}
+
 func replace_event_record(state: Dictionary, event_id: int, bytes: PackedByteArray) -> Dictionary:
 	var selected: Dictionary = event_record(state, event_id)
 	if selected.has("error"): return selected

@@ -112,6 +112,12 @@ const CASES = {
 	0x006E: {"range": ["0x00425178", "0x00425206"],
 		"sha256": "8b13d7703f032edde9e259c8491c84c6a86c674dc295405f1af189599284a8ea",
 		"effect": "copies the world position into the previous-position words and the viewport into its previous copies, adds the A0/A1 deltas to the viewport, stores A2*8 as the party layer word and, when either delta is nonzero, requests PostMoveUpdate (0x0041D2CC) and UpdateViewportAndPartyPosition (0x0041CC3C)"},
+	0x007D: {"range": ["0x004257F8", "0x00425978"],
+		"sha256": "b433fa694c5f0a8f739734011d92518dba14aec3eb88881290c4d4ed956f1271",
+		"effect": "adds the A1/A2 deltas to the resolved event's +2/+4 words, mirrors the record into the global table and materializes the global record into the first slot when the target is outside the scene range"},
+	0x007E: {"range": ["0x00425978", "0x00425A7C"],
+		"sha256": "486d5d4e38f42f9aff5872b50fa75b3280467d355293f886ac370b49b1bd1415",
+		"effect": "writes the resolved event's layer word (+6) from A1 with the same global mirror/materialize fallback"},
 	0x009A: {"range": ["0x0042694E", "0x00426A56"],
 		"sha256": "2c21b7afb612569200ad2e9991adcb32b92cc0f5736d8c25b469ded47aef59a4",
 		"effect": "resolves A0/A1 against the scene event base and writes the state word (+12) for the inclusive range, falling back to the global event record when the start is out of range"},
@@ -317,6 +323,8 @@ func consume(state: Dictionary, request: Dictionary) -> Dictionary:
 		0x0037: return _command_0037(state, request, source)
 		0x001A: return _command_001A(state, request, source)
 		0x003E: return _command_003E(state, request, source)
+		0x007D: return _command_007D(state, request, source)
+		0x007E: return _command_007E(state, request, source)
 	var facts: Dictionary = case_facts(opcode)
 	var details: Dictionary = {"effect": facts.get("effect"), "case_range": facts.get("range"),
 		"case_sha256": facts.get("sha256")}
@@ -634,6 +642,67 @@ func _command_009A(state: Dictionary, request: Dictionary, source: Dictionary) -
 ## G05CC projection words, every other field goes to the G079C word table. A
 ## positive A2 selects role A2-1; otherwise the explicit current-role slot is used.
 ## 0x003E selects the center-window dialog globals and writes the restore gate.
+## 0x007D/0x007E share one resolution: a zero argument targets the current event,
+## any other value resolves against the scene event base. In range the record's
+## +2/+4 delta words (0x007D) or +6 layer word (0x007E) are written and the
+## record is mirrored into the global table; outside the range the global record
+## is materialized into the first slot, written there and mirrored back.
+func _command_007D(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
+	return _event_delta_or_layer(state, request, source, true)
+
+func _command_007E(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
+	return _event_delta_or_layer(state, request, source, false)
+
+func _event_delta_or_layer(state: Dictionary, request: Dictionary, source: Dictionary,
+		delta_mode: bool) -> Dictionary:
+	if not state.get("events") is Dictionary:
+		return _failure("event_backing", "event delta command requires the explicit event state", request, source)
+	var raw: int = _signed(request.words[1])
+	var base: int = state.events.scene_records.decode_u16((state.globals.current_scene - 1) * 8 + 6)
+	var target: int = request.event_id if raw == 0 else raw - base
+	var count: int = state.events.event_count
+	var slot: int = target
+	var scope: String = "current_scene"
+	if not (target > 0 and target <= count):
+		if raw < 1:
+			return _failure("event_backing", "event delta command cannot resolve a global record for this target", request, source)
+		slot = 1
+		scope = "global_materialized"
+		var global_bytes: PackedByteArray = state.events.global_events
+		var global_at: int = (raw - 1) * 32
+		if global_at < 0 or global_at + 32 > global_bytes.size():
+			return _failure("event_backing", "global event record is outside the owned table", request, source)
+		var placed: Dictionary = _events.write_event_record(state.events, slot,
+			global_bytes.slice(global_at, global_at + 32))
+		if placed.has("error"): return _failure("event_writeback", str(placed.error), request, source)
+		state.events = placed.state
+	var row: Dictionary = _events.event_record(state.events, slot)
+	if row.has("error"): return _failure("event_record", str(row.error), request, source)
+	var bytes: PackedByteArray = row.value
+	var values: Array = []
+	if delta_mode:
+		for offset in [2, 4]:
+			var current: int = bytes.decode_s16(offset)
+			var total: int = current + _signed(request.words[2] if offset == 2 else request.words[3])
+			if total < -32768 or total > 32767:
+				return _failure("checked_i2", "event delta leaves the signed I2 range", request, source)
+			bytes.encode_s16(offset, total)
+			values.append(total)
+	else:
+		bytes.encode_u16(6, request.words[2])
+		values.append(request.words[2])
+	var written: Dictionary = _events.replace_event_record(state.events, slot, bytes)
+	if written.has("error"): return _failure("event_writeback", str(written.error), request, source)
+	state.events = written.state
+	var mirror_at: int = (raw - 1) * 32
+	var mirror_bytes: PackedByteArray = state.events.global_events
+	if mirror_at < 0 or mirror_at + 32 > mirror_bytes.size():
+		return _failure("event_backing", "global event record is outside the owned table", request, source)
+	state.events.global_events = mirror_bytes
+	for index in range(32): state.events.global_events[mirror_at + index] = bytes[index]
+	return _result(state, request, [{"kind": "event_delta" if delta_mode else "event_layer",
+		"scope": scope, "slot": slot, "values": values, "global_index": raw - 1, "source": source}])
+
 func _command_003E(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
 	var context: Dictionary = _dialog_context(state, request, source)
 	if context.has("error"): return context
