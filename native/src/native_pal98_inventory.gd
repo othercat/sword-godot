@@ -198,3 +198,30 @@ func remove_inventory_item_and_unequip_shortfall(inventory_bytes: PackedByteArra
 			if cleared: break
 	return {"inventory_bytes": candidate, "role_words": words, "consumed": consumed,
 		"unequipped": unequipped, "shortage_left": maxi(remaining, 0)}
+
+## 0x0023 unequip: for each field in first_field..last_field the absolute
+## role's word field*ROLES+role holds a signed item id. A word above zero is
+## returned through T140 add (+1: merge into the first living match, else the
+## first free slot, silently full) and the field is cleared; words at or below
+## zero stay untouched. The candidate publishes only after the whole sweep, so
+## a checked overflow on any add applies nothing.
+func unequip_fields_to_inventory(inventory_bytes: PackedByteArray, role: int,
+		first_field: int, last_field: int, role_words: Array) -> Dictionary:
+	var issue: String = _shape_issue(inventory_bytes)
+	if not issue.is_empty(): return _failure(issue)
+	if role_words.size() != ROLES * ROLE_FIELDS:
+		return _failure("equipment requires the complete 450-WORD role table")
+	var candidate: PackedByteArray = inventory_bytes.duplicate()
+	var words: Array = role_words.duplicate()
+	var returned: Array = []
+	for field in range(first_field, last_field + 1):
+		var word: int = field * ROLES + role
+		if word >= words.size(): return _failure("equipment fields outside the word table")
+		var item: int = _signed(words[word])
+		if item <= 0: continue
+		var added: Dictionary = add_item_amount(candidate, item, 1)
+		if added.has("error"): return added
+		candidate = added.inventory_bytes
+		returned.append({"field": field, "item": item, "mode": added.mode})
+		words[word] = 0
+	return {"inventory_bytes": candidate, "role_words": words, "returned": returned}

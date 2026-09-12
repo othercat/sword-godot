@@ -37,6 +37,9 @@ const CASES = {
 	0x0020: {"range": ["0x00421F00", "0x00421F60"],
 		"sha256": "68ce75cfdbf65d5dc20ab0825678b6867c4fad7f29037bc77410d71a18645471",
 		"effect": "counts the item over the last active inventory slot and the active members' equipment fields 11..16; a count below A1 with nonzero A2 rewrites the ByRef entry to A2-1, otherwise T135 removes the amount, clears exhausted records and unequips one field per shortage copy"},
+	0x0023: {"range": ["0x004221B4", "0x00422276"],
+		"sha256": "f016c95c2247d65935bb157c603ddd0b3ca13580ad971c609cb12b5efac58693",
+		"effect": "returns equipped items to the inventory: absolute role A0, fields 11..16 for A1<=0 or the single checked field 10+A1; each signed word above zero goes through T140 add (+1) and is cleared, words at or below zero stay untouched"},
 	0x003B: {"range": ["0x0042322E", "0x00423272"],
 		"sha256": "484d663d6609be35e3f751d9ffd339139334eb4d09b80749cfba723871e1f842",
 		"effect": "centered dialog globals: mode 0, text origin (80,40), colour word when A0 is positive"},
@@ -298,6 +301,7 @@ func consume(state: Dictionary, request: Dictionary) -> Dictionary:
 		0x0035: return _command_0035(state, request, source)
 		0x001F: return _command_001F(state, request, source)
 		0x0020: return _command_0020(state, request, source)
+		0x0023: return _command_0023(state, request, source)
 		0x001D: return _command_001D(state, request, source)
 		0x003D: return _command_003D(state, request, source)
 		0x0016: return _command_0016(state, request, source)
@@ -649,6 +653,47 @@ func _command_0020(state: Dictionary, request: Dictionary, source: Dictionary) -
 	return _result(state, request, [{"kind": "inventory_removal", "item": item, "amount": amount,
 		"consumed": removed.consumed, "unequipped": removed.unequipped,
 		"shortage_left": removed.shortage_left, "source": source}])
+
+## 0x0023 returns equipped items to the inventory. A0 is a zero-based absolute
+## role (it may name a role outside the active projection); A1<=0 sweeps the
+## equipment fields 11..16 and a positive A1 addresses the single checked
+## field 10+A1 (A1=7 legitimately reaches field 17; beyond the real 75-field
+## table is a named failure). Only a signed word above zero is returned through
+## the existing T140 add (+1, no compress and no 99 cap) and the field is
+## cleared; words at or below zero stay untouched, a full inventory still
+## clears the field, and A2 is unused. The whole candidate publishes after the
+## sweep, so a checked overflow on any add publishes nothing -- the Native
+## boundary, not a promise about the original's VB exception behavior.
+func _command_0023(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
+	if not state.get("inventory_bytes") is PackedByteArray or state.inventory_bytes.size() != 256 * 6:
+		return _failure("inventory_backing", "0x0023 requires the explicit 256-record inventory", request, source)
+	if not state.get("equipment") is Dictionary or not state.equipment.get("role_words") is Array:
+		return _failure("role_backing", "0x0023 requires the explicit role word table", request, source)
+	var role: int = _signed(request.words[1])
+	if role < 0 or role >= ROLES:
+		return _failure("role_backing", "0x0023 role is outside the 6-role table", request, source)
+	var amount: int = _signed(request.words[2])
+	var first: int
+	var last: int
+	if amount <= 0:
+		first = 11
+		last = 16
+	else:
+		var only: int = 10 + amount
+		if not _i2(only):
+			return _failure("checked_i2", "0x0023 field index 10+A1 leaves I2 range", request, source)
+		if only >= ROLE_FIELDS:
+			return _failure("role_backing", "0x0023 field 10+A1 is beyond the real 75-field table", request, source)
+		first = only
+		last = only
+	if not _inventory is Object: _inventory = Inventory.new()
+	var done: Dictionary = _inventory.unequip_fields_to_inventory(
+		state.inventory_bytes, role, first, last, state.equipment.role_words)
+	if done.has("error"): return _failure("unequip_return", str(done.error), request, source)
+	state.inventory_bytes = done.inventory_bytes
+	state.equipment.role_words = done.role_words
+	return _result(state, request, [{"kind": "unequip_return", "role": role,
+		"first_field": first, "last_field": last, "returned": done.returned, "source": source}])
 
 ## 0x0047 plays a sound effect through the audio owner when sound is enabled.
 func _command_0047(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
