@@ -58,14 +58,17 @@ source bytes for every operand.
 | Opcode | P-Code case | Effect implemented here |
 | --- | --- | --- |
 | `0x0015` | `0x0042149E..0x004214DC` | `G026E = A0`; the party record `A2` frame word becomes `G026E*3 + A1` with checked I2 arithmetic |
+| `0x003B` | `0x0042322E..0x00423272` | dialog globals: mode 0, text origin (80,40) |
+| `0x003D` | `0x0042331A..0x004233C2` | lower dialog globals: mode 2, title (12,108), body origin (44,126) |
 | `0x0041` | `0x004234D6..0x004234F0` | `G0302 = 0` |
 | `0x0046` | `0x00423834..0x004239F4` | world position `((2*A0+A2)*16, (2*A1+A2)*8)`, previous world words, and the viewport `world - (party_x, party_y)` |
 | `0x0048` | `0x00423A16..0x00423A2C` | explicit original no-op |
 | `0x0059` | `0x004243B8..0x00424408` | for a valid changed scene: `G0306 |= 12`, `G026A = A0` |
 | `0x0065` | `0x0042477E..0x004247CC` | role `A0` map sprite field index 2 of the admitted role table becomes `A1` |
 | `0x0075` | `0x004255D8..0x0042568C` | rebuilds the active party from `A0..A2` (a nonpositive first argument selects role 0, later nonpositive arguments end the list), writes the member count and both role projections, then requests the sprite and equipment owners |
+| `0x008E` | `0x004264EE..0x00426506` | clears both dialog gates and requests the host's `RestoreDialogBackground` (`0x0041D2B4`) before the trigger resumes |
 
-Two boundaries are stated rather than hidden:
+Three boundaries are stated rather than hidden:
 
 - `0x0046` is implemented for the world/previous/viewport words only. The
   original also rewrites the `G04AC` party viewport records and the `G04C4`
@@ -75,6 +78,11 @@ Two boundaries are stated rather than hidden:
   instead of inventing a clamp.
 - `0x0059` records that the unnamed `G028A = 0` write has no reviewed Native
   field; the mask and requested scene are applied, and the gap is reported.
+- `0x003B` writes the three reviewed dialog globals and reports the `G022A`
+  colour word as a named gap instead of guessing its value; `0x003D` applies its
+  geometry and reports the `0x0041D29C` capture and `0x0041D44C` layout calls,
+  because the opening passes zero arguments and the documented effect for that
+  case is the fixed geometry with no portrait or colour change.
 
 `0x0065` with a nonzero reload argument fails explicitly: outside-battle sprite
 loading belongs to the sprite-cache owner and is not implemented here.
@@ -109,9 +117,22 @@ that entry through this owner produces, in original order:
 3. `party_direction_frame`: direction 0, frame 0;
 
 `0075 0001 0000 0000` then rebuilds the single-member party (role 0) and requests
-the sprite and equipment owners, the local `0005` control reaches the shared T240
-gate, and the entry stops on `0x003B` with its real operands. That is the current
-stop point of the ordinary opening path, and it is named rather than skipped.
+the sprite and equipment owners. The entry continues through the local `0005`
+control, `003B`, the five `FFFF` messages, `003D`, `008E` and `0059 0002`, and
+returns with opcode `0000`. The run therefore:
+
+1. applies the real world/viewport, role sprite, frame and party rebuild;
+2. relays five dialogue invocations and the `008E` background restore to the host;
+3. asks runtime scene 2 with `G0306 |= 12`;
+4. returns ByRef entry 4, which the T212 caller writes back into the loaded scene
+   record before restarting the resource chain for scene 2.
+
+Feeding that result back into `native_pal98_resource_reload.gd` restarts the
+chain (second `entry`), commits scene 1's events, loads scene 2's event backing
+and map identity, and then stops on the documented sprite-cache boundary:
+`original sprite cache bytes are Unknown`. That cold-start backing is the next
+real blocker after the entry script itself; the text and scene-request commands
+are no longer the stop point.
 
 ## Evidence
 

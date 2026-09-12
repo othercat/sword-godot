@@ -28,6 +28,12 @@ const FX_MAX_Y = 1840
 const SCENE_EVENT_MASK = 12 # G0306 bits4|8: event reload and EnterScript
 
 const CASES = {
+	0x003B: {"range": ["0x0042322E", "0x00423272"],
+		"sha256": "484d663d6609be35e3f751d9ffd339139334eb4d09b80749cfba723871e1f842",
+		"effect": "centered dialog globals: mode 0, text origin (80,40)"},
+	0x003D: {"range": ["0x0042331A", "0x004233C2"],
+		"sha256": "cd726d7203549f9ca44af334f1ee5223228b14719914b049918c133c44c8f6d8",
+		"effect": "lower dialog globals: mode 2, title (12,108), body origin (44,126)"},
 	0x0015: {"range": ["0x0042149E", "0x004214DC"],
 		"sha256": "6ff196f1a2b77487ac2e91af92f7ba0776d28134b53dc528ebd1d11f8344e44b",
 		"effect": "G026E = A0; G04AC[A2].field6 = G026E*3 + A1"},
@@ -49,12 +55,16 @@ const CASES = {
 	0x0075: {"range": ["0x004255D8", "0x0042568C"],
 		"sha256": "ca7af492236a04d1336ed2e1081028a484fe05e497f91be694423d9703576207",
 		"effect": "rebuild up-to-three-member party, then LoadPlayerAndFollowerSprites (T99), InitializePartyBattleAndEquipmentState (T156) and SyncMembersFromTrail (T230)"},
+	0x008E: {"range": ["0x004264EE", "0x00426506"],
+		"sha256": "282fc769a7cbac2159090b9fc1217aebc4cb32598fcae4b1f15fd51953bc5187",
+		"effect": "RestoreDialogBackground (0x0041D2B4) and clear the two capture/restore gates"},
 }
 # Owner procedures the party rebuild calls, kept by their original entry points
 # so the relayed requests name the same identities the review does.
 const LOAD_PARTY_SPRITES = "load_party_sprites"          # T99 0x0041C864
 const REBUILD_PARTY_EQUIPMENT = "rebuild_party_equipment" # T156 0x0041D374
 const SYNC_MEMBERS_FROM_TRAIL = "sync_members_from_trail" # T230 0x0041D2E4
+const RESTORE_DIALOG_BACKGROUND = "restore_dialog_background" # 0x0041D2B4
 # Named next gaps: not implemented, kept here so the diagnostic and the review
 # can name the same case identity.
 const NEXT_GAPS = {}
@@ -134,6 +144,8 @@ func consume(state: Dictionary, request: Dictionary) -> Dictionary:
 	if _signed(opcode) <= 10:
 		return _result(state, request, [{"kind": "dispatch_tail", "detail": "signed opcode <= 10: no case body"}])
 	match opcode:
+		0x003B: return _command_003B(state, request, source)
+		0x003D: return _command_003D(state, request, source)
 		0x0015: return _command_0015(state, request, source)
 		0x0041: return _command_0041(state, request, source)
 		0x0046: return _command_0046(state, request, source)
@@ -141,11 +153,62 @@ func consume(state: Dictionary, request: Dictionary) -> Dictionary:
 		0x0059: return _command_0059(state, request, source)
 		0x0065: return _command_0065(state, request, source)
 		0x0075: return _command_0075(state, request, source)
+		0x008E: return _command_008E(state, request, source)
 	var facts: Dictionary = case_facts(opcode)
 	var details: Dictionary = {"effect": facts.get("effect"), "case_range": facts.get("range"),
 		"case_sha256": facts.get("sha256")}
 	return _failure("unimplemented_command",
 		"ExecuteScriptCommand 0x%04X is not implemented in the entry consumer" % opcode, request, details)
+
+## Shared guard for the dialog-global commands: the caller must supply the
+## explicit context the reviewed fields live in.
+func _dialog_context(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
+	var dialogue = state.get("dialogue")
+	if not dialogue is Dictionary or not dialogue.get("mode") is int:
+		return _failure("dialogue_backing", "dialog-global command requires the explicit dialogue context", request, source)
+	return {"dialogue": dialogue}
+
+func _command_003B(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
+	var context: Dictionary = _dialog_context(state, request, source)
+	if context.has("error"): return context
+	var dialogue: Dictionary = context.dialogue
+	dialogue.mode = 0
+	dialogue.origin_x = 80
+	dialogue.origin_y = 40
+	var missing: Array = [{"sub_effect": "G022A dialog colour word", "status": "not_implemented"}]
+	return _result(state, request, [{"kind": "dialog_globals", "mode": 0, "origin_x": 80,
+		"origin_y": 40, "source": source}], missing)
+
+func _command_003D(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
+	var context: Dictionary = _dialog_context(state, request, source)
+	if context.has("error"): return context
+	var dialogue: Dictionary = context.dialogue
+	dialogue.mode = 2
+	dialogue.title_x = 12
+	dialogue.title_y = 108
+	dialogue.origin_x = 44
+	dialogue.origin_y = 126
+	var missing: Array = [
+		{"sub_effect": "0x0041D29C background capture call", "status": "not_implemented"},
+		{"sub_effect": "0x0041D44C lower-dialog layout call", "status": "not_implemented"},
+	]
+	return _result(state, request, [{"kind": "dialog_globals", "mode": 2, "title_x": 12,
+		"title_y": 108, "origin_x": 44, "origin_y": 126, "source": source}], missing)
+
+func _command_008E(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
+	var context: Dictionary = _dialog_context(state, request, source)
+	if context.has("error"): return context
+	var dialogue: Dictionary = context.dialogue
+	for key in ["capture_gate", "restore_gate"]:
+		if not _u2(dialogue.get(key)):
+			return _failure("dialogue_backing", "0x008E requires the explicit capture/restore gates", request, source)
+	dialogue.capture_gate = 0
+	dialogue.restore_gate = 0
+	var result: Dictionary = _result(state, request, [{"kind": "restore_dialog_background",
+		"capture_gate": 0, "restore_gate": 0, "source": source}])
+	result.requests = [{"kind": RESTORE_DIALOG_BACKGROUND, "original_entry": "0x0041D2B4",
+		"procedure": "RestoreDialogBackground"}]
+	return result
 
 func _command_0015(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
 	var direction: int = request.words[1]

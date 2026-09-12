@@ -227,6 +227,36 @@ func _synthetic_checks() -> void:
 	var bad_role = bad_role_owner.start(_fixture(bad_role_source), 1, 1)
 	check(bad_role.has("error") and str(bad_role.error).contains("outside the source role table"),
 		"0x0075 refuses a role argument outside the admitted role table")
+	# 0x003B / 0x003D dialog globals and 0x008E background restore.
+	var layout_program: Array = [[0x003B, 0x0000, 0x0000, 0x0000], [0x003D, 0x0000, 0x0000, 0x0000],
+		[0x008E, 0x0000, 0x0000, 0x0000], [0x0001, 0, 0, 0]]
+	var layout_source = _source([0, 0], [1, 0], layout_program)
+	var layout_owner = _owner(layout_source)
+	var layout_result = _drive(layout_owner, layout_owner.start(_fixture(layout_source), 1, 1))
+	check(not layout_result.result.has("error"), "the dialog-global commands complete: " + str(layout_result.result.get("error", "")))
+	var layout_kinds: Array = layout_result.result.effects.map(func(effect): return effect.kind)
+	check(layout_kinds == ["dialog_globals", "dialog_globals", "restore_dialog_background"],
+		"0x003B, 0x003D and 0x008E apply in original order: " + str(layout_kinds))
+	check(layout_result.result.state.dialogue.mode == 2 and layout_result.result.state.dialogue.origin_x == 44
+		and layout_result.result.state.dialogue.origin_y == 126 and layout_result.result.state.dialogue.title_x == 12
+		and layout_result.result.state.dialogue.title_y == 108,
+		"0x003D writes the original lower-dialog geometry")
+	check(layout_result.result.state.dialogue.capture_gate == 0 and layout_result.result.state.dialogue.restore_gate == 0,
+		"0x008E clears both dialog gates")
+	check(layout_result.requests.map(func(request): return request.kind).has("restore_dialog_background"),
+		"0x008E asks the host to restore the captured dialog background")
+	var centred_program: Array = [[0x003B, 0x0000, 0x0000, 0x0000], [0x0001, 0, 0, 0]]
+	var centred_source = _source([0, 0], [1, 0], centred_program)
+	var centred_owner = _owner(centred_source)
+	var centred = _drive(centred_owner, centred_owner.start(_fixture(centred_source), 1, 1))
+	check(centred.result.state.dialogue.mode == 0 and centred.result.state.dialogue.origin_x == 80
+		and centred.result.state.dialogue.origin_y == 40, "0x003B writes the original centered-dialog globals")
+	var no_context_source = _source([0, 0], [1, 0], centred_program)
+	var no_context_owner = _owner(no_context_source)
+	var no_context_state = _fixture(no_context_source)
+	no_context_state.dialogue = {}
+	var no_context = no_context_owner.start(no_context_state, 1, 1)
+	check(no_context.has("error"), "dialog-global commands refuse a missing dialogue context")
 	# Relayed dialogue: the message instruction reaches the host, not a fake draw.
 	var message_program: Array = [[0xFFFF, 0x0000, 0x0000, 0x0000], [0x0001, 0, 0, 0]]
 	var message_source = _source([0, 0], [1, 0], message_program, ["hello".to_utf8_buffer()])
@@ -253,25 +283,28 @@ func _real_checks() -> void:
 	var state = _fixture(package.pal98_sources)
 	var run = _drive(owner, owner.start(state, 1, 4))
 	var opening_result: Dictionary = run.result
-	check(opening_result.has("error") and str(opening_result.error).contains("0x003B") and str(opening_result.error).contains("not implemented"),
-		"real opening entry runs the reviewed prefix and stops at the first unimplemented command: " + str(opening_result.get("error", "")))
+	check(not opening_result.has("error"), "real opening entry runs to its terminal phase: " + str(opening_result.get("error", "")))
 	var kinds: Array = opening_result.effects.map(func(effect): return effect.kind)
 	check(kinds.slice(0, 4) == ["party_map_position", "role_map_sprite", "party_direction_frame", "party_composition"],
 		"real opening executes 0x0046, 0x0065, 0x0015 and 0x0075 in original order: " + str(kinds))
-	check(kinds.slice(4).all(func(kind): return kind == "dispatch_tail"),
-		"the local 0005 control reaches the shared T240 gate without a case body")
+	check(kinds.has("dialog_globals") and kinds.has("restore_dialog_background") and kinds.has("scene_request"),
+		"real opening runs the text globals, the background restore and the scene request")
+	check(opening_result.state.globals.requested_scene == 2 and opening_result.state.globals.resource_flags == 12,
+		"real opening asks for runtime scene 2 with the original event/EnterScript mask")
+	check(opening_result.return_entry == 4, "real opening returns the ByRef entry saved by opcode 0000")
 	check(opening_result.effects[0].world_x == 1024 and opening_result.effects[0].viewport_x == 864 and opening_result.effects[0].viewport_y == 912,
 		"real opening world (1024,1024) yields viewport (864,912)")
 	check(opening_result.effects[1].sprite_word == 193 and opening_result.effects[2].frame_word == 0,
 		"real opening writes role0 sprite 193 and frame 0")
 	check(opening_result.effects[3].roles == [0], "real opening rebuilds its single-member party from the real argument")
-	var diagnostic: Dictionary = opening_result.get("diagnostic", {})
-	check(str(diagnostic.get("words", [])) == str([0x003B, 0x0000, 0x0000, 0x0000]), "real stop point keeps the real 0x003B operands")
-	check(diagnostic.has("instruction_source") and diagnostic.instruction_source.get("file_sha256", "").length() == 64,
-		"real stop point keeps the admitted instruction receipt")
 	var opening_requests: Array = run.requests.map(func(request): return request.kind)
 	check(opening_requests.has("load_party_sprites") and opening_requests.has("rebuild_party_equipment"),
-		"real opening asks the sprite and equipment owners before the text command: " + str(opening_requests))
+		"real opening asks the sprite and equipment owners: " + str(opening_requests))
+	check(opening_requests.has("restore_dialog_background") and opening_requests.count("dialogue") >= 5,
+		"real opening relays the background restore and the five FFFF dialogues to the host")
+	check(opening_result.get("partial") == true and opening_result.unimplemented.size() >= 5,
+		"the completed opening still reports its named sub-effect gaps")
+	check(opening_result.trace.size() >= 16, "real opening executes the whole 16-instruction entry sequence")
 	check(opening_requests.count("load_party_sprites") == 1 and opening_requests.count("rebuild_party_equipment") == 1,
 		"each party-owner request is answered exactly once")
 	# A scene record redirected to a real minimal entry block completes the chain.
@@ -323,11 +356,18 @@ func _real_checks() -> void:
 		var chained = _owner(package.pal98_sources)
 		var chained_run = _drive(chained, chained.start(request_state, step.request.scene_id, step.request.entry, step.request.event_id))
 		var chained_result: Dictionary = chained_run.result
-		check(chained_result.has("error") and str(chained_result.error).contains("0x003B"),
-			"T212 request is answered by the real entry script and stops at its named text gap")
+		check(not chained_result.has("error") and chained_result.state.globals.requested_scene == 2,
+			"T212 request is answered by the real entry script up to its scene request")
 		check(chained_result.effects.size() >= 4 and chained_result.effects[0].world_x == 1024
 			and chained_result.effects[3].kind == "party_composition",
 			"chained entry still applies the real opening position and party rebuild")
+		var restarted = driver.resume(step.request.id, {"state": chained_result.state,
+			"return_entry": chained_result.return_entry})
+		check(restarted.has("error") and str(restarted.error).contains("Unknown") and restarted.trace.count("entry") == 2,
+			"the real scene request restarts the T212 chain to scene 2 and stops on the documented sprite-cache Unknown backing: "
+				+ str(restarted.get("error", "")))
+		check(restarted.trace.has("commit_events") and restarted.trace.has("load_events"),
+			"the restart commits the previous scene's events and loads the new scene's event backing")
 
 func _initialize() -> void:
 	var args = OS.get_cmdline_user_args()
