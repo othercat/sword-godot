@@ -127,6 +127,9 @@ const CASES = {
 	0x0037: {"range": ["0x00422F80", "0x00422FCA"],
 		"sha256": "63d0dd034848213aa7e7c969fcc1f37b9bf0b2c9acb54ba40da8b356957631ea",
 		"effect": "defaults the end to 999 and the speed to 10, then requests PlayCurrentRngAnimation (0x0041D464) with the three words"},
+	0x001A: {"range": ["0x00421708", "0x004217C0"],
+		"sha256": "9bba9614291deb56f0aaceaae873d5db557c7842f49853593755ac53c82444b3",
+		"effect": "writes role numeric fields: 1 and 65 route to the two G05CC projection words, every other field to the G079C word table; a positive A2 selects role A2-1"},
 	0x001F: {"range": ["0x00421EC4", "0x00421F00"],
 		"sha256": "79fa119ab6503c8516f2ac38ffe38c581b8630ad9f6072d3a3c1d1903e55d8b0",
 		"effect": "compresses the inventory (T152 0x0041C96C), defaults a nonpositive amount to 1 and adds the item through T140 (0x0041CCCC)"},
@@ -179,6 +182,10 @@ const UPDATE_VIEWPORT_AND_PARTY = "update_viewport_and_party_position" # 0x0041C
 const PLAY_CD_OR_MIDI = "play_cd_or_midi_track" # 0x0041D23C
 const DELAY_TICKS = "delay_ticks" # 0x004170C4
 const ViewportMove = preload("res://src/native_pal98_viewport_move.gd")
+const ROLE_G05CC_BATTLE_SPRITE = 0
+const ROLE_G05CC_COOPERATIVE_MAGIC = 11
+const ROLE_FIELD_BATTLE_SPRITE = 1
+const ROLE_FIELD_COOPERATIVE_MAGIC = 65
 const LOAD_RNG_ANIMATION = "load_rng_animation_data" # 0x0041D134
 const PLAY_RNG_ANIMATION = "play_current_rng_animation" # 0x0041D464
 const RNG_ANIMATION_MASK = 16 # G0306 bit4
@@ -305,6 +312,7 @@ func consume(state: Dictionary, request: Dictionary) -> Dictionary:
 		0x007F: return _command_007F(state, request, source)
 		0x0036: return _command_0036(state, request, source)
 		0x0037: return _command_0037(state, request, source)
+		0x001A: return _command_001A(state, request, source)
 	var facts: Dictionary = case_facts(opcode)
 	var details: Dictionary = {"effect": facts.get("effect"), "case_range": facts.get("range"),
 		"case_sha256": facts.get("sha256")}
@@ -618,6 +626,47 @@ func _command_009A(state: Dictionary, request: Dictionary, source: Dictionary) -
 ## 0x0085 requests the delay helper with the argument scaled by ten.
 ## 0x007F runs the viewport/member move state machine.
 ## 0x0036 requests the RNG animation load and sets the G0306 animation bit.
+## 0x001A writes a role numeric field: fields 1 and 65 route to the two consumed
+## G05CC projection words, every other field goes to the G079C word table. A
+## positive A2 selects role A2-1; otherwise the explicit current-role slot is used.
+func _command_001A(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
+	if not state.get("equipment") is Dictionary:
+		return _failure("role_backing", "0x001A requires the explicit role word table", request, source)
+	var equipment: Dictionary = state.equipment
+	if not equipment.get("role_words") is Array or not equipment.get("party_fields") is Array:
+		return _failure("role_backing", "0x001A requires the role words and party projections", request, source)
+	var field: int = _signed(request.words[1])
+	var value: int = request.words[2]
+	var selector: int = _signed(request.words[3])
+	var slot: int = selector - 1
+	if selector <= 0:
+		var current = state.globals.get("current_role_slot")
+		if not _i2(current) or current < 0:
+			return _failure("role_backing", "0x001A needs the explicit current role slot for a nonpositive selector", request, source)
+		slot = current
+	if slot < 0 or slot >= equipment.party_fields.size():
+		return _failure("role_backing", "0x001A role slot is outside the party projection", request, source)
+	var role_word = equipment.party_roles[slot] if equipment.party_roles is Array and slot < equipment.party_roles.size() else null
+	if not _i2(role_word) or role_word < 0 or role_word >= 6:
+		return _failure("role_backing", "0x001A needs the role identity for slot " + str(slot), request, source)
+	var effects: Array = []
+	if field == ROLE_FIELD_BATTLE_SPRITE or field == ROLE_FIELD_COOPERATIVE_MAGIC:
+		var projection: Dictionary = equipment.party_fields[slot]
+		var key: String = "battle_sprite_word" if field == ROLE_FIELD_BATTLE_SPRITE else "cooperative_magic_word"
+		if not _u2(projection.get(key)): return _failure("role_backing", "0x001A projection word is not a WORD", request, source)
+		projection[key] = value
+		effects.append({"kind": "role_projection_field", "field": field, "slot": slot, "key": key,
+			"value": value, "source": source})
+		return _result(state, request, effects)
+	var index: int = role_word * 75 + field
+	if field < 0 or field >= 75 or index >= equipment.role_words.size():
+		return _failure("role_backing", "0x001A field index is outside the role word table", request, source)
+	if not _u2(equipment.role_words[index]): return _failure("role_backing", "0x001A role word is not a WORD", request, source)
+	equipment.role_words[index] = value
+	effects.append({"kind": "role_numeric_field", "field": field, "role": role_word, "index": index,
+		"value": value, "source": source})
+	return _result(state, request, effects)
+
 func _command_0036(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
 	if not state.get("globals") is Dictionary:
 		return _failure("animation_state", "0x0036 requires explicit globals", request, source)

@@ -416,6 +416,32 @@ func _synthetic_checks() -> void:
 	# 0x009A event state range and its global fallback.
 	# 0x00A3 CD/MIDI loop normalization.
 	# 0x0085 delay request scaled by ten.
+	# 0x001A role numeric and projection field writes.
+	var field_program: Array = [[0x001A, 0x0001, 0x002A, 0x0001], [0x001A, 0x0005, 0x0064, 0x0001], [0x0001, 0, 0, 0]]
+	var field_source = _source([0, 0], [1, 0], field_program)
+	var field_owner = _owner(field_source)
+	var field_state = _fixture(field_source)
+	var field_run = _drive(field_owner, field_owner.start(field_state, 1, 1))
+	var field_effects: Array = field_run.result.get("effects", [])
+	check(not field_run.result.has("error") and field_effects.size() == 2
+		and field_effects[0].key == "battle_sprite_word" and field_effects[0].value == 0x002A
+		and field_run.result.state.equipment.party_fields[0].battle_sprite_word == 0x002A,
+		"0x001A routes field 1 to the battle-sprite projection: " + str(field_run.result.get("error", "")))
+	check(field_effects[1].kind == "role_numeric_field" and field_effects[1].index == 5
+		and field_run.result.state.equipment.role_words[5] == 0x0064,
+		"0x001A writes any other field into the role word table")
+	var role_selector_program: Array = [[0x001A, 0x0001, 0x0011, 0x0002], [0x0001, 0, 0, 0]]
+	var role_selector_source = _source([0, 0], [1, 0], role_selector_program)
+	var role_selector_owner = _owner(role_selector_source)
+	var role_selector_run = _drive(role_selector_owner, role_selector_owner.start(_fixture(role_selector_source), 1, 1))
+	check(not role_selector_run.result.has("error")
+		and role_selector_run.result.state.equipment.party_fields[1].battle_sprite_word == 0x0011,
+		"a positive selector writes the chosen member's projection")
+	var missing_selector_program: Array = [[0x001A, 0x0001, 0x0011, 0x0000], [0x0001, 0, 0, 0]]
+	var missing_selector_source = _source([0, 0], [1, 0], missing_selector_program)
+	var missing_owner = _owner(missing_selector_source)
+	check(missing_owner.start(_fixture(missing_selector_source), 1, 1).has("error"),
+		"a nonpositive selector without an explicit current role is refused")
 	# 0x0036/0x0037 RNG animation load and play.
 	var anim_program: Array = [[0x0036, 0x0021, 0x0000, 0x0000], [0x0037, 0x0001, 0x0000, 0x0000], [0x0001, 0, 0, 0]]
 	var anim_source = _source([0, 0], [1, 0], anim_program)
