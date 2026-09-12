@@ -64,7 +64,9 @@ output path; the other three take the admitted package and a fresh output path.
 The main entry suite keeps its package/output arguments. These are component
 checks with explicit host doubles, not ordinary Session acceptance.
 
-`0x0020` is still unimplemented. Its case is `0x00421F00..0x00421F60`
+### 0020 inventory review corrections (2026-09-12)
+
+`0x0020` was implemented in `905c8f0`. Its case is `0x00421F00..0x00421F60`
 (end exclusive), SHA256
 `68ce75cfdbf65d5dc20ab0825678b6867c4fad7f29037bc77410d71a18645471`.
 Only `A1==0` defaults to 1; `count<A1` and `A2!=0` write ByRef entry `A2-1`,
@@ -73,8 +75,29 @@ otherwise the command enters the removal path. The two entry points
 native helper implementations: T173 count (`0x00403D0C..0x00403D64`), T153
 equipped count (`0x0040501C..0x004050AA`) and T135 removal
 (`0x00409104..0x00409260`, including equipment-shortage handling) already have
-research evidence. Reuse and recheck those bodies before extending Inventory;
-no new decoding toolchain is a prerequisite.
+research evidence; no new decoding toolchain is a prerequisite.
+
+The follow-up review adds complete 450-U2 role backing validation and requires
+an unambiguous projection for every active member. Inventory count and removal
+reject missing or repeated active roles instead of shortening the original
+inclusive member loop. The legacy projection has 1..3 slots; this is not a
+limit on Native platform parties. Only the actual shortage-jump branch performs
+the signed I2 subtraction: `A2=0x8000` fails, while `A2=0xffff` returns the U2
+encoding of -2. An unused A2 does not cause a removal-path failure.
+
+Both count and removal read the latest state's inventory. Candidate failure
+atomicity is the Native publication contract, not an assertion that VB rolls
+back preceding writes on an exception. Exact stock exhaustion keeps the item
+word with zero Amount; only a strictly insufficient record clears that word.
+The `shortage_left` receipt is the inventory deficit before equipment clearing,
+not the deficit after it. Rebuilding through the real EntryHost preserves both
+the current quantity and cleared equipment fields.
+
+`tests/test_pal98_count_remove_item_review.gd` takes the admitted package and a
+fresh JSON output path. Its 18 review vectors include real Trigger jump routing
+and real EntryHost rebuilding. The same formal test exposes six failures in
+`905c8f0`; the independent baseline evidence remains in the private product
+review directory. These checks do not activate an ordinary Session.
 
 ## Implemented T240 commands
 
@@ -114,6 +137,7 @@ source bytes for every operand.
 | `0x0093` | `0x004266E8..0x00426704` | requests `FadeScenePaletteAndUpdateFrames` (`0x0041CE04`) with the instruction's argument |
 | `0x0099` | `0x004268EC..0x0042694E` | writes the scene record's map word; a negative `A0` means the current scene and additionally requests `EnsureMapResourcesLoaded` (`0x0041C834`) |
 | `0x001F` | `0x00421EC4..0x00421F00` | defaults a nonpositive amount to 1 and requests `CompressInventoryAndReturnLastSlot` (T152 `0x0041C96C`) plus `AddInventoryItemAmount` (T140 `0x0041CCCC`) from the inventory owner |
+| `0x0020` | `0x00421F00..0x00421F60` | last active inventory Amount plus active equipped copies; a shortage with nonzero A2 returns checked signed `A2-1` as a ByRef U2, otherwise removes inventory and then equipment copies; only zero A1 defaults to one |
 | `0x006D` | `0x004250D8..0x00425178` | for a positive scene writes the record's enter (`+2`) and leave (`+4`) script words, or clears the pair when both arguments are zero |
 | `0x006E` | `0x00425178..0x00425206` | copies the world position and viewport into their previous slots, adds the `A0/A1` deltas to the viewport, stores `A2*8` as the party layer word and, when the party actually moves, requests `PostMoveUpdate` (`0x0041D2CC`) and `UpdateViewportAndPartyPosition` (`0x0041CC3C`) |
 | `0x009A` | `0x0042694E..0x00426A56` | resolves `A0/A1` against the scene event base and writes the state word (`+12`) for the inclusive range, falling back to the global event record when the start is out of range |

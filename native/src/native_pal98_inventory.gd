@@ -13,11 +13,16 @@ const SLOTS = 256
 const RECORD_BYTES = 6
 const AMOUNT_CAP = 99
 const ROLES = 6
+const ROLE_FIELDS = 75
+const SOURCE_PARTY_SLOTS = 3
 
 var error: String = ""
 
 static func _i2(value) -> bool:
 	return typeof(value) == TYPE_INT and value >= -32768 and value <= 32767
+
+static func _u2(value) -> bool:
+	return typeof(value) == TYPE_INT and value >= 0 and value <= 65535
 
 func _shape_issue(inventory_bytes) -> String:
 	if not inventory_bytes is PackedByteArray or inventory_bytes.size() != SLOTS * RECORD_BYTES:
@@ -95,17 +100,38 @@ func compress_and_return_last_slot(inventory_bytes: PackedByteArray) -> Dictiona
 			candidate[source_slot * RECORD_BYTES + byte] = temporary
 	return {"inventory_bytes": candidate, "last_slot": last, "moved": selectable.size()}
 
+## Validate the Native backing before counting or preparing a removal. The
+## original loops through every member 0..member_last; a missing projection
+## cannot be replaced with a shorter loop or a partially applied inventory.
+func _equipment_issue(role_words: Array, party_roles: Array, member_last: int) -> String:
+	if role_words.size() != ROLES * ROLE_FIELDS:
+		return "equipment requires the complete 450-WORD role table"
+	for word in role_words:
+		if not _u2(word): return "equipment role word is outside U2"
+	if party_roles.is_empty() or party_roles.size() > SOURCE_PARTY_SLOTS:
+		return "equipment requires a legacy 1..3-member role projection"
+	if member_last < 0 or member_last >= SOURCE_PARTY_SLOTS or member_last >= party_roles.size():
+		return "equipment role projection does not cover the active member range"
+	var seen: Array = []
+	for slot in range(member_last + 1):
+		var role = party_roles[slot]
+		if not _i2(role) or role < 0 or role >= ROLES or role in seen:
+			return "equipment active role identity is invalid or repeated"
+		seen.append(role)
+	return ""
+
 ## T153: the copies of the item across the active members' six equipment fields
 ## (11..16), addressed field*6+role through the party projection over the
 ## members 0..member_last.
 func count_equipped_copies(item_id: int, role_words: Array, party_roles: Array, member_last: int) -> Dictionary:
+	if not _i2(item_id): return _failure("equipment count requires a signed I2 item")
+	var issue: String = _equipment_issue(role_words, party_roles, member_last)
+	if not issue.is_empty(): return _failure(issue)
 	var total: int = 0
-	for slot in range(mini(member_last + 1, party_roles.size())):
+	for slot in range(member_last + 1):
 		var role = party_roles[slot]
-		if not _i2(role) or role < 0 or role >= ROLES: return _failure("equipment role identity outside the table")
 		for field in range(11, 17):
 			var word: int = field * ROLES + role
-			if word >= role_words.size(): return _failure("equipment fields outside the word table")
 			if _signed(role_words[word]) == item_id: total += 1
 	return {"value": total}
 
@@ -135,6 +161,8 @@ func remove_inventory_item_and_unequip_shortfall(inventory_bytes: PackedByteArra
 	var issue: String = _shape_issue(inventory_bytes)
 	if not issue.is_empty(): return _failure(issue)
 	if not _i2(item_id) or not _i2(remove_count): return _failure("inventory remove requires signed I2 arguments")
+	issue = _equipment_issue(role_words, party_roles, member_last)
+	if not issue.is_empty(): return _failure(issue)
 	var candidate: PackedByteArray = inventory_bytes.duplicate()
 	var words: Array = role_words.duplicate()
 	var remaining: int = remove_count
@@ -158,12 +186,10 @@ func remove_inventory_item_and_unequip_shortfall(inventory_bytes: PackedByteArra
 	var unequipped: int = 0
 	for copy in range(maxi(remaining, 0)):
 		var cleared: bool = false
-		for slot in range(mini(member_last + 1, party_roles.size())):
+		for slot in range(member_last + 1):
 			var role = party_roles[slot]
-			if not _i2(role) or role < 0 or role >= ROLES: return _failure("equipment role identity outside the table")
 			for field in range(11, 17):
 				var word: int = field * ROLES + role
-				if word >= words.size(): return _failure("equipment fields outside the word table")
 				if _signed(words[word]) == item_id:
 					words[word] = 0
 					unequipped += 1

@@ -620,8 +620,9 @@ func _command_0020(state: Dictionary, request: Dictionary, source: Dictionary) -
 		return _failure("inventory_backing", "0x0020 requires the explicit 256-record inventory", request, source)
 	if not state.get("equipment") is Dictionary or not state.equipment.get("role_words") is Array:
 		return _failure("role_backing", "0x0020 requires the explicit role word table", request, source)
-	var party_roles: Array = state.equipment.get("party_roles", [])
-	if party_roles.is_empty(): return _failure("role_backing", "0x0020 requires the active role projection", request, source)
+	if not state.equipment.get("party_roles") is Array:
+		return _failure("role_backing", "0x0020 requires the active role projection", request, source)
+	var party_roles: Array = state.equipment.party_roles
 	var last = state.globals.get("member_last")
 	if not _i2(last) or last < 0: return _failure("role_backing", "0x0020 needs the explicit member count", request, source)
 	var item: int = _signed(request.words[1])
@@ -632,9 +633,13 @@ func _command_0020(state: Dictionary, request: Dictionary, source: Dictionary) -
 		state.inventory_bytes, item, state.equipment.role_words, party_roles, last)
 	if counted.has("error"): return _failure("inventory_count", str(counted.error), request, source)
 	if counted.value < amount and entry_word != 0:
+		var target: int = _signed(entry_word) - 1
+		if not _i2(target):
+			return _failure("checked_i2", "0x0020 jump entry subtraction overflows I2", request, source)
+		var byref_entry: int = target & 0xffff
 		var jump: Dictionary = _result(state, request, [{"kind": "inventory_shortage_jump", "item": item,
-			"count": counted.value, "amount": amount, "jump_entry": entry_word - 1, "source": source}])
-		jump.entry = entry_word - 1
+			"count": counted.value, "amount": amount, "jump_entry": byref_entry, "source": source}])
+		jump.entry = byref_entry
 		return jump
 	var removed: Dictionary = _inventory.remove_inventory_item_and_unequip_shortfall(
 		state.inventory_bytes, item, amount, state.equipment.role_words, party_roles, last)
