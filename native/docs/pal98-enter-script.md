@@ -191,6 +191,21 @@ the decoded source bytes. 91 checks pass.
 
 ### Entry coverage over the real pool (2026-09-12)
 
+### Chain-driven opening frame (2026-09-12)
+
+`tests/window_enter_script_opening.gd` is a window probe that renders the opening
+from the chain's own effects: the real entry script produces the world position,
+viewport and role 0 map sprite id, the viewport maps through the original `exrij`
+relation to cell `(27,57,0)`, and the verified background and depth composition
+build the 320x200 frame with the explicit day palette. The window is captured as
+`opening-frame-02.png` beside its results JSON; 16 checks pass, including the
+documented cell, the decoded source sprite frame and composed pixel content.
+
+The frame is mostly the empty area of MAP20 with the leader sprite at the party
+anchor, which matches the recorded data: the map's bed tiles sit at row 23..26 /
+column 14..17, i.e. elsewhere, and the camera is deliberately not moved to expose
+them. No input device, audio, save or original process is involved.
+
 The suite also runs **every** admitted scene's real enter script until the first
 command the consumer cannot execute, and reports the depth and the blocking
 opcode per scene. With the reviewed commands above in place and an explicit
