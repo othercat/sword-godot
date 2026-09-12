@@ -164,6 +164,12 @@ func _drive_with_host(owner, first: Dictionary, adapter, dialogue_host = null) -
 				result = owner.resume(request.id, {"event": _dialogue_event(request.effect)})
 		elif request.has("original_entry"):
 			result = owner.resume(request.id, adapter.answer(request))
+		elif request.kind == "yes_no":
+			# The driver picks the first positive choice; the menu itself belongs to
+			# a host this coverage scan does not model.
+			result = owner.resume(request.id, {"state": request.state, "result": 1})
+		elif request.kind == "battle":
+			result = owner.resume(request.id, {"state": request.state, "result": 0})
 		elif request.has("state"):
 			result = owner.resume(request.id, {"state": request.state, "completed": true})
 		else:
