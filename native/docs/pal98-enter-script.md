@@ -173,6 +173,18 @@ decoder: the typewriter path emits per-glyph draws with decoded codepoints and
 the title path draws message 1 as one whole string whose composed text equals
 the decoded source bytes. 91 checks pass.
 
+### Full T212 cycle (2026-09-12)
+
+The suite also drives one complete `native_pal98_resource_reload.gd` cycle over
+the admitted sources with this owner answering the entry request: events load,
+the scene map decodes, event sprites load, the background request is answered,
+the party sprites load through the real cache, the entry script runs through the
+real owner adapter and dialogue host, the MIDI request is answered, and the real
+equipment kernel prepares the party before the cycle completes with
+`resource_flags == 0`. The scene record is redirected to a real minimal entry
+block so the cycle stays on implemented commands; the sources, graphics and
+instruction bytes are the admitted originals. 98 checks pass.
+
 ### Decoded facts behind the 0x0046 loop
 
 The full case body was decoded with the pinned token table before the loop was

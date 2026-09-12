@@ -350,7 +350,72 @@ func _synthetic_checks() -> void:
 	stale_owner.cancel()
 	check(stale_owner.resume(first_step.get("request", {}).get("id", "x"), {"event": {}}).has("error"), "cancelled invocation rejects its old request id")
 
+## Full T212 cycle over admitted sources: the reload chain asks this owner for the
+## scene entry script, the real owners answer the command requests, and the host
+## answers the render/audio requests. A redirected real scene record keeps the
+## cycle on an entry block whose commands are implemented.
+func _cycle_checks() -> void:
+	var records = package.pal98_sources.open_records()
+	var minimal := -1
+	for index in range(1, package.pal98_sources.counts().scripts - 1):
+		var probe: Dictionary = records.instruction(index)
+		if probe.has("error"): continue
+		if probe.value.words[0] == 0x0015 and probe.value.words[1] == 0:
+			var following: Dictionary = records.instruction(index + 1)
+			if not following.has("error") and following.value.words[0] in [0x0000, 0x0001]:
+				minimal = index; break
+	check(minimal > 0, "the admitted script pool has a reviewed minimal entry block for a full cycle")
+	if minimal <= 0: return
+	var storage = Events.new(); storage.load_source(package.pal98_sources)
+	var reload_state = _fixture(package.pal98_sources)
+	reload_state.inventory_bytes = PackedByteArray(); reload_state.inventory_bytes.resize(1536)
+	reload_state.globals.resource_flags = 29
+	reload_state.events = storage.source_state()
+	reload_state.events.scene_records = reload_state.events.scene_records.duplicate()
+	reload_state.events.scene_records.encode_u16(2, minimal)
+	var cache = Cache.new(); cache.load_source(package.pal98_graphics, package.pal98_sources)
+	var kernel = Equipment.new()
+	kernel.read_tables(package.pal98_sources.copy_chunk("data", 3),
+		package.pal98_sources.copy_chunk("sss", 2), package.pal98_sources.copy_chunk("sss", 4))
+	var driver = Reload.new()
+	check(driver.load_source(package.pal98_sources, package.pal98_graphics), "cycle owner binds the admitted sources")
+	var step: Dictionary = driver.start(reload_state, cache)
+	var trace: Array = []
+	var effects: Array = []
+	var rounds := 0
+	while step.has("request") and rounds < 32:
+		rounds += 1
+		var request: Dictionary = step.request
+		if request.kind == "enter_script":
+			var adapter = EntryHost.new()
+			check(adapter.bind(cache, kernel, request.state.inventory_bytes, [0, 0, 0, 0, 0, 0]),
+				"cycle owner adapter binds the real owners")
+			adapter.bind_display(DisplayDouble.new())
+			var dialogue_host = DialogueHost.new()
+			dialogue_host.bind(package.pal98_sources)
+			var owner = _owner(package.pal98_sources)
+			var entry_state: Dictionary = request.state.duplicate(true)
+			entry_state.dialogue = _context(); entry_state.rng = Random.create(0x12345)
+			var run = _drive_with_host(owner, owner.start(entry_state, request.scene_id, request.entry,
+				request.event_id), adapter, dialogue_host)
+			if run.result.has("error"):
+				check(false, "cycle entry script failed: " + str(run.result.error)); return
+			effects = run.result.effects.duplicate(true)
+			step = driver.resume(request.id, {"state": run.result.state, "return_entry": run.result.return_entry})
+		else:
+			step = driver.resume(request.id, {"completed": true})
+	trace = step.get("trace", [])
+	check(not step.has("error"), "the full T212 cycle completes: " + str(step.get("error", "")))
+	check(trace.has("load_events") and trace.has("load_event_sprites") and trace.has("load_party_sprites")
+		and trace.has("enter_script:1") and trace.has("prepare_equipment"),
+		"the cycle runs events, sprites, EnterScript, MIDI-safe equipment preparation in order: " + str(trace))
+	check(effects.size() == 1 and effects[0].kind == "party_direction_frame",
+		"the redirected real entry block ran its reviewed command: " + str(effects))
+	check(step.state.globals.resource_flags == 0 and step.state.globals.direction_word == 0,
+		"the completed cycle consumes the mask and keeps the script's direction word")
+
 func _real_checks() -> void:
+	_cycle_checks()
 	var records = package.pal98_sources.open_records()
 	var opening: Dictionary = records.scene_for_runtime_id(1)
 	check(not opening.has("error") and opening.value.map_word == 20 and opening.value.enter_script_word == 4,
