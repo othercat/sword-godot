@@ -220,6 +220,7 @@ const DELAY_TICKS = "delay_ticks" # 0x004170C4
 const ViewportMove = preload("res://src/native_pal98_viewport_move.gd")
 const Inventory = preload("res://src/native_pal98_inventory.gd")
 const Palette = preload("res://src/native_pal98_palette.gd")
+const EquipmentState = preload("res://src/native_pal98_equipment_kernel.gd")
 const ROLE_G05CC_BATTLE_SPRITE = 0
 const ROLE_G05CC_COOPERATIVE_MAGIC = 11
 const ROLE_FIELD_BATTLE_SPRITE = 1
@@ -724,17 +725,21 @@ func _command_0022(state: Dictionary, request: Dictionary, source: Dictionary) -
 	if not state.get("equipment") is Dictionary or not state.equipment.get("role_words") is Array:
 		return _failure("role_backing", "0x0022 requires the explicit role word table", request, source)
 	var equipment: Dictionary = state.equipment
-	var party_roles: Array = equipment.get("party_roles", [])
-	if party_roles.is_empty(): return _failure("role_backing", "0x0022 requires the active role projection", request, source)
-	if not equipment.get("party_statuses") is Array or not equipment.get("party_poisons") is Array:
-		return _failure("role_backing", "0x0022 requires the explicit status and poison backing", request, source)
+	if not equipment.get("party_roles") is Array:
+		return _failure("role_backing", "0x0022 requires the active role projection", request, source)
+	var party_roles: Array = equipment.party_roles
+	var last = state.globals.get("member_last")
+	if not _i2(last): return _failure("role_backing", "0x0022 needs the explicit member count", request, source)
+	if not _inventory is Object: _inventory = Inventory.new()
+	var issue: String = _inventory._equipment_issue(equipment.role_words, party_roles, last)
+	if issue.is_empty(): issue = EquipmentState._party_issue(party_roles)
+	if issue.is_empty(): issue = EquipmentState.condition_backing_issue(equipment)
+	if not issue.is_empty(): return _failure("role_backing", "0x0022: " + issue, request, source)
 	var selector: int = _signed(request.words[1])
 	var multiplier: int = mini(_signed(request.words[2]), 10)
 	var slots: Array = []
 	if selector != 0:
-		var last = state.globals.get("member_last")
-		if not _i2(last) or last < 0: return _failure("role_backing", "0x0022 needs the explicit member count", request, source)
-		for slot in range(mini(last + 1, party_roles.size())): slots.append(slot)
+		for slot in range(last + 1): slots.append(slot)
 	else:
 		var context: int = _signed(request.get("event_id"))
 		if not _i2(context) or context < 0 or context >= party_roles.size():
@@ -873,13 +878,15 @@ func continue_command(pending: Dictionary, state: Dictionary) -> Dictionary:
 ## toward the opposite block, each round followed by an install and either the
 ## event/frame helpers (A0<=0) or a wtime wait (A0>0). The round after each
 ## install starts only once the host answers, so later rounds read the state
-## the host wrote back. The terminal round adopts the target offset, installs
-## the target block directly and clears the G0250 fade gate. The screen
+## the host wrote back. After all round receipts, a separate final install
+## adopts the target offset; its receipt then clears the G0250 fade gate. The screen
 ## install itself stays a host request; Native verifies the buffer arithmetic
 ## and the sequencing, not a real display.
+## Request offset retains the original WORD index (as in 0053/0054/008B);
+## byte_offset and length describe the attached PackedByteArray payload.
 func _command_0080(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
 	if not state.get("palette_bytes") is PackedByteArray or state.palette_bytes.size() != Palette.BUFFER:
-		return _failure("palette_backing", "0x0080 requires the explicit 0x780-byte G0150 buffer", request, source)
+		return _failure("palette_backing", "0x0080 requires the explicit 0xC00-byte G0150 command backing", request, source)
 	var day_night = state.globals.get("day_night_word")
 	if not _i2(day_night) or day_night < 0 or day_night > Palette.DAY_NIGHT_MAX:
 		return _failure("palette_state", "0x0080 requires the explicit G026C offset within 0..0x180", request, source)
@@ -889,39 +896,51 @@ func _command_0080(state: Dictionary, request: Dictionary, source: Dictionary) -
 	if not _palette is Object: _palette = Palette.new()
 	_palette.save_current(state.palette_bytes, day_night)
 	var result: Dictionary = _result(state, request, [])
-	result.pending = {"day_night_fade": {"round": 0, "step": step, "arg0": _signed(request.words[1])},
+	result.pending = {"day_night_fade": {"round": 0, "phase": "rounds", "step": step, "arg0": _signed(request.words[1])},
 		"entry": request.entry, "event_id": request.event_id, "opcode": request.words[0]}
 	return _continue_day_night(result, state)
 
 func _continue_day_night(result: Dictionary, state: Dictionary) -> Dictionary:
 	var pending: Dictionary = result.pending
 	var plan: Dictionary = pending.day_night_fade
+	var issue: String = _palette._shape_issue(state.get("palette_bytes"))
+	if not state.get("globals") is Dictionary: issue = "explicit palette globals required"
+	if not issue.is_empty(): return {"error": "pal98-command: " + issue}
+	if plan.phase == "final_install":
+		# The original clears G0250 after intpate returns, not when its request
+		# is emitted. A failed install therefore never publishes this clear.
+		state.globals.fade_gate_word = 0
+		result.erase("pending")
+		result.rounds = Palette.ROUNDS
+		result.effects = [{"kind": "day_night_fade_done", "day_night": plan.step}]
+		return result
+	if plan.round == Palette.ROUNDS:
+		# All 32 install/wait (or event/frame) groups have now been answered.
+		# Resolve the final bytes from the latest host-written state.
+		state.globals.day_night_word = plan.step
+		plan.phase = "final_install"
+		result.effects = []
+		var byte_offset: int = plan.step * Palette.WORD_BYTES
+		result.requests = [{"kind": APPLY_PALETTE, "original_entry": "0x004174D0",
+			"procedure": "intpate", "offset": plan.step, "length": Palette.LENGTH,
+			"byte_offset": byte_offset, "bytes": state.palette_bytes.slice(byte_offset, byte_offset + Palette.LENGTH)}]
+		return result
 	plan.round = int(plan.round) + 1
-	var converged: Dictionary = _palette.converge_once(state.palette_bytes, plan.step)
+	var converged: Dictionary = _palette.converge_once(state.palette_bytes, plan.step * Palette.WORD_BYTES)
 	if converged.has("error"): return {"error": "pal98-command: " + str(converged.error)}
 	var effects: Array = [{"kind": "day_night_fade_step", "round": plan.round, "moved": converged.moved}]
 	var install: Dictionary = {"kind": APPLY_PALETTE, "original_entry": "0x004174D0",
-		"procedure": "intpate", "offset": Palette.WORK, "length": Palette.LENGTH,
+		"procedure": "intpate", "offset": Palette.WORK_INDEX, "byte_offset": Palette.WORK, "length": Palette.LENGTH,
 		"bytes": state.palette_bytes.slice(Palette.WORK, Palette.WORK + Palette.LENGTH)}
-	if plan.round < Palette.ROUNDS:
-		result.effects = effects
-		if int(plan.arg0) <= 0:
-			result.requests = [install,
-				{"kind": FADE_EVENT_PUMP, "original_entry": "0x0041D17C", "argument": 0},
-				{"kind": FADE_FRAME, "original_entry": "0x0041CB64", "argument": 1}]
-		else:
-			result.requests = [install,
-				{"kind": FADE_WAIT, "original_entry": "0x004170E0", "procedure": "wtime", "delay": plan.arg0}]
-		result.pending = pending
-		return result
-	state.globals.day_night_word = plan.step
-	state.globals.fade_gate_word = 0
-	result.erase("pending")
-	result.rounds = Palette.ROUNDS
-	result.effects = effects + [{"kind": "day_night_fade_done", "day_night": plan.step}]
-	result.requests = [{"kind": APPLY_PALETTE, "original_entry": "0x004174D0",
-		"procedure": "intpate", "offset": plan.step, "length": Palette.LENGTH,
-		"bytes": state.palette_bytes.slice(plan.step, plan.step + Palette.LENGTH)}]
+	result.effects = effects
+	if int(plan.arg0) <= 0:
+		result.requests = [install,
+			{"kind": FADE_EVENT_PUMP, "original_entry": "0x0041D17C", "argument": 0},
+			{"kind": FADE_FRAME, "original_entry": "0x0041CB64", "argument": 1}]
+	else:
+		result.requests = [install,
+			{"kind": FADE_WAIT, "original_entry": "0x004170E0", "procedure": "wtime", "delay": plan.arg0}]
+	result.pending = pending
 	return result
 
 ## 0x008C fades the palette toward a single color. The active window is saved
@@ -935,7 +954,7 @@ func _continue_day_night(result: Dictionary, state: Dictionary) -> Dictionary:
 ## extra terminal install; the display install stays a host request.
 func _command_008C(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
 	if not state.get("palette_bytes") is PackedByteArray or state.palette_bytes.size() != Palette.BUFFER:
-		return _failure("palette_backing", "0x008C requires the explicit 0x780-byte G0150 buffer", request, source)
+		return _failure("palette_backing", "0x008C requires the explicit 0xC00-byte G0150 command backing", request, source)
 	var day_night = state.globals.get("day_night_word")
 	if not _i2(day_night) or day_night < 0 or day_night > Palette.DAY_NIGHT_MAX:
 		return _failure("palette_state", "0x008C requires the explicit G026C offset within 0..0x180", request, source)
@@ -943,36 +962,41 @@ func _command_008C(state: Dictionary, request: Dictionary, source: Dictionary) -
 	# The copies and the color fill run on a duplicate so a refused color
 	# sample publishes nothing and leaves the caller's buffer untouched.
 	var buffer: PackedByteArray = state.palette_bytes.duplicate()
-	_palette.save_block(buffer, day_night, Palette.WORK)
-	_palette.save_block(buffer, day_night, Palette.TARGET)
+	_palette.save_block(buffer, day_night * Palette.WORD_BYTES, Palette.WORK)
+	_palette.save_block(buffer, day_night * Palette.WORD_BYTES, Palette.TARGET)
 	var color: int = _signed(request.words[1])
 	var filled: Dictionary = _palette.fill_color(buffer, color)
 	if filled.has("error"): return _failure("palette_color", str(filled.error), request, source)
 	state.palette_bytes = buffer
 	var delay: int = _signed(request.words[2])
 	if delay == 0: delay = 1
-	var current: int = Palette.WORK
-	var target: int = Palette.TARGET
+	var reference: int = Palette.WORK # P-Code local FF56, read-only to cvpate
+	var writable: int = Palette.TARGET # P-Code local FF26, cvpate/intpate destination
 	if _signed(request.words[3]) != 0:
-		current = Palette.TARGET
-		target = Palette.WORK
+		reference = Palette.TARGET
+		writable = Palette.WORK
 	var result: Dictionary = _result(state, request,
 		[{"kind": "color_fade_start", "color": color, "sample": filled.sample_offset,
-		"current": current, "target": target, "source": source}])
-	result.pending = {"color_fade": {"round": 0, "current": current, "target": target, "delay": delay},
+		"reference_byte_offset": reference, "writable_byte_offset": writable, "source": source}])
+	result.pending = {"color_fade": {"round": 0, "reference": reference, "writable": writable, "delay": delay},
 		"entry": request.entry, "event_id": request.event_id, "opcode": request.words[0]}
 	return _continue_color_fade(result, state)
 
 func _continue_color_fade(result: Dictionary, state: Dictionary) -> Dictionary:
 	var pending: Dictionary = result.pending
 	var plan: Dictionary = pending.color_fade
+	var issue: String = _palette._shape_issue(state.get("palette_bytes"))
+	if not issue.is_empty(): return {"error": "pal98-command: " + issue}
 	plan.round = int(plan.round) + 1
-	var converged: Dictionary = _palette.converge_pair(state.palette_bytes, plan.current, plan.target)
+	# P-Code pushes local FF56 first, FF26 second: PALOLD's first argument
+	# (EDI, the writable block) is FF26, the same block intpate installs.
+	var converged: Dictionary = _palette.converge_pair(state.palette_bytes, plan.writable, plan.reference)
 	if converged.has("error"): return {"error": "pal98-command: " + str(converged.error)}
 	result.effects = [{"kind": "color_fade_step", "round": plan.round, "moved": converged.moved}]
 	var install: Dictionary = {"kind": APPLY_PALETTE, "original_entry": "0x004174D0",
-		"procedure": "intpate", "offset": plan.target, "length": Palette.LENGTH,
-		"bytes": state.palette_bytes.slice(plan.target, plan.target + Palette.LENGTH)}
+		"procedure": "intpate", "offset": int(plan.writable / Palette.WORD_BYTES),
+		"byte_offset": plan.writable, "length": Palette.LENGTH,
+		"bytes": state.palette_bytes.slice(plan.writable, plan.writable + Palette.LENGTH)}
 	result.requests = [install,
 		{"kind": FADE_WAIT, "original_entry": "0x004170E0", "procedure": "wtime", "delay": plan.delay}]
 	if plan.round < Palette.COLOR_ROUNDS:
@@ -1574,11 +1598,8 @@ func _command_0046(state: Dictionary, request: Dictionary, source: Dictionary) -
 	if not state.get("party_trail") is Array or state.party_trail.size() != TRAIL_SLOTS:
 		return _failure("party_trail", "0x0046 requires the explicit five-entry trail array", request, source)
 	var leader = state.party_records[0]
-	if not leader is Dictionary or not leader.get("current_frame") is int:
+	if not leader is Dictionary or not _i2(leader.get("current_frame")):
 		return _failure("party_backing", "0x0046 requires the leader's explicit frame word", request, source)
-	globals.world_x = world_x; globals.world_y = world_y
-	globals.previous_x = world_x; globals.previous_y = world_y
-	globals.viewport_x = viewport_x; globals.viewport_y = viewport_y
 	var effect: Dictionary = {"kind": "party_map_position", "world_x": world_x, "world_y": world_y,
 		"viewport_x": viewport_x, "viewport_y": viewport_y,
 		"clamped_x": clamped_x, "clamped_y": clamped_y,
@@ -1596,6 +1617,12 @@ func _command_0046(state: Dictionary, request: Dictionary, source: Dictionary) -
 	var slot_member_x: Array = []
 	var slot_member_y: Array = []
 	for slot in range(TRAIL_SLOTS):
+		if slot < state.party_records.size():
+			var record = state.party_records[slot]
+			if not record is Dictionary or not _i2(record.get("screen_x")) or not _i2(record.get("screen_y")):
+				return _failure("party_backing", "0x0046 requires explicit member screen positions", request, source)
+		if not state.party_trail[slot] is Dictionary:
+			return _failure("party_trail", "0x0046 requires explicit trail entries", request, source)
 		var screen_x: int = member_x + viewport_x
 		var screen_y: int = member_y + viewport_y
 		if not _i2(screen_x) or not _i2(screen_y):
@@ -1608,11 +1635,12 @@ func _command_0046(state: Dictionary, request: Dictionary, source: Dictionary) -
 		member_y -= FORMATION_STEP_Y[direction]
 		if not _i2(member_x) or not _i2(member_y):
 			return _failure("checked_i2", "0x0046 formation step leaves I2 range", request, source)
+	globals.world_x = world_x; globals.world_y = world_y
+	globals.previous_x = world_x; globals.previous_y = world_y
+	globals.viewport_x = viewport_x; globals.viewport_y = viewport_y
 	for slot in range(TRAIL_SLOTS):
 		if slot < state.party_records.size():
 			var record = state.party_records[slot]
-			if not record is Dictionary or not record.get("screen_x") is int or not record.get("screen_y") is int:
-				return _failure("party_backing", "0x0046 requires explicit member screen positions", request, source)
 			record.screen_x = slot_member_x[slot]
 			record.screen_y = slot_member_y[slot]
 			record.current_frame = leader.current_frame
@@ -1620,8 +1648,6 @@ func _command_0046(state: Dictionary, request: Dictionary, source: Dictionary) -
 		else:
 			unbacked.append(slot)
 		var trail = state.party_trail[slot]
-		if not trail is Dictionary:
-			return _failure("party_trail", "0x0046 requires explicit trail entries", request, source)
 		trail.x = slot_screen_x[slot]
 		trail.y = slot_screen_y[slot]
 		trail.direction_word = direction
@@ -1712,41 +1738,33 @@ func _command_0075(state: Dictionary, request: Dictionary, source: Dictionary) -
 	var equipment: Dictionary = state.equipment
 	if not equipment.get("party_roles") is Array:
 		return _failure("party_backing", "0x0075 requires the explicit active role projection", request, source)
-	for role in roles:
-		if role < 0 or role >= ROLES:
-			return _failure("party_backing", "0x0075 role argument is outside the source role table", request, source)
+	var issue: String = EquipmentState._party_issue(roles)
+	if issue.is_empty(): issue = EquipmentState.condition_backing_issue(equipment)
+	if not issue.is_empty(): return _failure("party_backing", "0x0075: " + issue, request, source)
 	# G04AC is a fixed array: the command writes the active slots and leaves the
 	# inactive ones untouched, while the equipment projections follow the active
 	# member set that the original T156 call rebuilds.
 	if state.party_records.size() < roles.size():
 		return _failure("party_backing", "0x0075 needs explicit records for every requested member", request, source)
+	var records: Array = state.party_records.duplicate(true)
 	for slot in range(roles.size()):
-		var existing = state.party_records[slot]
+		var existing = records[slot]
 		if not existing is Dictionary or not existing.get("current_frame") is int:
 			return _failure("party_backing", "0x0075 needs the slot's explicit frame word", request, source)
 		existing.role_id = roles[slot]
-	# The equipment projections follow the active member set the original T156
-	# rebuild targets: growth materializes fresh rows, shrink slices them, and
-	# the real equipment owner then fills every row from the current base table.
-	# Requiring the old rows to already cover the new count made a shrunken
-	# party impossible to re-expand.
-	for key in ["party_fields", "party_statuses", "party_poisons"]:
-		if not equipment.get(key) is Array:
-			return _failure("party_backing", "0x0075 needs the equipment projection for every member", request, source)
-	while equipment.party_fields.size() < roles.size():
-		equipment.party_fields.append({"battle_sprite_word": 0, "cooperative_magic_word": 0})
-	while equipment.party_statuses.size() < roles.size():
-		var row: Array = []; row.resize(16); row.fill(0); equipment.party_statuses.append(row)
-	while equipment.party_poisons.size() < roles.size():
-		var poison: PackedByteArray = PackedByteArray(); poison.resize(16 * 4); equipment.party_poisons.append(poison)
-	for key in ["party_fields", "party_statuses", "party_poisons"]:
-		if equipment[key].size() > roles.size():
-			equipment[key] = equipment[key].slice(0, roles.size())
-	for slot in range(roles.size()):
-		if not equipment.party_statuses[slot] is Array or equipment.party_statuses[slot].size() != 16:
-			return _failure("party_backing", "0x0075 status rows require sixteen I2 values", request, source)
-		if not equipment.party_poisons[slot] is PackedByteArray or equipment.party_poisons[slot].size() != 16 * 4:
-			return _failure("party_backing", "0x0075 poison rows require sixteen id/script WORD records", request, source)
+	# Only the rebuilt G05CC fields follow active projection size. Conditions
+	# retain their three explicit party slots across shrinking and regrowing;
+	# neither 0075 nor its T99/T230 calls clear them. T156 owns status8 only.
+	if not equipment.get("party_fields") is Array:
+		return _failure("party_backing", "0x0075 needs the equipment field projection", request, source)
+	var fields: Array = equipment.party_fields.duplicate(true).slice(0, roles.size())
+	while fields.size() < roles.size():
+		fields.append({"battle_sprite_word": 0, "cooperative_magic_word": 0})
+	for field in fields:
+		if not field is Dictionary or field.size() != 2 or not _u2(field.get("battle_sprite_word")) or not _u2(field.get("cooperative_magic_word")):
+			return _failure("party_backing", "0x0075 needs valid equipment field WORDs", request, source)
+	state.party_records = records
+	equipment.party_fields = fields
 	equipment.party_roles = roles.duplicate()
 	state.globals.member_last = roles.size() - 1
 	var effect: Dictionary = {"kind": "party_composition", "roles": roles.duplicate(),

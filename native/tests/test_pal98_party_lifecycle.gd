@@ -65,8 +65,8 @@ func _initialize() -> void:
 		check(rebuilt.get("completed", false), "the real equipment owner rebuilds party %s: %s"
 			% [str(step.roles), str(rebuilt.get("error", ""))])
 		check(state.equipment.party_fields.size() == step.roles.size()
-			and state.equipment.party_statuses.size() == step.roles.size(),
-			"the projections after %s match the active member count" % str(step.roles))
+			and state.equipment.party_statuses.size() == 3 and state.equipment.party_poisons.size() == 3,
+			"the active fields resize while three condition slots remain after %s" % str(step.roles))
 		# Equipment scripts may legally rewrite a projection word during their own
 		# rebuild, so the lifecycle rows must equal a direct rebuild of the same
 		# composition, not the raw base words.
@@ -75,8 +75,8 @@ func _initialize() -> void:
 		var fresh_rebuilt = host.answer({"kind": "rebuild_party_equipment", "state": fresh})
 		check(fresh_rebuilt.get("completed", false)
 			and fresh.equipment.party_fields == state.equipment.party_fields
-			and fresh.equipment.party_statuses == state.equipment.party_statuses,
-			"the %s lifecycle rows equal a direct rebuild of the same party" % str(step.roles))
+			and fresh.equipment.party_statuses.slice(0, step.roles.size()) == state.equipment.party_statuses.slice(0, step.roles.size()),
+			"the active %s lifecycle rows equal a direct rebuild of the same party" % str(step.roles))
 		var statuses_ok: bool = true
 		var poisons_ok: bool = true
 		for slot in range(step.roles.size()):

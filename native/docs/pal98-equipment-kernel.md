@@ -22,6 +22,17 @@ party temporaries are represented by `battle_sprite_word` and
 projection does not claim an unknown full record stride or confuse byte22 with
 WORD22. This internal state is not a public Native save format.
 
+The 2026-09-13 review separates active projection size from condition storage:
+`party_roles` and `party_fields` have 1..3 active rows; `party_statuses` and
+`party_poisons` retain three explicit slots even while a slot is inactive.
+Each status slot has sixteen signed I2 durations. Each poison slot is 64 bytes,
+sixteen `(U2 id, U2 script)` records. This is the supported Native subset's
+backing capacity, not a declaration of every original SAFEARRAY dimension.
+`0075` must not slice away these slots; `T156` clears only active status8 before
+equipment execution. Other durations and both poison words survive shrinking,
+regrowing and role reordering. `condition_backing_issue` is shared with the
+command consumer, so malformed backing is refused before HP or party writes.
+
 `run_equipped_entry(state, role, equipment_field)` follows the initializer's
 signed-positive item test and uses object WORD3 as a shared **U2** entry reference.
 Each call returns a complete candidate or a source/PC/operand diagnostic without
@@ -75,7 +86,8 @@ inventory bytes; failure exposes neither partial candidate. This is Native's
 transaction boundary, not original failure parity: the recovered original owner
 does not roll back its earlier clears on a later script/resource failure.
 
-The nine-field internal state and v2 source profile remain unchanged; inventory
+The internal state now has ten fields, including `party_poisons`; the v2 source
+profile remains an internal source identity. Inventory
 belongs to the future enclosing runtime state. The new function does not claim
 to implement the surrounding 0075 command. Its original order is map-sprite load,
 inventory/equipment initialization, then party/trail synchronization. In

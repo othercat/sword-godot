@@ -13,6 +13,9 @@ const MODIFIER_COUNT = ROLES * 7 * 14
 const MAX_STEPS = 1024
 const INVENTORY_SLOTS = 256
 const INVENTORY_RECORD_BYTES = 6
+const CONDITION_SLOTS = 3 # Explicit backing for this legacy three-member subset.
+const STATUS_COLUMNS = 16
+const POISON_RECORD_BYTES = 16 * 4
 const PROFILE = "pal98.equipment-entry-subset.v2"
 var error: String = ""
 var _roles: Array = []
@@ -74,15 +77,34 @@ func initial_state(party_roles: Array = [0]) -> Dictionary:
 	for role in party_roles:
 		# A projection of the two consumed G05CC fields, not a guessed record stride.
 		fields.append({"battle_sprite_word": 0, "cooperative_magic_word": 0})
-		# G06C4 keeps sixteen status columns per party slot; the original status
-		# records beyond the verified nine stay zero and are no separate truth.
-		var row: Array = []; row.resize(16); row.fill(0); statuses.append(row)
+	# Conditions belong to fixed party slots, including inactive slots. 0075
+	# changes the active projection, not these words; T156 only clears status8
+	# for members it actually rebuilds. This is an internal subset capacity,
+	# not a claim about the original SAFEARRAY dimensions or a new save format.
+	for slot in range(CONDITION_SLOTS):
+		var row: Array = []; row.resize(STATUS_COLUMNS); row.fill(0); statuses.append(row)
 		# G0704: sixteen 4-byte poison records per party slot (WORD id + WORD script).
-		var poison: PackedByteArray = PackedByteArray(); poison.resize(16 * 4); poisons.append(poison)
+		var poison: PackedByteArray = PackedByteArray(); poison.resize(POISON_RECORD_BYTES); poisons.append(poison)
 	return {"source_id": _receipt.source_id, "role_words": _roles.duplicate(),
 		"modifiers": effects, "equip_entries": entries, "previous_item": 0,
 		"party_roles": party_roles.duplicate(), "party_fields": fields,
 		"party_statuses": statuses, "party_poisons": poisons, "trigger_success_word": 0}
+
+static func condition_backing_issue(state: Dictionary) -> String:
+	if not state.get("party_statuses") is Array or state.party_statuses.size() != CONDITION_SLOTS:
+		return "source party status backing requires three retained slots"
+	for statuses in state.party_statuses:
+		if not statuses is Array or statuses.size() != STATUS_COLUMNS:
+			return "source party status row requires sixteen I2 values"
+		for duration in statuses:
+			if typeof(duration) != TYPE_INT or duration < -32768 or duration > 32767:
+				return "source status duration is not signed I2"
+	if not state.get("party_poisons") is Array or state.party_poisons.size() != CONDITION_SLOTS:
+		return "source party poison backing requires three retained slots"
+	for poison in state.party_poisons:
+		if not poison is PackedByteArray or poison.size() != POISON_RECORD_BYTES:
+			return "source party poison row requires sixteen id/script WORD records"
+	return ""
 
 func validate_state(state: Dictionary) -> String:
 	if _receipt.is_empty(): return "source tables have not been read"
@@ -101,25 +123,17 @@ func validate_state(state: Dictionary) -> String:
 	if not state.get("party_roles") is Array: return "source party roles must be an array"
 	var issue: String = _party_issue(state.party_roles)
 	if not issue.is_empty(): return issue
-	if not state.get("party_fields") is Array or not state.get("party_statuses") is Array:
-		return "source party fields and statuses must be arrays"
-	if state.party_fields.size() != state.party_roles.size() or state.party_statuses.size() != state.party_roles.size():
+	if not state.get("party_fields") is Array:
+		return "source party fields must be an array"
+	if state.party_fields.size() != state.party_roles.size():
 		return "source party projection must match member count"
 	for slot in range(state.party_roles.size()):
-		var fields = state.party_fields[slot]; var statuses = state.party_statuses[slot]
+		var fields = state.party_fields[slot]
 		if not fields is Dictionary or fields.size() != 2: return "source party field projection has the wrong shape"
 		for key in ["battle_sprite_word", "cooperative_magic_word"]:
 			if typeof(fields.get(key)) != TYPE_INT or fields[key] < 0 or fields[key] > 65535: return "source party field is not a WORD"
-		if not statuses is Array or statuses.size() != 16: return "source party status row requires sixteen I2 values"
-		for duration in statuses:
-			if typeof(duration) != TYPE_INT or duration < -32768 or duration > 32767: return "source status duration is not signed I2"
-	if not state.get("party_poisons") is Array:
-		return "source party poison backing must be an array"
-	if state.party_poisons.size() != state.party_roles.size():
-		return "source party poison backing must match member count"
-	for poison in state.party_poisons:
-		if not poison is PackedByteArray or poison.size() != 16 * 4:
-			return "source party poison row requires sixteen id/script WORD records"
+	issue = condition_backing_issue(state)
+	if not issue.is_empty(): return issue
 	if typeof(state.get("trigger_success_word")) != TYPE_INT or state.trigger_success_word < -32768 or state.trigger_success_word > 32767:
 		return "trigger success word is not signed I2"
 	return ""

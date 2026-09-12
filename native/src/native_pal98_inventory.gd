@@ -103,11 +103,16 @@ func compress_and_return_last_slot(inventory_bytes: PackedByteArray) -> Dictiona
 ## Validate the Native backing before counting or preparing a removal. The
 ## original loops through every member 0..member_last; a missing projection
 ## cannot be replaced with a shorter loop or a partially applied inventory.
-func _equipment_issue(role_words: Array, party_roles: Array, member_last: int) -> String:
+func _role_words_issue(role_words: Array) -> String:
 	if role_words.size() != ROLES * ROLE_FIELDS:
 		return "equipment requires the complete 450-WORD role table"
 	for word in role_words:
 		if not _u2(word): return "equipment role word is outside U2"
+	return ""
+
+func _equipment_issue(role_words: Array, party_roles: Array, member_last: int) -> String:
+	var issue: String = _role_words_issue(role_words)
+	if not issue.is_empty(): return issue
 	if party_roles.is_empty() or party_roles.size() > SOURCE_PARTY_SLOTS:
 		return "equipment requires a legacy 1..3-member role projection"
 	if member_last < 0 or member_last >= SOURCE_PARTY_SLOTS or member_last >= party_roles.size():
@@ -209,8 +214,10 @@ func unequip_fields_to_inventory(inventory_bytes: PackedByteArray, role: int,
 		first_field: int, last_field: int, role_words: Array) -> Dictionary:
 	var issue: String = _shape_issue(inventory_bytes)
 	if not issue.is_empty(): return _failure(issue)
-	if role_words.size() != ROLES * ROLE_FIELDS:
-		return _failure("equipment requires the complete 450-WORD role table")
+	issue = _role_words_issue(role_words)
+	if not issue.is_empty(): return _failure(issue)
+	if role < 0 or role >= ROLES or first_field < 0 or last_field >= ROLE_FIELDS or first_field > last_field:
+		return _failure("equipment role or field range is outside the word table")
 	var candidate: PackedByteArray = inventory_bytes.duplicate()
 	var words: Array = role_words.duplicate()
 	var returned: Array = []

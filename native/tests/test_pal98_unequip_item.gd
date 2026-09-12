@@ -136,7 +136,7 @@ func _initialize() -> void:
 	# A second consecutive return overflowing I2 publishes no candidate at all:
 	# the earlier field's add and clear vanish with it.
 	var overflow: Dictionary = _state(kernel, 2)
-	_put(overflow.inventory_bytes, 3, 30, 32767)
+	_put(overflow.inventory_bytes, 3, 30, 32766)
 	overflow.equipment.role_words[11 * 6 + 1] = 30
 	overflow.equipment.role_words[12 * 6 + 1] = 30
 	var over_before: Dictionary = overflow.duplicate(true)

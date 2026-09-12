@@ -129,7 +129,7 @@ func _fixture(source, scene_id: int = 1) -> Dictionary:
 		"equipment": equipment.initial_state([0, 1, 3]),
 		"inventory_bytes": _zero(1536),
 		# G0150: the explicit palette buffer the 0x0080/0x008C fades consume.
-		"palette_bytes": _zero(0x780),
+		"palette_bytes": _zero(0xC00),
 		# The fixed G04AC projection: five slots, of which the active count is
 		# carried by globals.member_last and the equipment role projection.
 		"party_records": [{"role_id": 0, "screen_x": 160, "screen_y": 112, "current_frame": 3},
@@ -231,14 +231,7 @@ func _synthetic_checks() -> void:
 	var map_state = _fixture(map_source)
 	while map_state.party_records.size() < 5:
 		map_state.party_records.append({"role_id": 0, "screen_x": 0, "screen_y": 0, "current_frame": 3})
-	var fields: Array = []
-	for slot in range(5): fields.append(map_state.equipment.party_fields[0].duplicate(true))
-	map_state.equipment.party_fields = fields
-	map_state.equipment.party_roles = [0, 0, 0, 0, 0]
-	var map_statuses: Array = []
-	for slot in range(5):
-		var row: Array = []; row.resize(16); row.fill(0); map_statuses.append(row)
-	map_state.equipment.party_statuses = map_statuses
+	# Five map records do not imply five active equipment roles or condition slots.
 	var map_run = _drive(map_owner, map_owner.start(map_state, 1, 1))
 	check(not map_run.result.has("error"), "0x0046 completes with five backed slots: " + str(map_run.result.get("error", "")))
 	check(map_run.result.state.party_records[0].screen_x == 160 and map_run.result.state.party_records[0].screen_y == 112
@@ -878,8 +871,8 @@ func _synthetic_checks() -> void:
 		and multi_result.result.state.party_records[0].role_id == 1 and multi_result.result.state.party_records[1].role_id == 2,
 		"the rebuilt composition writes the fixed party slots and the active equipment roles")
 	check(multi_result.result.state.equipment.party_fields.size() == 2
-		and multi_result.result.state.equipment.party_statuses.size() == 2,
-		"the equipment projections follow the active member set")
+		and multi_result.result.state.equipment.party_statuses.size() == 3,
+		"equipment fields follow active members while condition slots remain backed")
 	var default_program: Array = [[0x0075, 0x0000, 0x0000, 0x0000], [0x0001, 0, 0, 0]]
 	var default_source = _source([0, 0], [1, 0], default_program)
 	var default_owner = _owner(default_source)
@@ -890,7 +883,7 @@ func _synthetic_checks() -> void:
 	var bad_role_source = _source([0, 0], [1, 0], bad_role_program)
 	var bad_role_owner = _owner(bad_role_source)
 	var bad_role = bad_role_owner.start(_fixture(bad_role_source), 1, 1)
-	check(bad_role.has("error") and str(bad_role.error).contains("outside the source role table"),
+	check(bad_role.has("error") and bad_role.get("diagnostic", {}).get("code") == "party_backing",
 		"0x0075 refuses a role argument outside the admitted role table")
 	# 0x003B / 0x003D dialog globals and 0x008E background restore.
 	var layout_program: Array = [[0x003B, 0x0000, 0x0000, 0x0000], [0x003D, 0x0000, 0x0000, 0x0000],

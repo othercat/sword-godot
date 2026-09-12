@@ -74,14 +74,14 @@ func _initialize() -> void:
 		"a non-byte poison row is rejected")
 	var thin: Dictionary = {"equipment": equipment.duplicate(true)}
 	thin.equipment.party_poisons.pop_back()
-	check(str(kernel.validate_state(thin.equipment)).contains("match member count"),
-		"a poison backing shorter than the projection is rejected")
+	check(str(kernel.validate_state(thin.equipment)).contains("three retained slots"),
+		"a poison backing shorter than the retained slot capacity is rejected")
 	var narrow: Dictionary = {"equipment": equipment.duplicate(true)}
 	narrow.equipment.party_statuses[0].pop_back()
 	check(str(kernel.validate_state(narrow.equipment)).contains("sixteen I2"),
 		"a fifteen-column status row is rejected")
 
-	# 0075 growth materializes zeroed backing rows and shrink slices every array;
+	# 0075 changes active roles while keeping the initialized condition backing;
 	# the composition sequence is the lifecycle's 1 -> 3 -> 1 -> 2.
 	var party: Dictionary = {"globals": {"current_scene": 1, "battle_mode": 0, "member_last": 0,
 			"follower_count": 0, "trigger_success_word": 0},
@@ -96,13 +96,13 @@ func _initialize() -> void:
 		and party.equipment.party_poisons.size() == 3
 		and party.equipment.party_poisons[1] == _zero(64)
 		and party.equipment.party_statuses[2][15] == 0,
-		"the 0075 growth materializes zeroed backing rows: " + str(grown.get("error", "")))
+		"the 0075 growth uses retained initially-zero condition slots: " + str(grown.get("error", "")))
 	check(party.equipment.party_poisons[0].decode_u16(0) == 44,
 		"the pre-existing slot zero poison survives the growth")
 	var shrunk: Dictionary = commands.consume(party, {"words": [0x0075, 1, 0, 0], "entry": 1, "event_id": 0})
 	var regrown: Dictionary = commands.consume(party, {"words": [0x0075, 1, 2, 0], "entry": 1, "event_id": 0})
 	check(not shrunk.has("error") and not regrown.has("error")
-		and party.equipment.party_poisons.size() == 2 and party.equipment.party_statuses.size() == 2
+		and party.equipment.party_poisons.size() == 3 and party.equipment.party_statuses.size() == 3
 		and party.equipment.party_poisons[0].decode_u16(0) == 44,
 		"the 1 -> 3 -> 1 -> 2 cycle keeps the backing shapes and slot zero content")
 
@@ -115,7 +115,7 @@ func _initialize() -> void:
 		"the reorder keeps both slots' poison records in place")
 	party.equipment.party_poisons[1] = PackedByteArray([1, 2, 3])
 	var refused: Dictionary = commands.consume(party, {"words": [0x0075, 1, 2, 0], "entry": 1, "event_id": 0})
-	check(refused.has("error") and str(refused.error).contains("poison rows"),
+	check(refused.has("error") and str(refused.error).contains("poison row"),
 		"a corrupt poison row refuses the growth: " + str(refused.get("error", "")))
 
 	var output: Dictionary = {"suite": "test_pal98_status_backing", "checks": results,

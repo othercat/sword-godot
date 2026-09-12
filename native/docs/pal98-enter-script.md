@@ -17,6 +17,55 @@ Neither module activates an ordinary Session. There is no rendering, audio,
 save, input or map-cache work here, and `native_session.gd` keeps its
 source-only preview guard.
 
+## Reviewed night-batch corrections (2026-09-13)
+
+The `e757e80` batch added `0023`, `0022`, `0080` and `008C`, viewport clamping,
+and condition backing. Its earlier green tests did not establish arithmetic or
+host sequencing parity. The current corrections supersede the historical
+coverage/gap summaries below:
+
+- `G0150` is a fixed **WORD** array: descriptor `0x00401CA0` gives two-byte
+  elements and `0x600` elements, totaling **3072 bytes**. The P-Code indices
+  day/night/work/color `0/384/768/1152` address byte offsets
+  `0/768/1536/2304`; each palette is 768 bytes. These windows are separate.
+  `G026C` and request `offset` remain WORD indices; the explicit `byte_offset`,
+  `length` and `bytes` describe the payload. The former 1920-byte backing,
+  overlap claim and old research `byte[0x780]` declaration are superseded by
+  the original EXE descriptor and VB array-index helper.
+- `cvpate` compares **signed bytes** and moves an unequal byte by **one**.
+  In the original rising branch, ADD 2 falls through DEC; it is not +2.
+  The 43-byte PALOLD body at `0x100030C6` hashes to
+  `555b8b38c1a3c00e24b1761f18ee22c543dc1c15e9ad4f6810936c14a90c8599`.
+- `0080` emits all 32 work-palette installs and all 32 wait or event/frame
+  groups. Only after their acknowledgements does it adopt the target offset
+  and read the final palette bytes. The extra final install is acknowledged
+  before clearing G0250. Failed host calls publish no EnterScript candidate.
+- `008C` converges the second pointer pushed by its P-Code (local FF26),
+  which is also the pointer installed by `intpate`. It keeps the 63 iterations,
+  A1-zero default, A2 swap and forward copies into separate buffers;
+  it does not borrow `0080`'s terminal offset/gate behavior.
+- `0046` validates all five formation/trail writes before changing globals,
+  records or trail. Its independent-axis ffxy clamp and original opening
+  world `(1024,1024)` / viewport `(864,912)` stay intact.
+- `0022` checks complete role mapping, all 450 U2 words and every condition
+  row before applying HP/status changes. Its division-before-multiplication,
+  checked difference/total, poison-script preservation and -1/0 truth remain.
+  `0023` shares the complete U2-table check before interpreting item IDs.
+- `0075` keeps inactive status/poison slots across shrink/regrow; only the
+  active role/field projections resize. The real equipment owner still clears
+  status8 on the members it rebuilds. See [equipment backing](pal98-equipment-kernel.md).
+
+`tests/test_pal98_night_review.gd` includes nonuniform palette vectors, signed
+byte boundaries, request counts, last-receipt writes, invalid backing,
+failure recovery and real Trigger/EntryHost integration.
+`tests/test_pal98_palette_layout.gd` independently checks every RGB byte of
+both complete source palettes, color255, destination direction and unchanged
+reference windows. Palette installations
+remain explicit host requests. Synthetic ACKs, scene-return counts and this
+internal owner do not enable or verify ordinary gameplay, real display,
+audio, saving, or Mac/AMD acceptance. The private original byte input remains
+outside the distributable runtime; no original DLL is loaded by this module.
+
 ## What the caller does
 
 `load_source(source)` binds the admitted source once: the addressed record

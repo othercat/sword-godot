@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 extends SceneTree
 ## 0x0080 day/night fade: copymen saves the active window, 32 cvpate rounds
-## converge the work area toward the opposite block with the native +2/-1
+## converge the work area toward the opposite block with the native signed +/-1
 ## byte rule, each round publishes an install plus event/frame (A0<=0) or
 ## wtime (A0>0) requests, later rounds read the state the host wrote back,
 ## and the terminal adopts the target offset, installs the target block and
@@ -20,8 +20,8 @@ func _zero(count: int) -> PackedByteArray:
 	var bytes = PackedByteArray(); bytes.resize(count); return bytes
 
 func _palette_bytes() -> PackedByteArray:
-	var bytes: PackedByteArray = _zero(0x780)
-	for index in range(0x180, 0x300): bytes[index] = 63  # night block; day stays zero
+	var bytes: PackedByteArray = _zero(0xC00)
+	for index in range(0x300, 0x600): bytes[index] = 63  # night block; day stays zero
 	return bytes
 
 func _state(day_night: int) -> Dictionary:
@@ -47,13 +47,13 @@ func _initialize() -> void:
 	check(refused.get("diagnostic", {}).get("code") == "palette_state",
 		"a day/night offset beyond 0x180 is refused: " + str(refused.get("error", "")))
 	var thin: Dictionary = _state(0)
-	thin.palette_bytes = thin.palette_bytes.slice(0, 0x77F)
+	thin.palette_bytes = thin.palette_bytes.slice(0, 0xBFF)
 	var short: Dictionary = _consume(commands, thin, 0)
 	check(short.get("diagnostic", {}).get("code") == "palette_backing",
 		"a short palette buffer is refused")
 
 	# Day to night with the wait branch: 32 install+wait rounds, a work byte
-	# rising by 2 per round past the target, then the terminal adopting the
+	# rising by one per round, then the terminal adopting the
 	# night offset, installing the night block and clearing the fade gate.
 	var night: Dictionary = _state(0)
 	var run: Dictionary = _consume(commands, night, 5)
@@ -64,21 +64,24 @@ func _initialize() -> void:
 		and run.requests[0].offset == 0x300 and run.requests[1].kind == "fade_wait"
 		and run.requests[1].delay == 5,
 		"a positive A0 installs and waits each round")
-	check(run.requests[0].bytes.size() == 0x300 and run.requests[0].bytes[0] == 2,
-		"the first round install carries the +2 advanced work bytes")
+	check(run.requests[0].bytes.size() == 0x300 and run.requests[0].bytes[0] == 1,
+		"the first round install carries the +1 advanced work bytes")
 	var rounds: int = 1
+	var final_install: Dictionary = {}
 	while run.has("pending"):
 		run = commands.continue_command(run.pending, night)
-		rounds += 1
+		for effect in run.get("effects", []):
+			if effect.kind == "day_night_fade_step": rounds += 1
+		for request in run.get("requests", []):
+			if request.get("offset") == 0x180: final_install = request
 	check(rounds == 32 and run.rounds == 32,
 		"the fade runs exactly 32 rounds: " + str(rounds))
 	check(night.globals.day_night_word == 0x180 and night.globals.fade_gate_word == 0,
 		"the terminal adopts the night offset and clears G0250")
-	check(night.palette_bytes[0x300] == 64 and night.palette_bytes[0x180] == 63,
-		"the work byte overshoots the 63 target by one exactly as the native +2 rule does")
-	check(run.requests.size() == 1 and run.requests[0].offset == 0x180
-		and run.requests[0].bytes[0] == 63,
-		"the terminal installs the night block itself")
+	check(night.palette_bytes[0x600] == 32 and night.palette_bytes[0x300] == 63,
+		"the work byte advances 32 times without changing the source byte")
+	check(final_install.get("offset") == 0x180 and final_install.get("bytes", PackedByteArray([0]))[0] == 63,
+		"the final request installs the night block itself before completion")
 	check(run.effects[run.effects.size() - 1].kind == "day_night_fade_done",
 		"the terminal publishes the done effect")
 
@@ -87,13 +90,17 @@ func _initialize() -> void:
 	var day: Dictionary = _state(0x180)
 	var back: Dictionary = _consume(commands, day, 5)
 	var back_rounds: int = 1
+	var back_install: Dictionary = {}
 	while back.has("pending"):
 		back = commands.continue_command(back.pending, day)
-		back_rounds += 1
-	check(back_rounds == 32 and day.palette_bytes[0x300] == 31
+		for effect in back.get("effects", []):
+			if effect.kind == "day_night_fade_step": back_rounds += 1
+		for request in back.get("requests", []):
+			if request.get("offset") == 0: back_install = request
+	check(back_rounds == 32 and day.palette_bytes[0x600] == 31
 		and day.globals.day_night_word == 0,
 		"the reverse fade falls by one per round and lands on the day offset")
-	check(back.requests[0].bytes[0] == 0,
+	check(back_install.get("bytes", PackedByteArray([255]))[0] == 0,
 		"the terminal installs the day block itself")
 
 	# The A0<=0 branch asks for the event pump and frame helpers each round.
@@ -108,12 +115,12 @@ func _initialize() -> void:
 	var staged: Dictionary = _consume(commands, live, 5)
 	staged = commands.continue_command(staged.pending, live)
 	# The host answers round 1 and rewrote a work byte before round 2.
-	live.palette_bytes[0x300 + 5] = 63
+	live.palette_bytes[0x600 + 5] = 63
 	var second: Dictionary = commands.continue_command(staged.pending, live)
 	check(not second.has("error") and second.effects[0].round == 3
 		and second.effects[0].moved == 0x300 - 1,
 		"the round after the host writeback skips the settled byte: " + str(second.get("error", "")))
-	check(live.palette_bytes[0x300 + 5] == 63,
+	check(live.palette_bytes[0x600 + 5] == 63,
 		"the settled byte stays exactly at its target")
 
 	var output: Dictionary = {"suite": "test_pal98_day_night_fade", "checks": results,

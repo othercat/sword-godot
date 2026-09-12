@@ -18,7 +18,7 @@ func check(ok: bool, label: String) -> void:
 	if not ok: failed += 1; push_error(label)
 
 func _palette_bytes() -> PackedByteArray:
-	var bytes = PackedByteArray(); bytes.resize(0x780)
+	var bytes = PackedByteArray(); bytes.resize(0xC00)
 	for index in range(0x300): bytes[index] = 40  # active window: uniform 40s
 	return bytes
 
@@ -56,7 +56,7 @@ func _initialize() -> void:
 	check(not start.has("error") and start.effects[0].round == 1
 		and start.effects[0].moved == 0,
 		"a uniform window settles the first round: " + str(start.get("error", "")))
-	check(plain.palette_bytes[0x300] == 40 and plain.palette_bytes[0x480] == 40,
+	check(plain.palette_bytes[0x600] == 40 and plain.palette_bytes[0x900] == 40,
 		"both the work area and the target block start as saved copies of the window")
 	var run: Dictionary = start
 	var rounds: int = 1
@@ -81,14 +81,14 @@ func _initialize() -> void:
 		"a zero A1 waits one tick")
 
 	# A nonzero A2 swaps the offsets: the install moves to the work area and
-	# the saved target block converges toward the color.
+	# the color-filled work block converges toward the saved source.
 	var swapped_state: Dictionary = _state(0)
 	swapped_state.palette_bytes[15] = 60; swapped_state.palette_bytes[16] = 60; swapped_state.palette_bytes[17] = 60
 	var swapped: Dictionary = _consume(commands, swapped_state, 5, 2, 1)
 	check(not swapped.has("error") and swapped.requests[0].offset == 0x300,
 		"the swapped direction installs the work area block")
-	check(swapped_state.palette_bytes[0x480] == 60 and swapped_state.palette_bytes[0x300] == 60,
-		"the corpate tail covers the first half of the saved block, so it stays settled")
+	check(swapped_state.palette_bytes[0x900] == 40 and swapped_state.palette_bytes[0x600] == 59,
+		"the installed work block converges while the separate saved block stays unchanged")
 
 	# The color sample must stay inside the palette window.
 	var outside: Dictionary = _state(0)
@@ -116,7 +116,7 @@ func _initialize() -> void:
 	var counted: Dictionary = commands.consume(mixed,
 		{"words": [0x0020, 30, 6, 9], "entry": 1, "event_id": 0})
 	check(not faded.has("pending") and counted.entry == 8 and counted.effects[0].count == 4
-		and mixed.palette_bytes.size() == 0x780,
+		and mixed.palette_bytes.size() == 0xC00,
 		"the 0020 count after a color fade sees the same palette state: "
 			+ str(counted.get("error", "")))
 
