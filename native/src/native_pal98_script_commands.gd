@@ -103,6 +103,9 @@ const CASES = {
 	0x0059: {"range": ["0x004243B8", "0x00424408"],
 		"sha256": "bf234982c4cacef65ce8b3e63e275744d2a0afd8b162b2edd1e6fbb05adce0f6",
 		"effect": "valid changed scene: G0306|=12, G026A = A0, G028A = 0"},
+	0x006D: {"range": ["0x004250D8", "0x00425178"],
+		"sha256": "d69bf04eef9fcda8ad8f7a3dd6f9d587d0b9a1e0572e40a7433eff43b6ba2668",
+		"effect": "for a positive scene: writes the record's enter (+2) and leave (+4) script words, or clears the pair when both arguments are zero"},
 	0x001F: {"range": ["0x00421EC4", "0x00421F00"],
 		"sha256": "79fa119ab6503c8516f2ac38ffe38c581b8630ad9f6072d3a3c1d1903e55d8b0",
 		"effect": "compresses the inventory (T152 0x0041C96C), defaults a nonpositive amount to 1 and adds the item through T140 (0x0041CCCC)"},
@@ -251,6 +254,7 @@ func consume(state: Dictionary, request: Dictionary) -> Dictionary:
 		0x0051: return _command_0051(state, request, source)
 		0x0059: return _command_0059(state, request, source)
 		0x0065: return _command_0065(state, request, source)
+		0x006D: return _command_006D(state, request, source)
 		0x0073: return _command_0073(state, request, source)
 		0x0071: return _command_0071(state, request, source)
 		0x0075: return _command_0075(state, request, source)
@@ -622,6 +626,30 @@ func _fade_request(state: Dictionary, request: Dictionary, source: Dictionary, k
 	return result
 
 ## 0x0077 stops the media owner's music; the field track clears outside battle.
+## 0x006D writes a scene record's enter/leave script words, or clears the pair.
+func _command_006D(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
+	var scene: int = _signed(request.words[1])
+	if scene <= 0 or scene > _scene_count:
+		return _failure("scene_backing", "0x006D requires a positive runtime scene", request, source)
+	if not state.get("events") is Dictionary:
+		return _failure("scene_backing", "0x006D requires the loaded scene table", request, source)
+	var at: int = (scene - 1) * 8
+	var records: PackedByteArray = state.events.scene_records
+	if at + 8 > records.size():
+		return _failure("scene_backing", "0x006D scene record is outside the loaded table", request, source)
+	var enter_word: int = request.words[2]
+	var leave_word: int = request.words[3]
+	state.events.scene_records = records
+	var cleared: bool = enter_word == 0 and leave_word == 0
+	if cleared:
+		records.encode_u16(at + 2, 0); records.encode_u16(at + 4, 0)
+	else:
+		if enter_word != 0: records.encode_u16(at + 2, enter_word)
+		if leave_word != 0: records.encode_u16(at + 4, leave_word)
+	return _result(state, request, [{"kind": "scene_script_words", "scene": scene,
+		"enter_word": records.decode_u16(at + 2), "leave_word": records.decode_u16(at + 4),
+		"pair_cleared": cleared, "source": source}])
+
 func _command_0077(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
 	var first: int = request.words[1]
 	var second: int = request.words[2]

@@ -83,6 +83,7 @@ source bytes for every operand.
 | `0x0093` | `0x004266E8..0x00426704` | requests `FadeScenePaletteAndUpdateFrames` (`0x0041CE04`) with the instruction's argument |
 | `0x0099` | `0x004268EC..0x0042694E` | writes the scene record's map word; a negative `A0` means the current scene and additionally requests `EnsureMapResourcesLoaded` (`0x0041C834`) |
 | `0x001F` | `0x00421EC4..0x00421F00` | defaults a nonpositive amount to 1 and requests `CompressInventoryAndReturnLastSlot` (T152 `0x0041C96C`) plus `AddInventoryItemAmount` (T140 `0x0041CCCC`) from the inventory owner |
+| `0x006D` | `0x004250D8..0x00425178` | for a positive scene writes the record's enter (`+2`) and leave (`+4`) script words, or clears the pair when both arguments are zero |
 
 Three boundaries are stated rather than hidden:
 

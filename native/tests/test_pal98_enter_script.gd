@@ -370,6 +370,45 @@ func _synthetic_checks() -> void:
 	check(state_run.requests.map(func(request): return request.kind).has("play_sound_effect"),
 		"0x0047 asks the audio owner to play the effect")
 	# 0x001F through the real inventory owner.
+	# 0x006D scene script words: set the pair, then clear it.
+	var scene_words_program: Array = [[0x006D, 0x0001, 0x0DD9, 0x0014], [0x0001, 0, 0, 0]]
+	var scene_words_source = _source([0, 0], [1, 0], scene_words_program)
+	var scene_words_owner = _owner(scene_words_source)
+	var scene_words_run = _drive(scene_words_owner, scene_words_owner.start(_fixture(scene_words_source), 1, 1))
+	check(not scene_words_run.result.has("error")
+		and scene_words_run.result.effects[0].enter_word == 0x0DD9
+		and scene_words_run.result.effects[0].leave_word == 0x0014,
+		"0x006D writes the scene's enter and leave script words: "
+			+ str(scene_words_run.result.get("error", "")))
+	var clear_program: Array = [[0x006D, 0x0001, 0x0000, 0x0000], [0x0001, 0, 0, 0]]
+	var clear_source = _source([0, 0], [1, 0], clear_program)
+	var clear_owner = _owner(clear_source)
+	var clear_state = _fixture(clear_source)
+	clear_state.events.scene_records = clear_state.events.scene_records.duplicate()
+	clear_state.events.scene_records.encode_u16(4, 0x0014)
+	var clear_run = _drive(clear_owner, clear_owner.start(clear_state, 1, 1))
+	var clear_effects: Array = clear_run.result.get("effects", [])
+	check(not clear_run.result.has("error") and clear_effects.size() == 1
+		and clear_effects[0].pair_cleared == true
+		and clear_effects[0].enter_word == 0 and clear_effects[0].leave_word == 0,
+		"a zero argument pair clears both scene script words: "
+			+ str(clear_run.result.get("error", "")))
+	var mixed_program: Array = [[0x006D, 0x0001, 0x0123, 0x0000], [0x0001, 0, 0, 0]]
+	var mixed_source = _source([0, 0], [1, 0], mixed_program)
+	var mixed_owner = _owner(mixed_source)
+	var mixed_state = _fixture(mixed_source)
+	mixed_state.events.scene_records = mixed_state.events.scene_records.duplicate()
+	mixed_state.events.scene_records.encode_u16(4, 0x0014)
+	var mixed_run = _drive(mixed_owner, mixed_owner.start(mixed_state, 1, 1))
+	var mixed_effects: Array = mixed_run.result.get("effects", [])
+	check(not mixed_run.result.has("error") and mixed_effects.size() == 1
+		and mixed_effects[0].enter_word == 0x0123 and mixed_effects[0].leave_word == 0x0014,
+		"a single zero argument leaves the other script word untouched")
+	var bad_scene_program: Array = [[0x006D, 0x0000, 0x0001, 0x0000], [0x0001, 0, 0, 0]]
+	var bad_scene_source = _source([0, 0], [1, 0], bad_scene_program)
+	var bad_scene_owner = _owner(bad_scene_source)
+	check(bad_scene_owner.start(_fixture(bad_scene_source), 1, 1).has("error"),
+		"0x006D refuses a nonpositive scene argument")
 	var item_program: Array = [[0x001F, 0x00C4, 0x0002, 0x0000], [0x0001, 0, 0, 0]]
 	var item_source = _source([0, 0], [1, 0], item_program)
 	var item_owner = _owner(item_source)
