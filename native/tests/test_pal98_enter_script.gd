@@ -110,7 +110,7 @@ func _dialogue_event(effect: Dictionary) -> Dictionary:
 
 func _drive(owner, first: Dictionary) -> Dictionary:
 	var result: Dictionary = first; var requests: Array = []
-	for step in range(4096):
+	for step in range(16384):
 		if not result.has("request"): return {"result": result, "requests": requests}
 		var request: Dictionary = result.request; requests.append(request)
 		if request.kind == "dialogue": result = owner.resume(request.id, {"event": _dialogue_event(request.effect)})
@@ -122,7 +122,7 @@ func _drive(owner, first: Dictionary) -> Dictionary:
 ## and the display double for render/restore/audio requests.
 func _drive_with_host(owner, first: Dictionary, adapter, dialogue_host = null) -> Dictionary:
 	var result: Dictionary = first; var requests: Array = []
-	for step in range(4096):
+	for step in range(16384):
 		if not result.has("request"): return {"result": result, "requests": requests}
 		var request: Dictionary = result.request; requests.append(request)
 		if request.kind == "dialogue":
