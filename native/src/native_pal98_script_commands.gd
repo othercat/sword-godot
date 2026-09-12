@@ -40,6 +40,9 @@ const CASES = {
 	0x0023: {"range": ["0x004221B4", "0x00422276"],
 		"sha256": "f016c95c2247d65935bb157c603ddd0b3ca13580ad971c609cb12b5efac58693",
 		"effect": "returns equipped items to the inventory: absolute role A0, fields 11..16 for A1<=0 or the single checked field 10+A1; each signed word above zero goes through T140 add (+1) and is cleared, words at or below zero stay untouched"},
+	0x0022: {"range": ["0x00421FE4", "0x004221B4"],
+		"sha256": "b15f9333dbbf757c396cac6dacc1d71d54a547ef35533279c5136124bfacf5b7",
+		"effect": "revives dead members: A0=0 takes the context party slot, nonzero traverses 0..member_last; A1>10 is taken as 10; HP becomes (MaxHP/10)*A1 floored at one, poison ids clear and scripts stay, statuses below 999 clear, G0302 takes the VB truth"},
 	0x003B: {"range": ["0x0042322E", "0x00423272"],
 		"sha256": "484d663d6609be35e3f751d9ffd339139334eb4d09b80749cfba723871e1f842",
 		"effect": "centered dialog globals: mode 0, text origin (80,40), colour word when A0 is positive"},
@@ -302,6 +305,7 @@ func consume(state: Dictionary, request: Dictionary) -> Dictionary:
 		0x001F: return _command_001F(state, request, source)
 		0x0020: return _command_0020(state, request, source)
 		0x0023: return _command_0023(state, request, source)
+		0x0022: return _command_0022(state, request, source)
 		0x001D: return _command_001D(state, request, source)
 		0x003D: return _command_003D(state, request, source)
 		0x0016: return _command_0016(state, request, source)
@@ -694,6 +698,66 @@ func _command_0023(state: Dictionary, request: Dictionary, source: Dictionary) -
 	state.equipment.role_words = done.role_words
 	return _result(state, request, [{"kind": "unequip_return", "role": role,
 		"first_field": first, "last_field": last, "returned": done.returned, "source": source}])
+
+## 0x0022 revives dead party members. A zero A0 reads the caller's event
+## context party slot and a nonzero A0 traverses the active members
+## 0..member_last, both through the party projection. A1 above ten is taken as
+## ten. Only a member whose signed HP is at or below zero is processed: HP
+## becomes (MaxHP / 10) * A1 with a checked I2 multiply and a floor of one,
+## the sixteen poison records lose their id word and keep the script word, and
+## the sixteen status columns clear only the values below 999. G0302 takes the
+## VB truth -1 when anything changed, and a checked failure applies nothing.
+func _command_0022(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
+	if not state.get("equipment") is Dictionary or not state.equipment.get("role_words") is Array:
+		return _failure("role_backing", "0x0022 requires the explicit role word table", request, source)
+	var equipment: Dictionary = state.equipment
+	var party_roles: Array = equipment.get("party_roles", [])
+	if party_roles.is_empty(): return _failure("role_backing", "0x0022 requires the active role projection", request, source)
+	if not equipment.get("party_statuses") is Array or not equipment.get("party_poisons") is Array:
+		return _failure("role_backing", "0x0022 requires the explicit status and poison backing", request, source)
+	var selector: int = _signed(request.words[1])
+	var multiplier: int = mini(_signed(request.words[2]), 10)
+	var slots: Array = []
+	if selector != 0:
+		var last = state.globals.get("member_last")
+		if not _i2(last) or last < 0: return _failure("role_backing", "0x0022 needs the explicit member count", request, source)
+		for slot in range(mini(last + 1, party_roles.size())): slots.append(slot)
+	else:
+		var context: int = _signed(request.get("event_id"))
+		if not _i2(context) or context < 0 or context >= party_roles.size():
+			return _failure("role_backing", "0x0022 context party slot is outside the projection", request, source)
+		slots.append(context)
+	var changed_total: int = 0
+	var targets: Array = []
+	for slot in slots:
+		var role = party_roles[slot]
+		if not _i2(role) or role < 0 or role >= ROLES:
+			return _failure("role_backing", "0x0022 role identity outside the table", request, source)
+		var hp_index: int = 9 * ROLES + role
+		var max_index: int = 7 * ROLES + role
+		if max_index >= equipment.role_words.size() or hp_index >= equipment.role_words.size():
+			return _failure("role_backing", "0x0022 role fields outside the word table", request, source)
+		var hp: int = _signed(equipment.role_words[hp_index])
+		if hp > 0: continue
+		var revived: int = _signed(equipment.role_words[max_index]) / 10 * multiplier
+		if not _i2(revived):
+			return _failure("checked_i2", "0x0022 revive amount leaves I2 range", request, source)
+		if revived <= 0: revived = 1
+		var delta: int = revived - hp
+		if not _i2(delta) or not _i2(changed_total + delta):
+			return _failure("checked_i2", "0x0022 revive change total leaves I2 range", request, source)
+		changed_total += delta
+		targets.append({"slot": slot, "role": role, "hp": revived})
+	for target in targets:
+		equipment.role_words[9 * ROLES + target.role] = target.hp
+		var poison: PackedByteArray = equipment.party_poisons[target.slot]
+		for record in range(16): poison.encode_u16(record * 4, 0)
+		var statuses: Array = equipment.party_statuses[target.slot]
+		for column in range(16):
+			if statuses[column] < 999: statuses[column] = 0
+	state.globals.trigger_success_word = -1 if changed_total != 0 else 0
+	return _result(state, request, [{"kind": "party_revive", "targets": targets,
+		"changed_total": changed_total, "success_word": state.globals.trigger_success_word, "source": source}])
 
 ## 0x0047 plays a sound effect through the audio owner when sound is enabled.
 func _command_0047(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
