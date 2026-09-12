@@ -1321,8 +1321,13 @@ func _real_checks() -> void:
 			"chained entry still applies the real opening position and party rebuild")
 		var restarted = driver.resume(step.request.id, {"state": chained_result.state,
 			"return_entry": chained_result.return_entry})
-		check(restarted.has("error") and str(restarted.error).contains("Unknown") and restarted.trace.count("entry") == 2,
-			"the real scene request restarts the T212 chain to scene 2 and stops on the documented sprite-cache Unknown backing: "
+		# The former sprite-cache Unknown stop point is resolved: the cache word
+		# walk reads the zero-initialized buffer like the original, so the
+		# restart proceeds into scene 2's own chain and asks for its background
+		# from the reloaded MAP identity.
+		check(not restarted.has("error") and restarted.request.kind == "render_background"
+			and restarted.trace.count("entry") == 2,
+			"the real scene request restarts the T212 chain to scene 2 past the former cache boundary and asks for its background: "
 				+ str(restarted.get("error", "")))
 		check(restarted.trace.has("commit_events") and restarted.trace.has("load_events"),
 			"the restart commits the previous scene's events and loads the new scene's event backing")

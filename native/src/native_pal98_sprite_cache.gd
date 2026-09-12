@@ -69,9 +69,11 @@ func _write(cache: Dictionary, word_offset: int, sprite_id: int) -> String:
 
 static func _word(cache: Dictionary, offset: int) -> Dictionary:
 	if offset < 0 or offset >= 32768: return {"error": "cache WORD address outside owned signed16 range"}
-	var at: int = offset * 2
-	if cache.owners[at] < 0 or cache.owners[at + 1] < 0: return {"error": "original sprite cache bytes are Unknown"}
-	return {"value": cache.bytes.decode_s16(at)}
+	# The original reads its zero-initialized cache buffer: a never-written
+	# word decodes as 0 and terminates a T98 directory walk on the spot. The
+	# Native buffer starts zeroed too, so the same read is deterministic and
+	# needs no ownership refusal; resolve() still scans known bytes for T163.
+	return {"value": cache.bytes.decode_s16(offset * 2)}
 
 func load_events(storage, state: Dictionary) -> Dictionary:
 	if _source.is_empty() or storage == null: return _failure("sprite cache source/storage not loaded", "event", 0)

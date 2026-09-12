@@ -257,10 +257,14 @@ returns with opcode `0000`. The run therefore:
 
 Feeding that result back into `native_pal98_resource_reload.gd` restarts the
 chain (second `entry`), commits scene 1's events, loads scene 2's event backing
-and map identity, and then stops on the documented sprite-cache boundary:
-`original sprite cache bytes are Unknown`. That cold-start backing is the next
-real blocker after the entry script itself; the text and scene-request commands
-are no longer the stop point.
+and map identity, and then proceeds into scene 2's own `render_background`
+request. The former stop point — the `original sprite cache bytes are Unknown`
+refusal in the cache word read — is resolved (2026-09-13): the cache buffer is
+zero-initialized exactly like the original's, so a never-written word decodes
+as 0 and terminates a T98 directory walk instead of refusing. The cold-start
+backing is therefore no longer a blocker; the remaining scene-2 boundaries are
+the host-owned display kinds (background render, dialog restore, midi) that the
+adapters still answer with named doubles.
 
 ## Evidence
 
