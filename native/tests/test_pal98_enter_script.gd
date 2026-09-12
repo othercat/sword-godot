@@ -118,7 +118,9 @@ func _fixture(source, scene_id: int = 1) -> Dictionary:
 			# The fixture keeps the documented viewport/world/anchor relation so
 			# movement commands see consistent explicit words.
 			"world_x": 1024, "world_y": 1024, "previous_x": 1024, "previous_y": 1024,
-			"previous_viewport_x": 864, "previous_viewport_y": 912, "party_layer_word": 0},
+			"previous_viewport_x": 864, "previous_viewport_y": 912, "party_layer_word": 0,
+			"fbp_mode_word": 0, "view_offset_x": 0, "view_offset_y": 0,
+			"transition_cadence": 0, "transition_progress": 0},
 		"events": events.source_state(), "dialogue": _context(), "rng": Random.create(0x12345),
 		# Five active members keep the fixed G04AC projection and the equipment
 		# projections the same size, so multi-member entry commands can run.
@@ -416,6 +418,29 @@ func _synthetic_checks() -> void:
 	# 0x009A event state range and its global fallback.
 	# 0x00A3 CD/MIDI loop normalization.
 	# 0x0085 delay request scaled by ten.
+	# 0x009B FBP chain: mode 0 reloads the map, mode 2 sets the transition cadence.
+	var fbp_program: Array = [[0x009B, 0x0000, 0x0000, 0x0000], [0x009B, 0x0002, 0x0007, 0x0000], [0x0001, 0, 0, 0]]
+	var fbp_source = _source([0, 0], [1, 0], fbp_program)
+	var fbp_owner = _owner(fbp_source)
+	var fbp_state = _fixture(fbp_source)
+	fbp_state.globals.loaded_map_id = 20
+	var fbp_adapter = EntryHost.new()
+	fbp_adapter.bind(state_cache, state_kernel, _zero(1536), [0, 0, 0, 0, 0, 0])
+	fbp_adapter.bind_display(DisplayDouble.new())
+	var fbp_run = _drive_with_host(fbp_owner, fbp_owner.start(fbp_state, 1, 1), fbp_adapter)
+	var fbp_effects: Array = fbp_run.result.get("effects", [])
+	check(not fbp_run.result.has("error") and fbp_effects.size() == 4
+		and fbp_effects[0].mode == 0 and fbp_effects[0].kind == "fbp_mode"
+		and fbp_effects[1].mode == 2 and fbp_effects[1].chunk == 7,
+		"0x009B applies both modes: " + str(fbp_run.result.get("error", "")))
+	check(fbp_run.result.state.globals.loaded_map_id == 0
+		and fbp_run.result.state.globals.transition_cadence == 2
+		and fbp_run.result.state.globals.transition_progress == 0,
+		"mode 0 clears the loaded map and mode 2 takes the default speed 2")
+	var fbp_requests: Array = fbp_run.requests.map(func(request): return request.kind)
+	check(fbp_requests.has("ensure_map_resources_loaded") and fbp_requests.has("render_current_map_background")
+		and fbp_requests.has("read_fbp_chunk") and fbp_requests.has("unpak_fbp_to_buffer"),
+		"the FBP chain relays its map, render and chunk work: " + str(fbp_requests))
 	# 0x006C moves the resolved event and requests the animation step.
 	var move_event_program: Array = [[0x006C, 0x0001, 0x0004, 0x0003], [0x0001, 0, 0, 0]]
 	var move_event_source = _source([0, 2], [1, 0], move_event_program, [], 2)

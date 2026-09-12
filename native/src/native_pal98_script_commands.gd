@@ -163,6 +163,9 @@ const CASES = {
 	0x0093: {"range": ["0x004266E8", "0x00426704"],
 		"sha256": "016ec32ec874da9eef00d94ed9340c0d2aaa1d734b72cba175d9fe372e499604",
 		"effect": "FadeScenePaletteAndUpdateFrames (0x0041CE04) with the instruction's argument"},
+	0x009B: {"range": ["0x00426A56", "0x00426C18"],
+		"sha256": "66a0628907276624bfe70b0c64edfe8cd23d58418640e6eb7071d184a70ef322",
+		"effect": "FBP/cross-fade chain: mode 0 clears the loaded map and reloads/renders it, a negative chunk composes the explicit buffers, otherwise the FBP chunk loads into the mode's target; the speed defaults to 2 and mode 2 sets the transition cadence with zero progress"},
 	0x0099: {"range": ["0x004268EC", "0x0042694E"],
 		"sha256": "cf2a332b02f7f20c715aed6298f0fb2ff7fd3921c90cd9b13e84fac85405203f",
 		"effect": "writes the scene record's map word; a negative A0 means the current scene and additionally requests EnsureMapResourcesLoaded (0x0041C834)"},
@@ -328,6 +331,7 @@ func consume(state: Dictionary, request: Dictionary) -> Dictionary:
 		0x003E: return _command_003E(state, request, source)
 		0x007D: return _command_007D(state, request, source)
 		0x006C: return _command_006C(state, request, source)
+		0x009B: return _command_009B(state, request, source)
 		0x007E: return _command_007E(state, request, source)
 	var facts: Dictionary = case_facts(opcode)
 	var details: Dictionary = {"effect": facts.get("effect"), "case_range": facts.get("range"),
@@ -653,6 +657,64 @@ func _command_009A(state: Dictionary, request: Dictionary, source: Dictionary) -
 ## is materialized into the first slot, written there and mirrored back.
 ## 0x006C moves the resolved event with the same delta arithmetic as 0x007D and
 ## then requests the one-step animation for that event.
+## 0x009B runs the FBP/cross-fade chain: the command owns the persistent state
+## and relays the buffer, map and chunk work to explicit owners.
+func _command_009B(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
+	var globals: Dictionary = state.globals
+	for key in ["fbp_mode_word", "view_offset_x", "view_offset_y", "transition_cadence", "transition_progress"]:
+		if not _i2(globals.get(key)):
+			return _failure("fbp_state", "0x009B requires the explicit " + key, request, source)
+	var mode: int = _signed(request.words[1])
+	var chunk: int = _signed(request.words[2])
+	var speed: int = _signed(request.words[3])
+	globals.fbp_mode_word = mode
+	globals.view_offset_x = 0
+	globals.view_offset_y = 0
+	var effects: Array = [{"kind": "fbp_mode", "mode": mode, "chunk": chunk, "source": source}]
+	var requests: Array = []
+	if mode == 0:
+		if not _i2(globals.get("loaded_map_id")):
+			return _failure("fbp_state", "0x009B mode 0 requires the explicit loaded map id", request, source)
+		globals.loaded_map_id = 0
+		requests.append({"kind": "ensure_map_resources_loaded", "original_entry": "0x0041C834",
+			"procedure": "EnsureMapResourcesLoaded"})
+		requests.append({"kind": "render_current_map_background", "original_entry": "0x0041CB34",
+			"procedure": "RenderCurrentMapBackground"})
+		globals.fbp_mode_word = 0
+		var result: Dictionary = _result(state, request, effects)
+		result.requests = requests
+		return result
+	if chunk < 0:
+		requests.append({"kind": "compose_scene_buffers", "original_entry": "0x0041CB34",
+			"detail": "G00C0 -> G01B0, render, G0198 -> G01B0, G01B0 -> G00C0"})
+		requests.append({"kind": "render_current_map_background", "original_entry": "0x0041CB34",
+			"procedure": "RenderCurrentMapBackground"})
+		if not _i2(globals.get("loaded_map_id")):
+			return _failure("fbp_state", "0x009B buffer path requires the explicit loaded map id", request, source)
+		globals.loaded_map_id = 0
+		effects.append({"kind": "fbp_buffers_composed", "chunk": chunk, "source": source})
+	else:
+		requests.append({"kind": "read_fbp_chunk", "original_entry": "0x0041D05C", "procedure": "ReadMkfChunk",
+			"chunk": chunk})
+		if mode == 1:
+			requests.append({"kind": "unpak_fbp_to_buffer", "target": "G01B0", "chunk": chunk})
+		else:
+			requests.append({"kind": "render_current_map_background", "original_entry": "0x0041CB34",
+				"procedure": "RenderCurrentMapBackground"})
+			if not _i2(globals.get("loaded_map_id")):
+				return _failure("fbp_state", "0x009B chunk path requires the explicit loaded map id", request, source)
+			globals.loaded_map_id = 0
+			requests.append({"kind": "unpak_fbp_to_buffer", "target": "G0198", "chunk": chunk})
+	if speed == 0: speed = 2
+	effects.append({"kind": "fbp_speed", "speed": speed, "defaulted": _signed(request.words[3]) == 0, "source": source})
+	if mode == 2:
+		globals.transition_cadence = speed
+		globals.transition_progress = 0
+		effects.append({"kind": "fbp_transition", "cadence": speed, "progress": 0, "source": source})
+	var result: Dictionary = _result(state, request, effects)
+	result.requests = requests
+	return result
+
 func _command_006C(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
 	var moved: Dictionary = _event_delta_or_layer(state, request, source, true)
 	if moved.has("error"): return moved
