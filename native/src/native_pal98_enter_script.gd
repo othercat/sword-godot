@@ -86,6 +86,12 @@ func _failure(message: String, step: Dictionary = {}, extra: Dictionary = {}) ->
 		"scene_source": _scene_receipt.duplicate(true)}
 	if step.has("trace"): diagnostic.trigger_trace = step.trace
 	diagnostic.merge(extra, true)
+	# A host/continuation failure must release the suspended trigger as well as
+	# this relay. Otherwise start() accepts the failed owner but the inner
+	# trigger rejects the next invocation as already active. Preserve evidence
+	# above, then discard the failed candidate and invalidate its request ids.
+	if _trigger != null: _trigger.cancel()
+	_generation += 1
 	_phase = "failed"; _pending = {}; _owner_queue = []; _owner_resume = {}; _command_pending = {}
 	return {"error": "pal98-enter: " + message, "diagnostic": diagnostic,
 		"effects": _effects.duplicate(true), "unimplemented": _unimplemented.duplicate(true),

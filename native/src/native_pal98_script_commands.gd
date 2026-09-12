@@ -132,7 +132,7 @@ const CASES = {
 		"effect": "a nonzero argument requests the delay helper (0x004170C4) with Arg0 times the small constant 10; the reference summary's factor 80 is not what the pinned bytes show"},
 	0x007F: {"range": ["0x00425A7C", "0x00425D24"],
 		"sha256": "7be521f4ef5c6221392088a10a8306064931e5bdc0b960c8f476f80cd1b365e3",
-		"effect": "viewport/member move state machine: the (-1,0,0) restore form, the re-anchor, absolute and delta modes, the anchor recompute and member shifts, then the frame, optional viewport/party update and scene render per round"},
+		"effect": "viewport/member move state machine: the (0,0,-1) host-free restore, three-word OR-zero re-anchor, absolute and delta modes, background acknowledgement before dependent state, then frame, update for A2>=0 and scene render per round"},
 	0x0036: {"range": ["0x00422F52", "0x00422F80"],
 		"sha256": "441c8afb1dc2a29956c0dbae1c0809cdb4e8eb187c05dc0225d2138045c2339d",
 		"effect": "requests the RNG animation load (0x0041D134) with the argument word and sets the G0306 animation bit (16)"},
@@ -141,7 +141,7 @@ const CASES = {
 		"effect": "defaults the end to 999 and the speed to 10, then requests PlayCurrentRngAnimation (0x0041D464) with the three words"},
 	0x001A: {"range": ["0x00421708", "0x004217C0"],
 		"sha256": "9bba9614291deb56f0aaceaae873d5db557c7842f49853593755ac53c82444b3",
-		"effect": "writes role numeric fields: 1 and 65 route to the two G05CC projection words, every other field to the G079C word table; a positive A2 selects role A2-1"},
+		"effect": "positive A2 writes the absolute role A2-1 in the field*6+role table; otherwise the invoking context selects a party slot, fields 1/65 write that slot's G05CC projection and other fields write its mapped role"},
 	0x001D: {"range": ["0x00421B6C", "0x00421E6A"],
 		"sha256": "c4253953628779d2b5a5c434ba4ce125f9d01cf9b9a7e25f074b065cfc708df8",
 		"effect": "adds A1 to the living target's HP (field 9) and MP (field 10), clamps to fields 7/8 and sets G0302 from the summed absolute change; a nonzero A0 covers the party through G0266"},
@@ -569,13 +569,21 @@ func _command_001D(state: Dictionary, request: Dictionary, source: Dictionary) -
 			return _failure("checked_i2", "0x001D MP change leaves the signed I2 range", request, source)
 		var new_hp: int = clampi(hp_change, 0, maxi(hp_max, 0))
 		var new_mp: int = clampi(mp_change, 0, maxi(mp_max, 0))
-		changed_total += absi(new_hp - hp) + absi(new_mp - mp)
+		# 0x421E1C..0x421E44 checks each subtraction, Abs and addition in I2.
+		# A valid HP/MP update can still overflow this accumulated change word.
+		for difference in [hp - new_hp, mp - new_mp]:
+			if not _i2(difference) or difference == -32768:
+				return _failure("checked_i2", "0x001D checked_i2 difference/absolute-value overflow", request, source)
+			var accumulated: int = changed_total + absi(difference)
+			if not _i2(accumulated):
+				return _failure("checked_i2", "0x001D checked_i2 accumulated change overflow", request, source)
+			changed_total = accumulated
 		changes.append({"hp_index": hp_index, "mp_index": mp_index, "new_hp": new_hp, "new_mp": new_mp})
 		touched.append({"slot": slot, "role": role, "hp": new_hp, "mp": new_mp})
 	for change in changes:
 		equipment.role_words[change.hp_index] = change.new_hp & 65535
 		equipment.role_words[change.mp_index] = change.new_mp & 65535
-	state.globals.trigger_success_word = 1 if changed_total != 0 else 0
+	state.globals.trigger_success_word = -1 if changed_total != 0 else 0
 	return _result(state, request, [{"kind": "role_vitals_change", "delta": delta,
 		"changed_total": changed_total, "success_word": state.globals.trigger_success_word,
 		"targets": touched, "source": source}])
@@ -735,7 +743,7 @@ func _command_009A(state: Dictionary, request: Dictionary, source: Dictionary) -
 ## 0x001A writes a role numeric field. A positive A2 is the 1-based absolute
 ## role id written straight into the DATA3 base table (field*6+role), which may
 ## point outside the active party; only the default-context branch (nonpositive
-## A2, current role slot) routes fields 1 and 65 to the two consumed G05CC
+## A2, invoking party context) routes fields 1 and 65 to the two consumed G05CC
 ## projection words.
 ## 0x003E selects the center-window dialog globals and writes the restore gate.
 ## 0x007D/0x007E share one resolution: a zero argument targets the current event,
@@ -905,17 +913,21 @@ func _command_001A(state: Dictionary, request: Dictionary, source: Dictionary) -
 		effects.append({"kind": "role_numeric_field", "explicit_selector": true, "field": field,
 			"role": role, "index": index, "value": value, "source": source})
 		return _result(state, request, effects)
-	# The default-context branch resolves the current role slot inside the active
-	# projection; only this branch routes fields 1/65 to the G05CC projection words.
-	var current = state.globals.get("current_role_slot")
-	if not _i2(current) or current < 0:
-		return _failure("role_backing", "0x001A needs the explicit current role slot for the default context", request, source)
+	# The original +0x0c parameter is the invoking party context. The frontend
+	# maps its G04AC role into local FF76 only for context <= 4; party_roles is
+	# the Native equipment projection of those role identities. Fields 1/65
+	# address G05CC by the context itself. No private global selects the target.
+	var current = request.get("event_id")
+	if not _i2(current) or current < 0 or current > 4:
+		return _failure("role_backing", "0x001A default context has no represented party-role mapping", request, source)
 	if current >= equipment.party_fields.size():
 		return _failure("role_backing", "0x001A role slot is outside the party projection", request, source)
 	var role_word = equipment.party_roles[current] if equipment.party_roles is Array and current < equipment.party_roles.size() else null
 	if not _i2(role_word) or role_word < 0 or role_word >= 6:
 		return _failure("role_backing", "0x001A needs the role identity for slot " + str(current), request, source)
 	if field == ROLE_FIELD_BATTLE_SPRITE or field == ROLE_FIELD_COOPERATIVE_MAGIC:
+		if not equipment.party_fields[current] is Dictionary:
+			return _failure("role_backing", "0x001A party projection record is malformed", request, source)
 		var projection: Dictionary = equipment.party_fields[current]
 		var key: String = "battle_sprite_word" if field == ROLE_FIELD_BATTLE_SPRITE else "cooperative_magic_word"
 		if not _u2(projection.get(key)): return _failure("role_backing", "0x001A projection word is not a WORD", request, source)

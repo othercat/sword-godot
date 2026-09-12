@@ -32,6 +32,20 @@ func _state(kernel) -> Dictionary:
 func _consume(commands, state: Dictionary, words: Array) -> Dictionary:
 	return commands.consume(state, {"words": words, "entry": 1, "event_id": 0})
 
+# Direct command test driver: each batch of host requests is acknowledged
+# without changing state before continuing. Relay ordering is tested separately.
+func _finish(commands, state: Dictionary, first: Dictionary) -> Dictionary:
+	var step: Dictionary = first
+	var effects: Array = []; var requests: Array = []
+	for index in range(16):
+		if step.has("error"): return step
+		effects.append_array(step.get("effects", []))
+		requests.append_array(step.get("requests", []))
+		if not step.has("pending"):
+			return {"effects": effects, "requests": requests}
+		step = commands.continue_command(step.pending, state)
+	return {"error": "viewport test continuation budget"}
+
 func _initialize() -> void:
 	var args = OS.get_cmdline_user_args()
 	if args.size() != 2 or FileAccess.file_exists(args[1]) or DirAccess.dir_exists_absolute(args[1]): quit(2); return
@@ -75,28 +89,44 @@ func _initialize() -> void:
 		and restore_state.globals.party_x == 160 and restore_state.globals.party_y == 112,
 		"the (0,0,-1) form restores viewport (1040,1188) and anchor (160,112): "
 			+ str(restored.get("error", "")))
-	check(restored.get("requests", []).map(func(r): return r.kind).has("render_current_map_background")
+	check(restored.get("requests", []).is_empty()
 		and restored.get("pending") == null,
-		"the restore renders the background and carries no round pending")
+		"the special restore has no host requests and no pending round")
 
 	# A negative non-restore A2 runs one absolute round: viewport (A0*32-160, A1*16-112).
 	var absolute_state: Dictionary = _state(kernel)
-	var absolute = _consume(commands, absolute_state, [0x007F, 30, 60, 0xFFFE])
+	var absolute_first = _consume(commands, absolute_state, [0x007F, 30, 60, 0xFFFE])
+	check(not absolute_first.has("error") and absolute_first.get("effects", []).is_empty()
+		and absolute_first.requests.map(func(r): return r.kind) == ["render_current_map_background"]
+		and absolute_state.globals.party_x == 160 and absolute_state.party_records[0].screen_x == 160,
+		"absolute mode suspends at background rendering before changing the anchor or members")
+	var absolute = _finish(commands, absolute_state, absolute_first)
 	check(not absolute.has("error") and absolute.effects.size() == 1
 		and absolute.effects[0].mode == "absolute"
 		and absolute_state.globals.viewport_x == 30 * 32 - 160
 		and absolute_state.globals.viewport_y == 60 * 16 - 112,
 		"the absolute form sets (A0*32-160, A1*16-112) once: " + str(absolute.get("error", "")))
+	check(absolute.requests.map(func(r): return r.kind) == ["render_current_map_background",
+		"start_frame_and_process_events", "render_scene_frame"],
+		"negative A2 skips the viewport update and preserves background/frame/render order")
 
-	# A zero A2 re-anchors once and writes A2 back as -1 (visible in the mode).
+	# All three arguments must be zero to re-anchor and write A2 back as -1.
 	var reanchor_state: Dictionary = _state(kernel)
 	reanchor_state.globals.viewport_x = 500; reanchor_state.globals.viewport_y = 500
-	var reanchored = _consume(commands, reanchor_state, [0x007F, 5, 7, 0])
+	var reanchored = _finish(commands, reanchor_state, _consume(commands, reanchor_state, [0x007F, 0, 0, 0]))
 	check(not reanchored.has("error") and reanchored.effects.size() == 1
 		and reanchored.effects[0].mode == "reanchor"
 		and reanchor_state.globals.party_x == 160 and reanchor_state.globals.party_y == 112
 		and reanchor_state.globals.viewport_x == 864 and reanchor_state.globals.viewport_y == 912,
-		"the zero-A2 form re-anchors once at (160,112): " + str(reanchored.get("error", "")))
+		"the all-zero form re-anchors once at (160,112): " + str(reanchored.get("error", "")))
+	check(not reanchored.requests.map(func(r): return r.kind).has("update_viewport_and_party_position"),
+		"re-anchor writes A2=-1 before evaluating the update condition")
+	var zero_count_state: Dictionary = _state(kernel)
+	var zero_count = _consume(commands, zero_count_state, [0x007F, 5, 7, 0])
+	check(not zero_count.has("error") and zero_count.effects[0].mode == "delta"
+		and zero_count_state.globals.viewport_x == 869 and zero_count_state.globals.viewport_y == 919
+		and zero_count.requests.map(func(r): return r.kind).has("update_viewport_and_party_position"),
+		"[5,7,0] takes one delta round and includes the update for A2=0")
 
 	# R07: the second round must read the state the host wrote back. A real frame
 	# event may move the viewport between rounds; precomputing both rounds from
@@ -134,6 +164,19 @@ func _initialize() -> void:
 	var narrow_moved = _consume(commands, narrow, [0x007F, 0, 0, 1])
 	check(not narrow_moved.has("error") and narrow_moved.effects[0].members_shifted == 1,
 		"the shift loop covers members 1..member_last: " + str(narrow_moved.effects[0].members_shifted))
+
+	var bad_member: Dictionary = _state(kernel)
+	bad_member.party_records[2].screen_x = 40000
+	var bad_before: Dictionary = bad_member.duplicate(true)
+	var rejected = _consume(commands, bad_member, [0x007F, 2, 0, 1])
+	check(rejected.has("error") and bad_member == bad_before,
+		"invalid later member backing does not publish earlier viewport/leader/member writes")
+	var delta_overflow: Dictionary = _state(kernel)
+	delta_overflow.globals.party_x = -32768
+	var delta_before: Dictionary = delta_overflow.duplicate(true)
+	var overflow = _consume(commands, delta_overflow, [0x007F, 0, 0, 1])
+	check(overflow.has("error") and str(overflow.error).contains("anchor delta") and delta_overflow == delta_before,
+		"the intermediate member anchor subtraction is checked I2 and fails atomically")
 
 	var passed = results.filter(func(r): return r.passed).size()
 	var out = FileAccess.open(args[1], FileAccess.WRITE)

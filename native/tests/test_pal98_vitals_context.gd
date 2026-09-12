@@ -50,7 +50,7 @@ func _initialize() -> void:
 	var changed = _consume(commands, state, 1, 3, 0)
 	check(not changed.has("error") and changed.effects[0].changed_total == 4
 		and state.equipment.role_words[54] == 6 and state.equipment.role_words[60] == 5
-		and state.globals.trigger_success_word == 1,
+		and state.globals.trigger_success_word == -1,
 		"the reviewed vitals case lands on field*6+role words 54/60: " + str(changed.get("error", "")))
 
 	# A zero A0 reads the passed event context, not a global and not slot 0.
@@ -103,6 +103,43 @@ func _initialize() -> void:
 		"an I2 overflow fails the command: " + str(overflow_run.get("error", "")))
 	check(overflow.equipment.role_words[9 * 6] == 100 and overflow.equipment.role_words[9 * 6 + 1] == 32000,
 		"the failed multi-target change applies no member")
+
+	# Both resulting vitals fit I2, but their absolute change total (40000) does
+	# not. The original checks the accumulator, not merely the new HP and MP.
+	var total_overflow: Dictionary = _state(kernel, 0)
+	_set_vitals(total_overflow.equipment, 0, 20000, 20000, 30000, 30000)
+	total_overflow.globals.trigger_success_word = -1
+	var total_before: Dictionary = total_overflow.duplicate(true)
+	var total_run = _consume(commands, total_overflow, 1, 45536, 0)
+	check(total_run.get("diagnostic", {}).get("code") == "checked_i2"
+		and not total_run.has("state") and total_overflow == total_before,
+		"a 40000 absolute change total fails atomically and preserves the prior success word")
+	var abs_overflow: Dictionary = _state(kernel, 0)
+	_set_vitals(abs_overflow.equipment, 0, 1, 0x8000, 1, 100)
+	var abs_before: Dictionary = abs_overflow.duplicate(true)
+	var abs_run = _consume(commands, abs_overflow, 1, 0, 0)
+	check(abs_run.get("diagnostic", {}).get("code") == "checked_i2" and abs_overflow == abs_before,
+		"Abs(-32768) fails without publishing the otherwise clamped MP")
+	var across_members: Dictionary = _state(kernel, 1)
+	_set_vitals(across_members.equipment, 0, 10000, 10000, 20000, 20000)
+	_set_vitals(across_members.equipment, 1, 10000, 10000, 20000, 20000)
+	var members_before: Dictionary = across_members.duplicate(true)
+	var members_run = _consume(commands, across_members, 1, 55536, 0)
+	check(members_run.get("diagnostic", {}).get("code") == "checked_i2" and across_members == members_before,
+		"a later member overflowing the total leaves all earlier candidate changes unapplied")
+	var boundary: Dictionary = _state(kernel, 0)
+	_set_vitals(boundary.equipment, 0, 16384, 16383, 20000, 20000)
+	var boundary_run = _consume(commands, boundary, 1, 49152, 0)
+	check(not boundary_run.has("error") and boundary_run.effects[0].changed_total == 32767
+		and boundary_run.effects[0].success_word == -1,
+		"the largest signed change total 32767 remains valid and returns the original true word -1")
+	var unchanged: Dictionary = _state(kernel, 0)
+	_set_vitals(unchanged.equipment, 0, 6, 5, 6, 5)
+	unchanged.globals.trigger_success_word = -1
+	var unchanged_run = _consume(commands, unchanged, 1, 3, 0)
+	check(not unchanged_run.has("error") and unchanged_run.effects[0].changed_total == 0
+		and unchanged.globals.trigger_success_word == 0,
+		"a living target already at both maxima clears G0302 to zero")
 
 	var passed = results.filter(func(r): return r.passed).size()
 	var out = FileAccess.open(args[1], FileAccess.WRITE)

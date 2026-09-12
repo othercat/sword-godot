@@ -43,8 +43,8 @@ func _sentinel_state(kernel) -> Dictionary:
 	equipment.role_words = words
 	return {"globals": _globals(), "equipment": equipment, "party_records": []}
 
-func _consume(commands, state: Dictionary, opcode: int, a0: int, a1: int, a2: int) -> Dictionary:
-	return commands.consume(state, {"words": [opcode, a0, a1, a2], "entry": 1, "event_id": 0})
+func _consume(commands, state: Dictionary, opcode: int, a0: int, a1: int, a2: int, context: int = 0) -> Dictionary:
+	return commands.consume(state, {"words": [opcode, a0, a1, a2], "entry": 1, "event_id": context})
 
 func _initialize() -> void:
 	var args = OS.get_cmdline_user_args()
@@ -115,24 +115,51 @@ func _initialize() -> void:
 	var refused = _consume(commands, outside_party.state, 0x001A, 17, 7, 7)
 	check(refused.has("error"), "an absolute role beyond the six-role table is refused")
 
-	# 0x001A default-context branch: the current role slot drives the G05CC
+	# 0x001A default-context branch: the invoking party slot drives the G05CC
 	# special case for fields 1/65 and the party role for other fields.
 	var default_state: Dictionary = _sentinel_state(kernel)
-	default_state.globals.current_role_slot = 2
-	var projection_write = _consume(commands, default_state, 0x001A, 1, 55, 0)
+	var projection_write = _consume(commands, default_state, 0x001A, 1, 55, 0, 2)
 	check(not projection_write.has("error")
 		and projection_write.state.equipment.party_fields[2].battle_sprite_word == 55
 		and projection_write.state.equipment.role_words[1 * 6 + 3] == _sentinel(1, 3),
 		"the default branch routes field 1 to slot2's projection word only: " + str(projection_write.get("error", "")))
-	var magic_write = _consume(commands, projection_write.state, 0x001A, 65, 66, 0)
+	var magic_write = _consume(commands, projection_write.state, 0x001A, 65, 66, 0, 2)
 	check(not magic_write.has("error")
 		and magic_write.state.equipment.party_fields[2].cooperative_magic_word == 66,
 		"the default branch routes field 65 to the cooperative magic word")
-	var default_base = _consume(commands, magic_write.state, 0x001A, 20, 77, 0)
+	var default_base = _consume(commands, magic_write.state, 0x001A, 20, 77, 0, 2)
 	check(not default_base.has("error")
 		and default_base.state.equipment.role_words[20 * 6 + 3] == 77
 		and default_base.state.equipment.role_words[20 * 6] == _sentinel(20, 0),
 		"default-branch numeric fields follow the party role at field*6+role")
+
+	# Independent review repros: a reordered party needs no private global, and
+	# an inherited contradictory global must not override the caller's context.
+	var reordered: Dictionary = _sentinel_state(kernel)
+	reordered.equipment.party_roles = [3, 0, 1]
+	var without_global = _consume(commands, reordered, 0x001A, 17, 99, 0)
+	check(not without_global.has("error") and reordered.equipment.role_words[17 * 6 + 3] == 99,
+		"default context 0 resolves reordered role3 without a current-role global")
+	reordered.globals.current_role_slot = 0
+	var with_context = _consume(commands, reordered, 0x001A, 17, 88, 0, 1)
+	var context_stat = kernel.effective_stat(reordered.equipment, 0, 17)
+	check(not with_context.has("error") and context_stat.get("value") == 88
+		and reordered.equipment.role_words[17 * 6 + 3] == 99,
+		"context 1 overrides a stale global and effective_stat reads reordered role0")
+	var context_sprite = _consume(commands, reordered, 0x001A, 1, 888, 0, 1)
+	check(not context_sprite.has("error") and reordered.equipment.party_fields[1].battle_sprite_word == 888
+		and reordered.equipment.party_fields[0].battle_sprite_word == 0,
+		"field 1 uses the context slot rather than its absolute role or a stale global")
+	var negative_selector = _consume(commands, reordered, 0x001A, 65, 777, 0xFFFF, 1)
+	check(not negative_selector.has("error") and reordered.equipment.party_fields[1].cooperative_magic_word == 777,
+		"a nonpositive selector uses the same context for field 65")
+	var before_refusal: Dictionary = reordered.duplicate(true)
+	var unmapped = _consume(commands, reordered, 0x001A, 17, 7, 0, 4)
+	check(unmapped.has("error") and unmapped.get("diagnostic", {}).get("code") == "role_backing"
+		and reordered == before_refusal, "an unrepresented default context is a named failure without writes")
+	var explicit_context = _consume(commands, reordered, 0x001A, 17, 66, 6, 100)
+	check(not explicit_context.has("error") and reordered.equipment.role_words[17 * 6 + 5] == 66,
+		"a positive selector retains absolute role5 even when context is outside the party")
 
 	# Equipment consumer: effective_stat reads exactly what the explicit 0x001A
 	# wrote (modifiers are zero in this state).

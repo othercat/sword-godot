@@ -43,9 +43,38 @@ failed replacement keeps the previous snapshot.
    state and entry only then; a failure publishes no candidate and leaves the
    caller's state untouched.
 
+Every failure after a start cancels the suspended Trigger invocation, clears
+the relay/continuation state and invalidates its request generation while
+keeping the returned diagnostics and trace. The same owner can start again;
+an old acknowledgement is rejected without disturbing the new invocation.
+
 The ByRef entry keeps the original opcode semantics, which the checks pin:
 opcode `0001` increments the already advanced entry once more before exiting,
 while opcode `0000` restores the saved entry.
+
+### DAY-01 Astra review corrections (2026-09-12)
+
+The review of `a79384d` retained the field-major role layout, current-inventory
+handoff and party projection lifecycle fixes. Additional regressions in
+`test_pal98_role_table.gd`, `test_pal98_vitals_context.gd`,
+`test_pal98_viewport_move.gd` and `test_pal98_viewport_relay.gd` pin the default
+context, checked change total/Boolean word, viewport host boundaries and
+failure/restart semantics described here. The relay suite takes one fresh JSON
+output path; the other three take the admitted package and a fresh output path.
+The main entry suite keeps its package/output arguments. These are component
+checks with explicit host doubles, not ordinary Session acceptance.
+
+`0x0020` is still unimplemented. Its case is `0x00421F00..0x00421F60`
+(end exclusive), SHA256
+`68ce75cfdbf65d5dc20ab0825678b6867c4fad7f29037bc77410d71a18645471`.
+Only `A1==0` defaults to 1; `count<A1` and `A2!=0` write ByRef entry `A2-1`,
+otherwise the command enters the removal path. The two entry points
+`0x0041CFB4` and `0x0041CE1C` are stubs for existing P-Code bodies, not unknown
+native helper implementations: T173 count (`0x00403D0C..0x00403D64`), T153
+equipped count (`0x0040501C..0x004050AA`) and T135 removal
+(`0x00409104..0x00409260`, including equipment-shortage handling) already have
+research evidence. Reuse and recheck those bodies before extending Inventory;
+no new decoding toolchain is a prerequisite.
 
 ## Implemented T240 commands
 
@@ -59,6 +88,8 @@ source bytes for every operand.
 | --- | --- | --- |
 | `0x0015` | `0x0042149E..0x004214DC` | `G026E = A0`; the party record `A2` frame word becomes `G026E*3 + A1` with checked I2 arithmetic |
 | `0x0016` | `0x004214DC..0x004215E0` | zero target is the original no-op; a negative target writes the current event slot, a positive one resolves against the scene event base, and anything outside the scene range writes the global event table record `A0-1`; fields `+20/+22` take `A1/A2` |
+| `0x001A` | `0x00421708..0x004217C0` | positive `A2` selects absolute role `A2-1` in the `field*6+role` table; otherwise the invoking `event_id` selects a represented party slot (0..4), with fields 1/65 routed to that slot's projection and other fields to its mapped role; unrepresented context is diagnosed |
+| `0x001D` | `0x00421B6C..0x00421E6A` | adds signed `A1` to living targets' HP/MP with independent clamps; zero `A0` selects the invoking context, nonzero selects members 0..member_last; checked I2 additions, differences, absolute values and accumulated change precede all writes; `G0302` is -1 for actual change, otherwise 0 |
 | `0x003B` | `0x0042322E..0x00423272` | dialog globals: mode 0, text origin (80,40) |
 | `0x003D` | `0x0042331A..0x004233C2` | lower dialog globals: mode 2, title (12,108), body origin (44,126) |
 | `0x0041` | `0x004234D6..0x004234F0` | `G0302 = 0` |
@@ -88,7 +119,7 @@ source bytes for every operand.
 | `0x009A` | `0x0042694E..0x00426A56` | resolves `A0/A1` against the scene event base and writes the state word (`+12`) for the inclusive range, falling back to the global event record when the start is out of range |
 | `0x00A3` | `0x0042759A..0x004275D6` | normalizes the third argument (at most 1 becomes `Arg2 Xor 1`) and requests `PlayCdOrMidiTrack` (`0x0041D23C`) with the three ByRef words |
 | `0x0085` | `0x004261A4..0x004261C6` | a nonzero argument requests the delay helper (`0x004170C4`) with `Arg0 * 10`; the pinned bytes show the small constant 10, not the reference summary's factor 80 |
-| `0x007F` | `0x00425A7C..0x00425D24` | viewport/member move state machine: the `(-1,0,0)` restore form puts the anchor back at `(160,112)`, otherwise `A0` rounds (zero defaults to one, negative runs zero) apply the re-anchor, absolute (`A2 < 0`: `(A0*32-160, A1*16-112)`) or delta mode, recompute the anchor as `world - viewport`, shift every member by the anchor delta and then request the frame, the optional viewport/party update and the scene render |
+| `0x007F` | `0x00425A7C..0x00425D24` | `(0,0,-1)` restores anchor `(160,112)` and viewport without a host call; otherwise `A2` counts rounds (nonpositive defaults to one). Only `(A0 OR A1 OR A2)==0` re-anchors; negative A2 is absolute and the remaining branch is delta. Background completion precedes dependent anchor/member calculations, followed by frame, update only for `A2>=0`, and render |
 | `0x0036` | `0x00422F52..0x00422F80` | requests the RNG animation load (`0x0041D134`) with the argument word and sets the `G0306` animation bit (16) |
 | `0x0037` | `0x00422F80..0x00422FCA` | defaults the end to 999 and the speed to 10, then requests `PlayCurrentRngAnimation` (`0x0041D464`) with the three words |
 
@@ -206,7 +237,12 @@ the decoded source bytes. 91 checks pass.
 
 ### Decoded grounds for the shared party-walk body (next package)
 
-### Remaining-entry triage (2026-09-12)
+### Historical remaining-entry triage (before DAY-01 review, 2026-09-12)
+
+The following counts and zero-sprite attribution are historical, not the current
+baseline. The DAY-01 role-table correction reads the real field-major sprite
+row `[2,3,7,525,5,26]`; those six source words are nonzero. Current boundaries
+must be read from the exact candidate's coverage diagnostics.
 
 The latest coverage report separates the sixteen scenes that still stop without
 a named command opcode from the ones that do, so the next packages have a ranked

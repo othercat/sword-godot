@@ -432,7 +432,7 @@ func _synthetic_checks() -> void:
 	var vitals_run = _drive(vitals_owner, vitals_owner.start(vitals_state, 1, 1))
 	var vitals_effects: Array = vitals_run.result.get("effects", [])
 	check(not vitals_run.result.has("error") and vitals_effects.size() == 1
-		and vitals_effects[0].changed_total == 4 and vitals_run.result.state.globals.trigger_success_word == 1,
+		and vitals_effects[0].changed_total == 4 and vitals_run.result.state.globals.trigger_success_word == -1,
 		"0x001D clamps the living target and marks the change: " + str(vitals_run.result.get("error", "")))
 	check(vitals_run.result.state.equipment.role_words[9 * 6] == 6
 		and vitals_run.result.state.equipment.role_words[10 * 6] == 5,
@@ -522,7 +522,6 @@ func _synthetic_checks() -> void:
 	var field_source = _source([0, 0], [1, 0], field_program)
 	var field_owner = _owner(field_source)
 	var field_state = _fixture(field_source)
-	field_state.globals.current_role_slot = 0
 	var field_run = _drive(field_owner, field_owner.start(field_state, 1, 1))
 	var field_effects: Array = field_run.result.get("effects", [])
 	check(not field_run.result.has("error") and field_effects.size() == 2
@@ -550,7 +549,6 @@ func _synthetic_checks() -> void:
 	var explicit_sprite_source = _source([0, 0], [1, 0], explicit_sprite_program)
 	var explicit_sprite_owner = _owner(explicit_sprite_source)
 	var explicit_sprite_state = _fixture(explicit_sprite_source)
-	explicit_sprite_state.globals.current_role_slot = 0
 	var explicit_sprite_run = _drive(explicit_sprite_owner, explicit_sprite_owner.start(explicit_sprite_state, 1, 1))
 	check(not explicit_sprite_run.result.has("error")
 		and explicit_sprite_run.result.state.equipment.role_words[1 * 6] == 0x0123
@@ -559,8 +557,12 @@ func _synthetic_checks() -> void:
 	var missing_selector_program: Array = [[0x001A, 0x0001, 0x0011, 0x0000], [0x0001, 0, 0, 0]]
 	var missing_selector_source = _source([0, 0], [1, 0], missing_selector_program)
 	var missing_owner = _owner(missing_selector_source)
-	check(missing_owner.start(_fixture(missing_selector_source), 1, 1).has("error"),
-		"a nonpositive selector without an explicit current role is refused")
+	var default_context_run = missing_owner.start(_fixture(missing_selector_source), 1, 1)
+	check(not default_context_run.has("error")
+		and default_context_run.state.equipment.party_fields[0].battle_sprite_word == 0x0011,
+		"a nonpositive selector uses the default invocation context without a private role global")
+	check(missing_owner.start(_fixture(missing_selector_source), 1, 1, 4).has("error"),
+		"an invocation context without a represented role is refused")
 	# 0x0036/0x0037 RNG animation load and play.
 	var anim_program: Array = [[0x0036, 0x0021, 0x0000, 0x0000], [0x0037, 0x0001, 0x0000, 0x0000], [0x0001, 0, 0, 0]]
 	var anim_source = _source([0, 0], [1, 0], anim_program)
@@ -595,8 +597,7 @@ func _synthetic_checks() -> void:
 		and restore_run.result.state.globals.party_x == 160
 		and restore_run.result.effects[0].kind == "viewport_restore",
 		"0x007F restores the default anchor and viewport: " + str(restore_run.result.get("error", "")))
-	check(restore_run.requests.map(func(request): return request.kind).has("render_current_map_background"),
-		"the restore form replays the map background")
+	check(restore_run.requests.is_empty(), "the special restore form has no host calls")
 	var move_program: Array = [[0x007F, 0x0002, 0x0003, 0x0002], [0x0001, 0, 0, 0]]
 	var move_source = _source([0, 0], [1, 0], move_program)
 	var move_owner = _owner(move_source)
