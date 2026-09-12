@@ -146,8 +146,9 @@ func _relay(step: Dictionary) -> Dictionary:
 		if request.has(key):
 			var value = request[key]
 			relay[key] = value.duplicate(true) if value is Dictionary or value is Array else value
-	if _pending.kind == "dialogue":
-		relay.state = step.request.state.duplicate(true) if step.request.get("state") is Dictionary else {}
+	# Every relayed effect carries the pending state so a host can answer with the
+	# same explicit backing the trigger will validate on the way back.
+	relay.state = request.state.duplicate(true) if request.get("state") is Dictionary else {}
 	return {"request": relay, "effects": _effects.duplicate(true),
 		"unimplemented": _unimplemented.duplicate(true), "trace": _trace.duplicate(true)}
 
@@ -162,6 +163,10 @@ func _advance(step: Dictionary) -> Dictionary:
 				"return_event_id": step.return_event_id, "steps": step.get("steps", 0),
 				"scene": _scene, "scene_source": _scene_receipt.duplicate(true),
 				"effects": _effects.duplicate(true), "unimplemented": _unimplemented.duplicate(true),
+				# A terminal success with named sub-effect gaps is not full
+				# completion of the original entry script; callers must not read
+				# this as an unimplemented-free result.
+				"partial": not _unimplemented.is_empty(),
 				"trace": _trace.duplicate(true)}
 		if not step.has("request"): return _failure("enter script stopped without a terminal phase", step)
 		var request: Dictionary = step.request

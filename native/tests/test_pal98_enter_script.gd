@@ -123,6 +123,8 @@ func _synthetic_checks() -> void:
 	var diagnostic: Dictionary = run.get("diagnostic", {})
 	check(str(diagnostic.get("words", [])) == str([0x0075, 0x0001, 0x0000, 0x0000]), "unimplemented diagnostic carries the real instruction words")
 	check(str(run.get("effects", []).size()) == "3", "three reviewed entry commands executed before the named gap")
+	check(not run.has("state") and not run.has("return_entry"),
+		"failed invocation publishes no candidate state or ByRef entry")
 	var kinds: Array = run.effects.map(func(effect): return effect.kind)
 	check(kinds == ["party_map_position", "role_map_sprite", "party_direction_frame"], "entry effects keep the original instruction order")
 	check(run.effects[0].world_x == 1024 and run.effects[0].world_y == 1024, "0x0046 applies the original world formula")
@@ -140,6 +142,7 @@ func _synthetic_checks() -> void:
 	# before exiting, 0000 restores the saved entry instead.
 	check(not completed.result.has("error") and completed.result.return_entry == 3,
 		"0x0041 followed by opcode 0001 returns the incremented ByRef entry: " + str(completed.result.get("return_entry", completed.result.get("error"))))
+	check(completed.result.get("partial") == false, "a run with no named sub-effect gap is not marked partial")
 	check(completed.result.effects[0].kind == "script_failure_word" and completed.result.state.globals.trigger_success_word == 0, "0x0041 writes G0302 = 0")
 	check(not simple_state.globals.has("trigger_success_word"), "completed candidate stays detached from the caller")
 	# 0x0048 is the original explicit no-op.
@@ -170,6 +173,7 @@ func _synthetic_checks() -> void:
 		and scene_result.result.state.globals.resource_flags == 12, "0x0059 requests scene 2 and sets the original event/EnterScript mask")
 	check(scene_result.result.unimplemented.size() == 1 and str(scene_result.result.unimplemented[0].sub_effect).contains("G028A"),
 		"0x0059 reports the unnamed G028A word instead of guessing")
+	check(scene_result.result.get("partial") == true, "named sub-effect gaps mark the terminal result partial")
 	var same_program: Array = [[0x0059, 0x0001, 0x0000, 0x0000], [0x0001, 0, 0, 0]]
 	var same_source = _source([0, 0], [1, 0], same_program)
 	var same_owner = _owner(same_source)
@@ -198,6 +202,8 @@ func _synthetic_checks() -> void:
 	var message_owner = _owner(message_source)
 	var message_result = _drive(message_owner, message_owner.start(_fixture(message_source), 1, 1))
 	check(message_result.requests.size() > 0 and message_result.requests[0].kind == "dialogue", "FFFF is relayed to the host as a dialogue request")
+	check(message_result.requests[0].has("state") and message_result.requests[0].state.get("dialogue", {}).has("mode"),
+		"relayed effects carry the pending explicit state for the host")
 	check(not message_result.result.has("error"), "relayed dialogue completion finishes the enter script")
 	# Stale and cancelled completions cannot advance a new invocation.
 	var stale_owner = _owner(simple)
