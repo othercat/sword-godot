@@ -87,6 +87,7 @@ source bytes for every operand.
 | `0x006E` | `0x00425178..0x00425206` | copies the world position and viewport into their previous slots, adds the `A0/A1` deltas to the viewport, stores `A2*8` as the party layer word and, when the party actually moves, requests `PostMoveUpdate` (`0x0041D2CC`) and `UpdateViewportAndPartyPosition` (`0x0041CC3C`) |
 | `0x009A` | `0x0042694E..0x00426A56` | resolves `A0/A1` against the scene event base and writes the state word (`+12`) for the inclusive range, falling back to the global event record when the start is out of range |
 | `0x00A3` | `0x0042759A..0x004275D6` | normalizes the third argument (at most 1 becomes `Arg2 Xor 1`) and requests `PlayCdOrMidiTrack` (`0x0041D23C`) with the three ByRef words |
+| `0x0085` | `0x004261A4..0x004261C6` | a nonzero argument requests the delay helper (`0x004170C4`) with `Arg0 * 10`; the pinned bytes show the small constant 10, not the reference summary's factor 80 |
 
 Three boundaries are stated rather than hidden:
 

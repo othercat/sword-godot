@@ -411,6 +411,25 @@ func _synthetic_checks() -> void:
 	# 0x006E party step: position copies, viewport delta, layer and owners.
 	# 0x009A event state range and its global fallback.
 	# 0x00A3 CD/MIDI loop normalization.
+	# 0x0085 delay request scaled by ten.
+	var delay_program: Array = [[0x0085, 0x0003, 0x0000, 0x0000], [0x0001, 0, 0, 0]]
+	var delay_source = _source([0, 0], [1, 0], delay_program)
+	var delay_owner = _owner(delay_source)
+	var delay_adapter = EntryHost.new()
+	delay_adapter.bind(state_cache, state_kernel, _zero(1536), [0, 0, 0, 0, 0, 0])
+	delay_adapter.bind_display(DisplayDouble.new())
+	var delay_run = _drive_with_host(delay_owner, delay_owner.start(_fixture(delay_source), 1, 1), delay_adapter)
+	check(not delay_run.result.has("error") and delay_run.result.effects[0].ticks == 30
+		and delay_run.result.effects[0].requested == true,
+		"0x0085 requests a delay of ten times the argument: " + str(delay_run.result.get("error", "")))
+	check(delay_run.requests.size() == 1 and delay_run.requests[0].kind == "delay_ticks"
+		and delay_run.requests[0].ticks == 30, "the delay request reaches the host with its ticks")
+	var zero_delay_program: Array = [[0x0085, 0x0000, 0x0000, 0x0000], [0x0001, 0, 0, 0]]
+	var zero_delay_source = _source([0, 0], [1, 0], zero_delay_program)
+	var zero_delay_owner = _owner(zero_delay_source)
+	var zero_delay_run = _drive(zero_delay_owner, zero_delay_owner.start(_fixture(zero_delay_source), 1, 1))
+	check(not zero_delay_run.result.has("error") and zero_delay_run.result.effects[0].requested == false
+		and zero_delay_run.requests.is_empty(), "a zero 0x0085 argument requests no delay")
 	var track_program: Array = [[0x00A3, 0x0001, 0x0002, 0x0000], [0x0001, 0, 0, 0]]
 	var track_source = _source([0, 0], [1, 0], track_program)
 	var track_owner = _owner(track_source)

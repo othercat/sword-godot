@@ -115,6 +115,9 @@ const CASES = {
 	0x00A3: {"range": ["0x0042759A", "0x004275D6"],
 		"sha256": "2bc79a19fb39bd185fbd4f9a9abea9af97f0abe6f18ae5ca63b826619d1983a1",
 		"effect": "normalizes the third argument (at most 1 becomes Arg2 Xor 1) and requests PlayCdOrMidiTrack (0x0041D23C) with the three ByRef words"},
+	0x0085: {"range": ["0x004261A4", "0x004261C6"],
+		"sha256": "dcf309b3657b242c5c39313b4c04174188c81f8d87b80b1be3c09ec60cc764f4",
+		"effect": "a nonzero argument requests the delay helper (0x004170C4) with Arg0 times the small constant 10; the reference summary's factor 80 is not what the pinned bytes show"},
 	0x001F: {"range": ["0x00421EC4", "0x00421F00"],
 		"sha256": "79fa119ab6503c8516f2ac38ffe38c581b8630ad9f6072d3a3c1d1903e55d8b0",
 		"effect": "compresses the inventory (T152 0x0041C96C), defaults a nonpositive amount to 1 and adds the item through T140 (0x0041CCCC)"},
@@ -165,6 +168,7 @@ const Walk = preload("res://src/native_pal98_party_walk.gd")
 const POST_MOVE_UPDATE = "post_move_update" # 0x0041D2CC
 const UPDATE_VIEWPORT_AND_PARTY = "update_viewport_and_party_position" # 0x0041CC3C
 const PLAY_CD_OR_MIDI = "play_cd_or_midi_track" # 0x0041D23C
+const DELAY_TICKS = "delay_ticks" # 0x004170C4
 # Named next gaps: not implemented, kept here so the diagnostic and the review
 # can name the same case identity.
 const NEXT_GAPS = {}
@@ -283,6 +287,7 @@ func consume(state: Dictionary, request: Dictionary) -> Dictionary:
 		0x0099: return _command_0099(state, request, source)
 		0x009A: return _command_009A(state, request, source)
 		0x00A3: return _command_00A3(state, request, source)
+		0x0085: return _command_0085(state, request, source)
 	var facts: Dictionary = case_facts(opcode)
 	var details: Dictionary = {"effect": facts.get("effect"), "case_range": facts.get("range"),
 		"case_sha256": facts.get("sha256")}
@@ -593,6 +598,20 @@ func _command_009A(state: Dictionary, request: Dictionary, source: Dictionary) -
 		"from": _signed(request.words[1]), "to": finish, "value": value, "offset": at, "source": source}])
 
 ## 0x00A3 normalizes the loop flag and requests the CD/MIDI track owner.
+## 0x0085 requests the delay helper with the argument scaled by ten.
+func _command_0085(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
+	var argument: int = _signed(request.words[1])
+	var effect: Dictionary = {"kind": "delay", "argument": argument, "ticks": 0, "requested": false, "source": source}
+	var result: Dictionary = _result(state, request, [effect])
+	if argument == 0: return result
+	var ticks: int = argument * 10
+	if not _i2(ticks): return _failure("checked_i2", "0x0085 delay ticks leave I2 range", request, source)
+	effect.ticks = ticks
+	effect.requested = true
+	result.requests = [{"kind": DELAY_TICKS, "original_entry": "0x004170C4",
+		"procedure": "0x004170C4", "ticks": ticks}]
+	return result
+
 func _command_00A3(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
 	var first: int = request.words[1]
 	var second: int = request.words[2]
