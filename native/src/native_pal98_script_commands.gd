@@ -43,6 +43,9 @@ const CASES = {
 	0x0022: {"range": ["0x00421FE4", "0x004221B4"],
 		"sha256": "b15f9333dbbf757c396cac6dacc1d71d54a547ef35533279c5136124bfacf5b7",
 		"effect": "revives dead members: A0=0 takes the context party slot, nonzero traverses 0..member_last; A1>10 is taken as 10; HP becomes (MaxHP/10)*A1 floored at one, poison ids clear and scripts stay, statuses below 999 clear, G0302 takes the VB truth"},
+	0x0080: {"range": ["0x00425D24", "0x00425E24"],
+		"sha256": "b1c6d6e5fe1103d0409bf88fb6d67267205776acdaf136342ace4d7c1ee11f92",
+		"effect": "day/night palette toggle: saves the active window into the work area with copymen, runs 32 cvpate rounds toward the opposite block with an install plus event/frame (A0<=0) or wait (A0>0) per round, then adopts the target offset, installs it and clears G0250"},
 	0x003B: {"range": ["0x0042322E", "0x00423272"],
 		"sha256": "484d663d6609be35e3f751d9ffd339139334eb4d09b80749cfba723871e1f842",
 		"effect": "centered dialog globals: mode 0, text origin (80,40), colour word when A0 is positive"},
@@ -200,6 +203,9 @@ const FADE_TO_BLACK = "fade_palette_to_black" # 0x0041CDD4
 const FADE_TO_REPEATED_BLOCK = "fade_palette_to_repeated_color_block" # 0x0041CDEC
 const SET_PALETTE = "set_palette" # 0x0041D11C
 const APPLY_PALETTE = "apply_palette" # 0x004174D0
+const FADE_EVENT_PUMP = "fade_event_pump" # 0x0041D17C, the A0<=0 per-round event helper
+const FADE_FRAME = "fade_frame" # 0x0041CB64, the A0<=0 per-round frame helper
+const FADE_WAIT = "fade_wait" # wtime 0x004170E0, the A0>0 per-round wait
 const FADE_SCENE_PALETTE = "fade_scene_palette_and_update_frames" # 0x0041CE04
 const ENSURE_MAP_RESOURCES = "ensure_map_resources_loaded" # 0x0041C834
 const ADD_INVENTORY_ITEM = "add_inventory_item" # T152 0x0041C96C then T140 0x0041CCCC
@@ -210,6 +216,7 @@ const PLAY_CD_OR_MIDI = "play_cd_or_midi_track" # 0x0041D23C
 const DELAY_TICKS = "delay_ticks" # 0x004170C4
 const ViewportMove = preload("res://src/native_pal98_viewport_move.gd")
 const Inventory = preload("res://src/native_pal98_inventory.gd")
+const Palette = preload("res://src/native_pal98_palette.gd")
 const ROLE_G05CC_BATTLE_SPRITE = 0
 const ROLE_G05CC_COOPERATIVE_MAGIC = 11
 const ROLE_FIELD_BATTLE_SPRITE = 1
@@ -228,6 +235,7 @@ var _scene_count: int = 0
 var _walk = Walk.new()
 var _viewport
 var _inventory
+var _palette
 
 static func _i2(value) -> bool:
 	return typeof(value) == TYPE_INT and value >= -32768 and value <= 32767
@@ -306,6 +314,7 @@ func consume(state: Dictionary, request: Dictionary) -> Dictionary:
 		0x0020: return _command_0020(state, request, source)
 		0x0023: return _command_0023(state, request, source)
 		0x0022: return _command_0022(state, request, source)
+		0x0080: return _command_0080(state, request, source)
 		0x001D: return _command_001D(state, request, source)
 		0x003D: return _command_003D(state, request, source)
 		0x0016: return _command_0016(state, request, source)
@@ -841,7 +850,69 @@ func continue_command(pending: Dictionary, state: Dictionary) -> Dictionary:
 		result.requests = step.get("requests", [])
 		result.pending = pending
 		return result
+	if pending.get("day_night_fade") is Dictionary:
+		if not _palette is Object: _palette = Palette.new()
+		var result: Dictionary = {"state": state, "entry": pending.get("entry", 0),
+			"event_id": pending.get("event_id", 0), "effects": [], "unimplemented": [],
+			"opcode": pending.get("opcode", 0), "pending": pending}
+		return _continue_day_night(result, state)
 	return {"error": "pal98-command: unknown command continuation"}
+
+## 0x0080 toggles the day/night palette: the active G026C window is saved into
+## the work area with copymen, then 32 cvpate rounds converge the work area
+## toward the opposite block, each round followed by an install and either the
+## event/frame helpers (A0<=0) or a wtime wait (A0>0). The round after each
+## install starts only once the host answers, so later rounds read the state
+## the host wrote back. The terminal round adopts the target offset, installs
+## the target block directly and clears the G0250 fade gate. The screen
+## install itself stays a host request; Native verifies the buffer arithmetic
+## and the sequencing, not a real display.
+func _command_0080(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
+	if not state.get("palette_bytes") is PackedByteArray or state.palette_bytes.size() != Palette.BUFFER:
+		return _failure("palette_backing", "0x0080 requires the explicit 0x780-byte G0150 buffer", request, source)
+	var day_night = state.globals.get("day_night_word")
+	if not _i2(day_night) or day_night < 0 or day_night > Palette.DAY_NIGHT_MAX:
+		return _failure("palette_state", "0x0080 requires the explicit G026C offset within 0..0x180", request, source)
+	var step: int = Palette.DAY_NIGHT_MAX - day_night
+	if not _i2(step):
+		return _failure("checked_i2", "0x0080 day/night step leaves I2 range", request, source)
+	if not _palette is Object: _palette = Palette.new()
+	_palette.save_current(state.palette_bytes, day_night)
+	var result: Dictionary = _result(state, request, [])
+	result.pending = {"day_night_fade": {"round": 0, "step": step, "arg0": _signed(request.words[1])},
+		"entry": request.entry, "event_id": request.event_id, "opcode": request.words[0]}
+	return _continue_day_night(result, state)
+
+func _continue_day_night(result: Dictionary, state: Dictionary) -> Dictionary:
+	var pending: Dictionary = result.pending
+	var plan: Dictionary = pending.day_night_fade
+	plan.round = int(plan.round) + 1
+	var converged: Dictionary = _palette.converge_once(state.palette_bytes, plan.step)
+	if converged.has("error"): return {"error": "pal98-command: " + str(converged.error)}
+	var effects: Array = [{"kind": "day_night_fade_step", "round": plan.round, "moved": converged.moved}]
+	var install: Dictionary = {"kind": APPLY_PALETTE, "original_entry": "0x004174D0",
+		"procedure": "intpate", "offset": Palette.WORK, "length": Palette.LENGTH,
+		"bytes": state.palette_bytes.slice(Palette.WORK, Palette.WORK + Palette.LENGTH)}
+	if plan.round < Palette.ROUNDS:
+		result.effects = effects
+		if int(plan.arg0) <= 0:
+			result.requests = [install,
+				{"kind": FADE_EVENT_PUMP, "original_entry": "0x0041D17C", "argument": 0},
+				{"kind": FADE_FRAME, "original_entry": "0x0041CB64", "argument": 1}]
+		else:
+			result.requests = [install,
+				{"kind": FADE_WAIT, "original_entry": "0x004170E0", "procedure": "wtime", "delay": plan.arg0}]
+		result.pending = pending
+		return result
+	state.globals.day_night_word = plan.step
+	state.globals.fade_gate_word = 0
+	result.erase("pending")
+	result.rounds = Palette.ROUNDS
+	result.effects = effects + [{"kind": "day_night_fade_done", "day_night": plan.step}]
+	result.requests = [{"kind": APPLY_PALETTE, "original_entry": "0x004174D0",
+		"procedure": "intpate", "offset": plan.step, "length": Palette.LENGTH,
+		"bytes": state.palette_bytes.slice(plan.step, plan.step + Palette.LENGTH)}]
+	return result
 
 func _continue_walk(result: Dictionary, state: Dictionary) -> Dictionary:
 	var pending: Dictionary = result.pending
