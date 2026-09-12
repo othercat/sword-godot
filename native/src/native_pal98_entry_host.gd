@@ -19,6 +19,7 @@ var _inventory: PackedByteArray = PackedByteArray()
 var _role_sprite_ids: Array = []
 var _display_owner
 var _inventory_owner
+var _movement_owner
 var _answered: Array = []
 
 ## `role_sprite_ids` is the per-role map sprite projection (G079C[role,2]).
@@ -45,6 +46,12 @@ func bind_display(owner) -> void:
 ## are refused by name instead of being acknowledged.
 func bind_inventory(owner) -> void:
 	_inventory_owner = owner
+
+## Optional owner for the walk's movement requests (facing, per-step updates and
+## the member/trail sync). Without it those requests fall through to the display
+## binding or are refused by name.
+func bind_movement(owner) -> void:
+	_movement_owner = owner
 
 func answered() -> Array:
 	return _answered.duplicate(true)
@@ -107,6 +114,10 @@ func answer(request: Dictionary) -> Dictionary:
 			_answered.append({"kind": request.kind, "mode": added.mode, "slot": added.slot,
 				"amount": added.amount, "last_slot": compressed.last_slot})
 			return {"completed": true, "state": state}
+	if _movement_owner != null and _movement_owner.has_method("answer"):
+		var movement: Dictionary = _movement_owner.answer(request)
+		_answered.append({"kind": request.kind, "movement": true})
+		return movement
 	if _display_owner != null and _display_owner.has_method("answer"):
 		var forwarded: Dictionary = _display_owner.answer(request)
 		_answered.append({"kind": request.kind, "forwarded": true})

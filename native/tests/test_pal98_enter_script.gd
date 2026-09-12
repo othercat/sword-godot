@@ -29,6 +29,38 @@ class DisplayDouble:
 		requests.append(request.kind)
 		return {"completed": true}
 
+## Movement owner double: it faces the party by the delta quadrant (the external
+## extf has no body in PAL.EXE) and recomputes the world position from the
+## viewport plus the party anchor, which is the reviewed relation.
+class WalkDouble:
+	var requests: Array = []
+	var log: Array = []
+	var _flip: bool = true
+	func answer(request: Dictionary) -> Dictionary:
+		requests.append(request.kind)
+		var state: Dictionary = request.get("state", {}).duplicate(true)
+		var globals: Dictionary = state.get("globals", {})
+		if requests.size() <= 10:
+			log.append({"kind": request.kind, "world": [globals.get("world_x"), globals.get("world_y")],
+				"viewport": [globals.get("viewport_x"), globals.get("viewport_y")],
+				"delta": [request.get("delta_x"), request.get("delta_y")]})
+		match request.kind:
+			"face_party_toward":
+				var dx: int = request.get("delta_x", 0); var dy: int = request.get("delta_y", 0)
+				# This double is not the original external extf: it picks a
+				# direction that reduces the remaining delta and flips the sign of
+				# an already-satisfied axis so the reviewed 2:1 steps can land
+				# exactly on a tile-derived target.
+				var x_positive: bool = dx > 0 if dx != 0 else _flip
+				var y_positive: bool = dy > 0 if dy != 0 else _flip
+				_flip = not _flip
+				if x_positive: globals.direction_word = 2 if y_positive else 3
+				else: globals.direction_word = 0 if y_positive else 1
+			"post_move_update":
+				globals.world_x = globals.viewport_x + globals.party_x
+				globals.world_y = globals.viewport_y + globals.party_y
+		return {"completed": true, "state": state}
+
 func check(ok: bool, label: String) -> void:
 	checks.append({"name": label, "passed": ok})
 	if not ok: failed += 1; push_error(label)
@@ -372,6 +404,38 @@ func _synthetic_checks() -> void:
 	# 0x001F through the real inventory owner.
 	# 0x006E party step: position copies, viewport delta, layer and owners.
 	# 0x009A event state range and its global fallback.
+	# 0x0070 party walk through the real continuation protocol.
+	var walk_program: Array = [[0x0070, 0x0021, 0x0041, 0x0000], [0x0001, 0, 0, 0]]
+	var walk_source = _source([0, 0], [1, 0], walk_program)
+	var walk_owner = _owner(walk_source)
+	var walk_state = _fixture(walk_source)
+	walk_state.globals.world_x = 1024; walk_state.globals.world_y = 1024
+	var walk_adapter = EntryHost.new()
+	var walk_cache = Cache.new(); walk_cache.load_source(package.pal98_graphics, package.pal98_sources)
+	var walk_kernel = Equipment.new()
+	walk_kernel.read_tables(package.pal98_sources.copy_chunk("data", 3),
+		package.pal98_sources.copy_chunk("sss", 2), package.pal98_sources.copy_chunk("sss", 4))
+	walk_adapter.bind(walk_cache, walk_kernel, walk_state.inventory_bytes, [0, 0, 0, 0, 0, 0])
+	var walk_double = WalkDouble.new()
+	walk_adapter.bind_movement(walk_double)
+	walk_adapter.bind_display(DisplayDouble.new())
+	var walk_run = _drive_with_host(walk_owner, walk_owner.start(walk_state, 1, 1), walk_adapter)
+	print("walk debug kinds(first12)=", (walk_double.requests.slice(0, 12) if walk_double.requests.size() > 0 else []),
+		" total=", walk_double.requests.size(), " log=", walk_double.log)
+	var walk_effects: Array = walk_run.result.get("effects", [])
+	check(not walk_run.result.has("error"), "the party walk completes: " + str(walk_run.result.get("error", "")))
+	check(walk_effects.size() == 8 and walk_effects[0].kind == "party_walk_step",
+		"the walk advances one reviewed 2:1 step per iteration: " + str(walk_effects.size()))
+	check(walk_run.result.state.globals.world_x == 1056 and walk_run.result.state.globals.world_y == 1040
+		and walk_run.result.state.globals.viewport_x == 896 and walk_run.result.state.globals.viewport_y == 928,
+		"the walk lands on the target world position through the movement owner")
+	check(walk_run.result.get("walk_steps") == 8, "the walk reports its step count")
+	check(walk_double.requests.count("face_party_toward") == 8
+		and walk_double.requests.count("post_move_update") == 8
+		and walk_double.requests.count("sync_members_from_trail") == 1,
+		"each iteration faces and updates, and arrival syncs once: " + str(walk_double.requests))
+	check(walk_run.requests.map(func(request): return request.kind).has("render_scene_frame"),
+		"each walk step renders through the host")
 	var range_program: Array = [[0x009A, 0x0001, 0x0002, 0x0042], [0x0001, 0, 0, 0]]
 	var range_source = _source([0, 2], [1, 0], range_program, [], 2)
 	var range_owner = _owner(range_source)
@@ -846,7 +910,8 @@ func _real_checks() -> void:
 		scene2.value.enter_script_word), scene2_adapter)
 	var scene2_result: Dictionary = scene2_run.result
 	check(scene2_result.has("error") and (scene2_result.get("diagnostic", {}).has("words")
-		or str(scene2_result.get("error", "")).contains("pal98-entry-host")),
+		or str(scene2_result.get("error", "")).contains("pal98-entry-host")
+		or str(scene2_result.get("error", "")).contains("walk step budget")),
 		"the second scene's real entry stops at a named command with its source receipt: "
 			+ str(scene2_result.get("error", "")))
 	var scene2_kinds: Array = scene2_result.effects.map(func(effect): return effect.kind)

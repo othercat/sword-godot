@@ -201,6 +201,40 @@ the decoded source bytes. 91 checks pass.
 
 ### Decoded grounds for the shared party-walk body (next package)
 
+### Party walk (2026-09-12, implemented)
+
+`native_pal98_party_walk.gd` implements the shared body for `0x0070` (speed 2)
+and the `0x007A`/`0x007B` entries (speeds 4/8), now that the remaining
+instructions were decoded:
+
+- the step tables are `G044C = [-1,-1,1,1]` and `G0464 = [1,-1,1,-1]` from the
+  generated initializer, and the body scales X by `speed*2` and Y by `speed`,
+  i.e. the original 2:1 walk step;
+- the body copies the world position into the previous-position words, then per
+  iteration faces the party through the external `extf` stub (`0x004172D8`),
+  advances the viewport, and calls `PostMoveUpdate` (`0x0041D2CC`),
+  `StartFrameAndProcessEvents(0)` (`0x0041D17C`),
+  `UpdateViewportAndPartyPosition` (`0x0041CC3C`) and `RenderSceneFrame(1)`
+  (`0x0041CB64`) before re-checking the target;
+- arrival runs the member/trail sync on the reviewed `SyncMembersFromTrail`
+  owner (`0x0041D2E4`).
+
+`extf` has no body in `PAL.EXE` (the research marks it as an external call), so
+facing stays an explicit owner request, and the world/trail arithmetic stays with
+`PostMoveUpdate`. Because a step contains a real frame, the enter-script owner
+gained a per-command continuation: a command may return owner requests plus a
+`pending` state, and the owner re-enters `continue_command` after each answered
+round until the command reaches its terminal result. Owner answers now also keep
+the relayed state current for the remaining requests of the same command.
+
+`MAX_STEPS` (512) is a Native guard like the trigger's step budget, not original
+behaviour: with a host that only approximates facing, a real long walk can
+exhaust it and the run stops with that named diagnostic. 163 checks pass
+(including an eight-step walk that lands exactly on a tile-derived target,
+asserting the per-iteration facing/update/render sequence and the single arrival
+sync), and the real-pool coverage rises to 120 entries with 27.36 average
+command depth.
+
 The four remaining movement cases share one implementation, so the next package
 can start from decoded facts instead of re-deriving them:
 

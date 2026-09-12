@@ -158,6 +158,7 @@ const APPLY_PALETTE = "apply_palette" # 0x004174D0
 const FADE_SCENE_PALETTE = "fade_scene_palette_and_update_frames" # 0x0041CE04
 const ENSURE_MAP_RESOURCES = "ensure_map_resources_loaded" # 0x0041C834
 const ADD_INVENTORY_ITEM = "add_inventory_item" # T152 0x0041C96C then T140 0x0041CCCC
+const Walk = preload("res://src/native_pal98_party_walk.gd")
 const POST_MOVE_UPDATE = "post_move_update" # 0x0041D2CC
 const UPDATE_VIEWPORT_AND_PARTY = "update_viewport_and_party_position" # 0x0041CC3C
 # Named next gaps: not implemented, kept here so the diagnostic and the review
@@ -168,6 +169,7 @@ var error: String = ""
 var _events
 var _identity: String = ""
 var _scene_count: int = 0
+var _walk = Walk.new()
 
 static func _i2(value) -> bool:
 	return typeof(value) == TYPE_INT and value >= -32768 and value <= 32767
@@ -266,8 +268,11 @@ func consume(state: Dictionary, request: Dictionary) -> Dictionary:
 		0x006E: return _command_006E(state, request, source)
 		0x0073: return _command_0073(state, request, source)
 		0x0071: return _command_0071(state, request, source)
+		0x0070: return _command_walk(state, request, source, 2)
 		0x0075: return _command_0075(state, request, source)
 		0x0077: return _command_0077(state, request, source)
+		0x007A: return _command_walk(state, request, source, 4)
+		0x007B: return _command_walk(state, request, source, 8)
 		0x008E: return _command_008E(state, request, source)
 		0x008B: return _command_008B(state, request, source)
 		0x0093: return _command_0093(state, request, source)
@@ -512,6 +517,43 @@ func _command_0093(state: Dictionary, request: Dictionary, source: Dictionary) -
 ## 0x0099 writes a scene record's map word: a negative A0 means the current scene
 ## and additionally asks the resource owner to reload the map.
 ## 0x009A writes the event state word (+12) for an inclusive scene-relative range.
+## Shared party-walk entry: 0x0070/0x007A/0x007B differ only in speed.
+func _command_walk(state: Dictionary, request: Dictionary, source: Dictionary, speed: int) -> Dictionary:
+	var started: Dictionary = _walk.begin(state, request.words, speed)
+	if started.has("error"): return _failure("walk", str(started.error), request, source)
+	started.effect.source = source
+	var result: Dictionary = _result(state, request, [started.effect])
+	result.pending = {"walk": started.pending, "entry": request.entry, "event_id": request.event_id,
+		"opcode": request.words[0]}
+	return _continue_walk(result, state)
+
+## Continues a walk after its owner requests were answered. The owner calls this
+## with the walk pending state and the current state.
+func continue_command(pending: Dictionary, state: Dictionary) -> Dictionary:
+	if not pending.get("walk") is Dictionary:
+		return {"error": "pal98-command: unknown command continuation"}
+	var result: Dictionary = {"state": state, "entry": pending.get("entry", 0),
+		"event_id": pending.get("event_id", 0), "effects": [], "unimplemented": [],
+		"opcode": pending.get("opcode", 0), "pending": pending}
+	return _continue_walk(result, state)
+
+func _continue_walk(result: Dictionary, state: Dictionary) -> Dictionary:
+	var pending: Dictionary = result.pending
+	var step: Dictionary = _walk.advance(state, pending.walk)
+	if step.has("error"): return {"error": "pal98-command: " + str(step.error)}
+	step.effects = step.get("effects", [])
+	step.requests = step.get("requests", [])
+	result.state = state
+	result.effects = step.effects
+	if step.get("pending") is Dictionary: pending.walk = step.pending
+	if step.get("terminal", false):
+		result.erase("pending")
+		result.walk_steps = pending.walk.steps
+		return result
+	if not step.requests.is_empty(): result.requests = step.requests
+	result.pending = pending
+	return result
+
 func _command_009A(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
 	if not state.get("events") is Dictionary:
 		return _failure("event_backing", "0x009A requires the explicit event state", request, source)

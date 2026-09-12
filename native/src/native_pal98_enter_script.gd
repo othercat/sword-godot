@@ -33,6 +33,8 @@ var _scene_receipt: Dictionary = {}
 var _pending: Dictionary = {}
 var _owner_queue: Array = []
 var _owner_resume: Dictionary = {}
+var _command_pending: Dictionary = {}
+var _walk_steps: int = 0
 var _generation: int = 0
 var _serial: int = 0
 var _commands_run: int = 0
@@ -84,7 +86,7 @@ func _failure(message: String, step: Dictionary = {}, extra: Dictionary = {}) ->
 		"scene_source": _scene_receipt.duplicate(true)}
 	if step.has("trace"): diagnostic.trigger_trace = step.trace
 	diagnostic.merge(extra, true)
-	_phase = "failed"; _pending = {}; _owner_queue = []; _owner_resume = {}
+	_phase = "failed"; _pending = {}; _owner_queue = []; _owner_resume = {}; _command_pending = {}
 	return {"error": "pal98-enter: " + message, "diagnostic": diagnostic,
 		"effects": _effects.duplicate(true), "unimplemented": _unimplemented.duplicate(true),
 		"trace": _trace.duplicate(true)}
@@ -133,7 +135,7 @@ func start(state: Dictionary, scene_id, entry, event_id = 0) -> Dictionary:
 
 func cancel() -> void:
 	_generation += 1; _pending = {}
-	_owner_queue = []; _owner_resume = {}
+	_owner_queue = []; _owner_resume = {}; _command_pending = {}
 	if _trigger != null: _trigger.cancel()
 	_phase = "idle"
 
@@ -188,6 +190,7 @@ func _advance(step: Dictionary) -> Dictionary:
 				# completion of the original entry script; callers must not read
 				# this as an unimplemented-free result.
 				"partial": not _unimplemented.is_empty(),
+				"walk_steps": _walk_steps,
 				"trace": _trace.duplicate(true)}
 		if not step.has("request"): return _failure("enter script stopped without a terminal phase", step)
 		var request: Dictionary = step.request
@@ -205,6 +208,7 @@ func _advance(step: Dictionary) -> Dictionary:
 		_trace.append({"command": result.opcode, "effects": result.effects.duplicate(true),
 			"unimplemented": result.unimplemented.duplicate(true)})
 		var owner_requests: Array = result.get("requests", [])
+		_command_pending = result.get("pending", {})
 		if not owner_requests.is_empty():
 			# Command-owned work (sprite/equipment/member owners) must be answered
 			# by the host before the trigger continues with this command's result.
@@ -234,8 +238,25 @@ func resume(request_id: String, response: Dictionary) -> Dictionary:
 			var issue: String = _state_issue(response.state)
 			if not issue.is_empty(): return _failure(issue)
 			resume.state = response.state
+			# Later requests of the same command must see the state this owner
+			# just produced, not the snapshot taken before its answer.
+			_owner_resume.state = response.state
 		if not _owner_queue.is_empty(): return _relay_owner()
+		if not _command_pending.is_empty():
+			# A continuing command (the party walk) re-enters after each round of
+			# owner requests until it reaches its terminal result.
+			var continued: Dictionary = _commands.continue_command(_command_pending, resume.state)
+			if continued.has("error"): return _failure(str(continued.error))
+			_owner_resume = {"id": resume.id, "state": continued.state,
+				"entry": continued.entry, "event_id": continued.event_id}
+			_command_pending = continued.get("pending", {})
+			_effects.append_array(continued.get("effects", []))
+			if not continued.get("requests", []).is_empty():
+				_owner_queue = continued.requests.duplicate(true)
+				return _relay_owner()
+			if continued.has("walk_steps"): _walk_steps = continued.walk_steps
 		_owner_resume = {}
+		_command_pending = {}
 		return _advance(_trigger.resume(resume.id, {"state": resume.state, "entry": resume.entry,
 			"event_id": resume.event_id}))
 	if kind == "dialogue":
