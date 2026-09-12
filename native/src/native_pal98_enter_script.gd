@@ -149,6 +149,9 @@ func _relay_owner() -> Dictionary:
 	relay.scene = _scene
 	relay.entry = _entry
 	relay.scene_source = _scene_receipt.duplicate(true)
+	# The host needs the state as it stands after the command's own effects, so
+	# sprite and equipment owners work on the new composition.
+	relay.state = _owner_resume.get("state", {}).duplicate(true)
 	return {"request": relay, "effects": _effects.duplicate(true),
 		"unimplemented": _unimplemented.duplicate(true), "trace": _trace.duplicate(true)}
 

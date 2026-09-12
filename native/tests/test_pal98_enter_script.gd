@@ -13,9 +13,18 @@ const Random = preload("res://src/native_pal98_fixed_random.gd")
 const Sources = preload("res://src/native_pal98_sources.gd")
 const Schema = preload("res://src/native_schema.gd")
 const Package = preload("res://src/native_package.gd")
+const EntryHost = preload("res://src/native_pal98_entry_host.gd")
 var checks: Array = []
 var failed: int = 0
 var package
+
+## Explicit display double: it acknowledges render/restore requests so the chain
+## can be driven, and records what it was asked to do.
+class DisplayDouble:
+	var requests: Array = []
+	func answer(request: Dictionary) -> Dictionary:
+		requests.append(request.kind)
+		return {"completed": true}
 
 func check(ok: bool, label: String) -> void:
 	checks.append({"name": label, "passed": ok})
@@ -94,6 +103,23 @@ func _drive(owner, first: Dictionary) -> Dictionary:
 		if request.kind == "dialogue": result = owner.resume(request.id, {"event": _dialogue_event(request.effect)})
 		elif request.has("state"): result = owner.resume(request.id, {"state": request.state, "completed": true})
 		else: result = owner.resume(request.id, {"completed": true})
+	return {"result": {"error": "enter script driver budget exceeded"}, "requests": requests}
+
+## Drives an invocation with the real owner adapter for command-owned requests
+## and the display double for render/restore/audio requests.
+func _drive_with_host(owner, first: Dictionary, adapter) -> Dictionary:
+	var result: Dictionary = first; var requests: Array = []
+	for step in range(4096):
+		if not result.has("request"): return {"result": result, "requests": requests}
+		var request: Dictionary = result.request; requests.append(request)
+		if request.kind == "dialogue":
+			result = owner.resume(request.id, {"event": _dialogue_event(request.effect)})
+		elif request.has("original_entry"):
+			result = owner.resume(request.id, adapter.answer(request))
+		elif request.has("state"):
+			result = owner.resume(request.id, {"state": request.state, "completed": true})
+		else:
+			result = owner.resume(request.id, {"completed": true})
 	return {"result": {"error": "enter script driver budget exceeded"}, "requests": requests}
 
 func _owner(source) -> Variant:
@@ -403,8 +429,34 @@ func _real_checks() -> void:
 		var request_state: Dictionary = step.request.state.duplicate(true)
 		request_state.dialogue = _context(); request_state.rng = Random.create(0x12345)
 		var chained = _owner(package.pal98_sources)
-		var chained_run = _drive(chained, chained.start(request_state, step.request.scene_id, step.request.entry, step.request.event_id))
+		var host_cache = Cache.new()
+		host_cache.load_source(package.pal98_graphics, package.pal98_sources)
+		var host_kernel = Equipment.new()
+		host_kernel.read_tables(package.pal98_sources.copy_chunk("data", 3),
+			package.pal98_sources.copy_chunk("sss", 2), package.pal98_sources.copy_chunk("sss", 4))
+		var adapter = EntryHost.new()
+		check(adapter.bind(host_cache, host_kernel, request_state.inventory_bytes, [0, 0, 0, 0, 0, 0]),
+			"real owner adapter binds the sprite cache, equipment kernel and inventory")
+		var display = DisplayDouble.new(); adapter.bind_display(display)
+		var chained_run = _drive_with_host(chained, chained.start(request_state, step.request.scene_id,
+			step.request.entry, step.request.event_id), adapter)
 		var chained_result: Dictionary = chained_run.result
+		var answers: Array = adapter.answered()
+		var sprite_answer: Dictionary = {}
+		for answer in answers:
+			if answer.get("kind") == "load_party_sprites": sprite_answer = answer
+		check(not sprite_answer.is_empty() and sprite_answer.used_words > 0
+			and sprite_answer.role_sprite_ids[0] == 193 and sprite_answer.loaded_mgo_chunks == [193],
+			"the real sprite cache loads role 0's reviewed map sprite 193: " + str(answers))
+		check(chained_result.state.party_records[0].cache_word_offset == 0
+			and str(chained_result.state.party_records[0].get("role_id")) == "0",
+			"the loaded party sprite offset reaches the commanding state")
+		var usage_clear: bool = true
+		for slot in range(256):
+			if chained_result.state.inventory_bytes.decode_u16(slot * 6 + 4) != 0: usage_clear = false
+		check(usage_clear, "the real equipment kernel clears all 256 inventory usage fields")
+		check(display.requests.has("render_current_map_background") or display.requests.has("render_scene"),
+			"the display double records the render requests the chain emitted: " + str(display.requests))
 		check(not chained_result.has("error") and chained_result.state.globals.requested_scene == 2,
 			"T212 request is answered by the real entry script up to its scene request")
 		check(chained_result.effects.size() >= 4 and chained_result.effects[0].world_x == 1024

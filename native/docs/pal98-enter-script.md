@@ -135,6 +135,29 @@ are no longer the stop point.
 
 ## Evidence
 
+### Real owner adapter (2026-09-12, commit after 7cb3199)
+
+`native_pal98_entry_host.gd` answers the EnterScript owner's command-owner
+requests with the real Native owners instead of an echoing test double:
+
+- `load_party_sprites` calls `native_pal98_sprite_cache.gd.load_party` with the
+  state's counters, the fixed party records and the role sprite projection that
+  `0x0065` just wrote, and returns the updated records;
+- `rebuild_party_equipment` calls the T156 equipment kernel's
+  `prepare_party_equipment` with the state's equipment block and inventory
+  backing, and returns both updated blocks;
+- requests belonging to a display, audio or save owner are forwarded to an
+  explicitly bound owner or refused by name, so a test double must be declared
+  by the caller and the adapter never acknowledges work it did not do.
+
+The ordinary opening chain now runs through those real owners: role 0's map
+sprite 193 (written by `0x0065`) loads from MGO into the T98/T99 cache
+(4893 words), the T156 kernel clears all 256 inventory usage fields and rebuilds
+the member equipment state, and the display double records the
+`render_current_map_background`, `restore_dialog_background` and scene-frame
+requests. 85 checks pass; the sprite/equipment results are asserted from the
+adapter's own receipts rather than from the host's acknowledgements.
+
 ### Decoded facts behind the 0x0046 loop
 
 The full case body was decoded with the pinned token table before the loop was
