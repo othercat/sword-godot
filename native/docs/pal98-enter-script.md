@@ -81,6 +81,7 @@ source bytes for every operand.
 | `0x0025` | `0x00422336..0x004223F6` | same target resolution as `0x0016`, writing the resolved record's `+8` word |
 | `0x008B` | `0x00426338..0x0042637A` | requests the palette selection (`0x0041D11C`) and, when the explicit `G0250` fade gate is zero, the palette apply (`0x004174D0`) at the `G026C` day/night offset |
 | `0x0093` | `0x004266E8..0x00426704` | requests `FadeScenePaletteAndUpdateFrames` (`0x0041CE04`) with the instruction's argument |
+| `0x0099` | `0x004268EC..0x0042694E` | writes the scene record's map word; a negative `A0` means the current scene and additionally requests `EnsureMapResourcesLoaded` (`0x0041C834`) |
 
 Three boundaries are stated rather than hidden:
 

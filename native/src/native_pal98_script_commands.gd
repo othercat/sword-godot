@@ -121,6 +121,9 @@ const CASES = {
 	0x0093: {"range": ["0x004266E8", "0x00426704"],
 		"sha256": "016ec32ec874da9eef00d94ed9340c0d2aaa1d734b72cba175d9fe372e499604",
 		"effect": "FadeScenePaletteAndUpdateFrames (0x0041CE04) with the instruction's argument"},
+	0x0099: {"range": ["0x004268EC", "0x0042694E"],
+		"sha256": "cf2a332b02f7f20c715aed6298f0fb2ff7fd3921c90cd9b13e84fac85405203f",
+		"effect": "writes the scene record's map word; a negative A0 means the current scene and additionally requests EnsureMapResourcesLoaded (0x0041C834)"},
 }
 # Owner procedures the party rebuild calls, kept by their original entry points
 # so the relayed requests name the same identities the review does.
@@ -141,6 +144,7 @@ const FADE_TO_REPEATED_BLOCK = "fade_palette_to_repeated_color_block" # 0x0041CD
 const SET_PALETTE = "set_palette" # 0x0041D11C
 const APPLY_PALETTE = "apply_palette" # 0x004174D0
 const FADE_SCENE_PALETTE = "fade_scene_palette_and_update_frames" # 0x0041CE04
+const ENSURE_MAP_RESOURCES = "ensure_map_resources_loaded" # 0x0041C834
 # Named next gaps: not implemented, kept here so the diagnostic and the review
 # can name the same case identity.
 const NEXT_GAPS = {}
@@ -249,6 +253,7 @@ func consume(state: Dictionary, request: Dictionary) -> Dictionary:
 		0x008E: return _command_008E(state, request, source)
 		0x008B: return _command_008B(state, request, source)
 		0x0093: return _command_0093(state, request, source)
+		0x0099: return _command_0099(state, request, source)
 	var facts: Dictionary = case_facts(opcode)
 	var details: Dictionary = {"effect": facts.get("effect"), "case_range": facts.get("range"),
 		"case_sha256": facts.get("sha256")}
@@ -466,6 +471,28 @@ func _command_0093(state: Dictionary, request: Dictionary, source: Dictionary) -
 		"argument": request.words[1], "source": source}])
 	result.requests = [{"kind": FADE_SCENE_PALETTE, "original_entry": "0x0041CE04",
 		"procedure": "FadeScenePaletteAndUpdateFrames", "argument": request.words[1]}]
+	return result
+
+## 0x0099 writes a scene record's map word: a negative A0 means the current scene
+## and additionally asks the resource owner to reload the map.
+func _command_0099(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
+	var argument: int = _signed(request.words[1])
+	var scene: int = state.globals.get("current_scene", 0) if argument < 0 else argument
+	if not state.get("events") is Dictionary or not _u2(scene) or scene < 1 or scene > _scene_count:
+		return _failure("scene_backing", "0x0099 requires a playable runtime scene", request, source)
+	if not _u2(request.words[2]):
+		return _failure("scene_backing", "0x0099 requires a U2 map word", request, source)
+	var records: PackedByteArray = state.events.scene_records
+	if (scene - 1) * 8 + 2 > records.size():
+		return _failure("scene_backing", "0x0099 scene record is outside the loaded table", request, source)
+	state.events.scene_records = records
+	state.events.scene_records.encode_u16((scene - 1) * 8, request.words[2])
+	var effect: Dictionary = {"kind": "scene_map_word", "scene": scene, "map_word": request.words[2],
+		"current_scene": argument < 0, "source": source}
+	var result: Dictionary = _result(state, request, [effect])
+	if argument < 0:
+		result.requests = [{"kind": ENSURE_MAP_RESOURCES, "original_entry": "0x0041C834",
+			"procedure": "EnsureMapResourcesLoaded", "scene": scene, "map_word": request.words[2]}]
 	return result
 
 ## 0x008B selects a palette and, when the fade gate is zero, applies the palette
