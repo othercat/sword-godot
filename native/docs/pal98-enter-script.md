@@ -58,13 +58,14 @@ source bytes for every operand.
 | Opcode | P-Code case | Effect implemented here |
 | --- | --- | --- |
 | `0x0015` | `0x0042149E..0x004214DC` | `G026E = A0`; the party record `A2` frame word becomes `G026E*3 + A1` with checked I2 arithmetic |
+| `0x0016` | `0x004214DC..0x004215E0` | zero target is the original no-op; a negative target writes the current event slot, a positive one resolves against the scene event base, and anything outside the scene range writes the global event table record `A0-1`; fields `+20/+22` take `A1/A2` |
 | `0x003B` | `0x0042322E..0x00423272` | dialog globals: mode 0, text origin (80,40) |
 | `0x003D` | `0x0042331A..0x004233C2` | lower dialog globals: mode 2, title (12,108), body origin (44,126) |
 | `0x0041` | `0x004234D6..0x004234F0` | `G0302 = 0` |
 | `0x0046` | `0x00423834..0x004239F4` | world position `((2*A0+A2)*16, (2*A1+A2)*8)`, previous-position copies, viewport `world - (party_x, party_y)`, the fixed five-slot party/trail writes and the non-battle background replay |
 | `0x0048` | `0x00423A16..0x00423A2C` | explicit original no-op |
 | `0x0059` | `0x004243B8..0x00424408` | for a valid changed scene: `G0306 |= 12`, `G026A = A0` |
-| `0x0065` | `0x0042477E..0x004247CC` | role `A0` map sprite field index 2 of the admitted role table becomes `A1` |
+| `0x0065` | `0x0042477E..0x004247CC` | role `A0` map sprite field index 2 of the admitted role table becomes `A1`; a nonzero `A2` outside battle requests the T99 field reload (`0x0041C864`) instead of skipping it |
 | `0x0075` | `0x004255D8..0x0042568C` | rebuilds the active party from `A0..A2` (a nonpositive first argument selects role 0, later nonpositive arguments end the list), writes the member count and both role projections, then requests the sprite and equipment owners |
 | `0x008E` | `0x004264EE..0x00426506` | clears both dialog gates and requests the host's `RestoreDialogBackground` (`0x0041D2B4`) before the trigger resumes |
 | `0x0035` | `0x00422F16..0x00422F52` | screen-shake count and amplitude with the original default amplitude 4 |
@@ -88,8 +89,8 @@ Three boundaries are stated rather than hidden:
   because the opening passes zero arguments and the documented effect for that
   case is the fixed geometry with no portrait or colour change.
 
-`0x0065` with a nonzero reload argument fails explicitly: outside-battle sprite
-loading belongs to the sprite-cache owner and is not implemented here.
+`0x0065` with a nonzero reload argument requests the real sprite owner outside
+battle and reports a named gap when battle mode suppresses that request.
 
 `0x0075` applies its composition, then hands the original callees to the caller
 as owner requests: `load_party_sprites` (T99 `0x0041C864`,
@@ -190,14 +191,14 @@ synthetic lifecycle state, the current report is:
 | Metric | Value |
 | --- | --- |
 | Scenes with a nonzero enter word | 160 |
-| Scene entries that run to a return | 85 |
-| Average applied-command depth | 2.14 |
+| Scene entries that run to a return | 92 |
+| Average applied-command depth | 7.22 |
 | Deepest entries | scene 39 (23 commands), scene 1 (15 commands) |
 
-The remaining blockers, by scene count: `0x003C` 13, `0x0016` 7, `0x0065` 6
-(only its outside-battle reload branch), `0x0077` 5, `0x008B` 5, `0x0075` 4
-(scenes whose arguments need more explicit party/equipment backing), `0x0015` 2,
-`0x0071` 4 and a tail of single-scene commands. This table is a coverage report
+The remaining blockers, by scene count: `0x0024` 9, `0x0049` 9, `0x0077` 5,
+`0x008B` 5, `0x0071` 4, `0x0075` 4 (scenes whose arguments need more explicit
+party/equipment backing), `0x007F` 4, `0x0036` 3, `0x0093` 3 and a tail of
+single-scene commands. This table is a coverage report
 over the admitted pool with synthetic state; it is not an original Session,
 gameplay or acceptance claim.
 

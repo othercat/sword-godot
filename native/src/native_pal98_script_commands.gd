@@ -46,6 +46,9 @@ const CASES = {
 	0x0015: {"range": ["0x0042149E", "0x004214DC"],
 		"sha256": "6ff196f1a2b77487ac2e91af92f7ba0776d28134b53dc528ebd1d11f8344e44b",
 		"effect": "G026E = A0; G04AC[A2].field6 = G026E*3 + A1"},
+	0x0016: {"range": ["0x004214DC", "0x004215E0"],
+		"sha256": "97d5870a01db9368720b7a49812dceec9ffe99cef587f9f2603b623a95cb6a7a",
+		"effect": "A0==0 no-op; a negative A0 targets the current event, a positive one resolves against the scene event base; fields +20/+22 are written or the global table falls back to G0138+(A0-1)*32"},
 	0x0035: {"range": ["0x00422F16", "0x00422F52"],
 		"sha256": "873a78738f09dd6511e58f5a57a3bb27ce0b4a26c68a7b39ba9e0cf0a3532144",
 		"effect": "screen-shake count = A0 and amplitude = A1 with the original default 4"},
@@ -187,6 +190,7 @@ func consume(state: Dictionary, request: Dictionary) -> Dictionary:
 		0x003C: return _command_003C(state, request, source)
 		0x0035: return _command_0035(state, request, source)
 		0x003D: return _command_003D(state, request, source)
+		0x0016: return _command_0016(state, request, source)
 		0x0015: return _command_0015(state, request, source)
 		0x0041: return _command_0041(state, request, source)
 		0x0043: return _command_0043(state, request, source)
@@ -395,6 +399,59 @@ func _day_night(state: Dictionary, request: Dictionary, source: Dictionary, valu
 	state.globals.day_night_word = value
 	return _result(state, request, [{"kind": "day_night_palette", "offset": value, "source": source}])
 
+## 0x0016 writes the resolved event record's +20/+22 words. A zero argument is a
+## no-op, a negative one targets the current event, a positive one resolves
+## against the current scene's event base, and anything outside that range falls
+## back to the global event table record (A0-1).
+func _command_0016(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
+	var target: int = _signed(request.words[1])
+	if target == 0:
+		return _result(state, request, [{"kind": "event_fields_skipped",
+			"detail": "zero target is the original no-op", "source": source}])
+	if not state.get("events") is Dictionary:
+		return _failure("event_backing", "0x0016 requires the explicit event state", request, source)
+	var first: int = request.words[2]
+	var second: int = request.words[3]
+	if not _u2(first) or not _u2(second):
+		return _failure("event_backing", "0x0016 requires U2 field words", request, source)
+	if target < 0:
+		var event_id: int = request.event_id
+		if event_id < 1:
+			return _failure("event_context",
+				"0x0016 current-event target needs a runtime event slot; the scene-entry context 0 has no owned Native slot",
+				request, source)
+		var row: Dictionary = _events.event_record(state.events, event_id)
+		if row.has("error"): return _failure("event_record", str(row.error), request, source)
+		var bytes: PackedByteArray = row.value
+		bytes.encode_u16(20, first); bytes.encode_u16(22, second)
+		var replaced: Dictionary = _events.replace_event_record(state.events, event_id, bytes)
+		if replaced.has("error"): return _failure("event_writeback", str(replaced.error), request, source)
+		state.events = replaced.state
+		return _result(state, request, [{"kind": "event_fields", "scope": "current_event",
+			"event_id": event_id, "first": first, "second": second, "source": source}])
+	var base: int = state.events.scene_records.decode_u16((state.globals.current_scene - 1) * 8 + 6)
+	var index: int = target - base
+	var count: int = state.events.event_count
+	if index > 0 and index <= count:
+		var active: Dictionary = _events.event_record(state.events, index)
+		if active.has("error"): return _failure("event_record", str(active.error), request, source)
+		var active_bytes: PackedByteArray = active.value
+		active_bytes.encode_u16(20, first); active_bytes.encode_u16(22, second)
+		var written: Dictionary = _events.replace_event_record(state.events, index, active_bytes)
+		if written.has("error"): return _failure("event_writeback", str(written.error), request, source)
+		state.events = written.state
+		return _result(state, request, [{"kind": "event_fields", "scope": "current_scene",
+			"event_id": index, "first": first, "second": second, "source": source}])
+	var global_bytes: PackedByteArray = state.events.global_events
+	var at: int = (target - 1) * 32 + 20
+	if at < 0 or at + 4 > global_bytes.size():
+		return _failure("event_backing", "0x0016 global fallback target is outside the event table", request, source)
+	state.events.global_events = global_bytes
+	state.events.global_events.encode_u16(at, first)
+	state.events.global_events.encode_u16(at + 2, second)
+	return _result(state, request, [{"kind": "event_fields", "scope": "global_table",
+		"event_id": target, "offset": at, "first": first, "second": second, "source": source}])
+
 ## 0x0053/0x0054 select the day (0) and night (384) palette offsets in G026C.
 func _command_0053(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
 	return _day_night(state, request, source, 0)
@@ -499,9 +556,6 @@ func _command_0065(state: Dictionary, request: Dictionary, source: Dictionary) -
 	var role: int = request.words[1]
 	var sprite: int = request.words[2]
 	var reload: int = request.words[3]
-	if reload != 0:
-		return _failure("sprite_reload_unimplemented",
-			"0x0065 outside-battle sprite reload is not implemented", request, source)
 	var equipment = state.get("equipment")
 	if not equipment is Dictionary or not equipment.get("role_words") is Array:
 		return _failure("equipment_backing", "0x0065 requires the explicit role word table", request, source)
@@ -512,8 +566,25 @@ func _command_0065(state: Dictionary, request: Dictionary, source: Dictionary) -
 	if not _u2(words[index]):
 		return _failure("equipment_backing", "0x0065 role word is not a WORD", request, source)
 	words[index] = sprite
-	return _result(state, request, [{"kind": "role_map_sprite", "role": role,
-		"field_index": ROLE_MAP_SPRITE_FIELD, "sprite_word": sprite, "source": source}])
+	var effect: Dictionary = {"kind": "role_map_sprite", "role": role,
+		"field_index": ROLE_MAP_SPRITE_FIELD, "sprite_word": sprite, "reload": reload != 0, "source": source}
+	var result: Dictionary = _result(state, request, [effect])
+	if reload != 0:
+		# The original reloads the field sprites outside battle through T99.
+		if _signed(state.globals.get("battle_mode", -1)) != 0:
+			effect.reloaded = false
+			result.unimplemented.append({"sub_effect": "0x0065 reload request suppressed in battle mode",
+				"status": "not_implemented"})
+			return result
+		result.requests = [{"kind": LOAD_PARTY_SPRITES, "original_entry": "0x0041C864",
+			"procedure": "LoadPlayerAndFollowerSprites", "roles": _active_roles(state)}]
+		effect.reloaded = true
+	return result
+
+func _active_roles(state: Dictionary) -> Array:
+	if not state.get("equipment") is Dictionary or not state.equipment.get("party_roles") is Array:
+		return []
+	return state.equipment.party_roles.duplicate()
 
 ## 0x0075 rebuilds the active party from up to three role arguments, then runs
 ## the sprite, equipment and member-sync owners. The composition is applied here;

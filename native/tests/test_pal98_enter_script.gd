@@ -43,8 +43,8 @@ func _mkf(chunks: Array) -> PackedByteArray:
 
 ## Synthetic admitted source: scene boundaries, scene enter words, program and
 ## optional message payloads. Instruction index 0 stays the reserved zero record.
-func _source(boundaries: Array, enter_words: Array, program: Array, messages: Array = []):
-	var events: PackedByteArray = _zero(32)
+func _source(boundaries: Array, enter_words: Array, program: Array, messages: Array = [], event_count: int = 1):
+	var events: PackedByteArray = _zero(event_count * 32)
 	var scenes: PackedByteArray = _zero((boundaries.size() + 1) * 8)
 	for index in range(boundaries.size()):
 		scenes.encode_u16(index * 8, 20)
@@ -269,8 +269,63 @@ func _synthetic_checks() -> void:
 	var reload_program: Array = [[0x0065, 0x0000, 0x00C1, 0x0001], [0x0001, 0, 0, 0]]
 	var reload_source = _source([0, 0], [1, 0], reload_program)
 	var reload_owner = _owner(reload_source)
-	var reload_result = reload_owner.start(_fixture(reload_source), 1, 1)
-	check(reload_result.has("error") and str(reload_result.error).contains("sprite reload"), "0x0065 refuses the outside-battle reload it cannot perform")
+	var reload_run = _drive(reload_owner, reload_owner.start(_fixture(reload_source), 1, 1))
+	check(not reload_run.result.has("error") and reload_run.result.effects[0].reload == true
+		and reload_run.result.effects[0].reloaded == true,
+		"0x0065 asks the sprite owner for the outside-battle field reload: " + str(reload_run.result.get("error", "")))
+	check(reload_run.requests.map(func(request): return request.kind).has("load_party_sprites"),
+		"the 0x0065 reload reaches the host as a real owner request")
+	var battle_state = _fixture(reload_source); battle_state.globals.battle_mode = 1
+	var battle_owner = _owner(reload_source)
+	var battle_run = _drive(battle_owner, battle_owner.start(battle_state, 1, 1))
+	check(not battle_run.result.has("error") and battle_run.result.effects[0].reloaded == false
+		and battle_run.result.unimplemented.size() == 1,
+		"0x0065 in battle mode names the suppressed reload instead of faking it")
+	# 0x0016 resolved event fields: zero no-op, current event, scene record, global fallback.
+	var event_program: Array = [[0x0016, 0xFFFF, 0x1234, 0x5678], [0x0001, 0, 0, 0]]
+	var event_source = _source([0, 2], [1, 0], event_program, [], 2)
+	var event_owner = _owner(event_source)
+	var event_state = _fixture(event_source)
+	var event_storage = Events.new(); event_storage.load_source(event_source)
+	event_state.events = event_storage.load_scene_events(event_state.events, 1).state
+	check(event_state.events.event_count == 2, "the synthetic scene exposes two event records")
+	var entry_context = _drive(_owner(event_source), _owner(event_source).start(event_state, 1, 1))
+	check(entry_context.result.has("error") and str(entry_context.result.error).contains("scene-entry context 0"),
+		"0x0016 names the unowned scene-entry event context instead of writing slot 0")
+	var event_run = _drive(event_owner, event_owner.start(event_state, 1, 1, 2))
+	check(not event_run.result.has("error") and event_run.result.effects[0].scope == "current_event"
+		and event_run.result.effects[0].event_id == 2,
+		"a negative 0x0016 target writes the current event slot: " + str(event_run.result.get("error", "")))
+	var written_row: PackedByteArray = event_run.result.state.events.active_slots[1]
+	check(written_row.decode_u16(20) == 0x1234 and written_row.decode_u16(22) == 0x5678,
+		"0x0016 writes fields +20/+22 of the resolved record")
+	var scene_target_program: Array = [[0x0016, 0x0002, 0x00AA, 0x00BB], [0x0001, 0, 0, 0]]
+	var scene_event_source = _source([0, 2], [1, 0], scene_target_program, [], 2)
+	var scene_event_owner = _owner(scene_event_source)
+	var scene_event_state = _fixture(scene_event_source)
+	var scene_event_storage = Events.new(); scene_event_storage.load_source(scene_event_source)
+	scene_event_state.events = scene_event_storage.load_scene_events(scene_event_state.events, 1).state
+	var scene_event_run = _drive(scene_event_owner, scene_event_owner.start(scene_event_state, 1, 1))
+	check(not scene_event_run.result.has("error") and scene_event_run.result.effects[0].scope == "current_scene"
+		and scene_event_run.result.effects[0].event_id == 2,
+		"a positive 0x0016 target resolves against the scene event base")
+	var global_program: Array = [[0x0016, 0x0001, 0x0BAD, 0x0F00], [0x0001, 0, 0, 0]]
+	var global_source = _source([0, 0], [1, 0], global_program, [], 1)
+	var global_owner = _owner(global_source)
+	var global_state = _fixture(global_source)
+	var global_storage = Events.new(); global_storage.load_source(global_source)
+	global_state.events = global_storage.load_scene_events(global_state.events, 1).state
+	var global_run = _drive(global_owner, global_owner.start(global_state, 1, 1))
+	check(not global_run.result.has("error") and global_run.result.effects[0].scope == "global_table"
+		and global_run.result.state.events.global_events.decode_u16(20) == 0x0BAD,
+		"an out-of-scene 0x0016 target falls back to the global event table: "
+			+ str(global_run.result.get("error", global_run.result.get("effects", []))))
+	var zero_program: Array = [[0x0016, 0x0000, 0x0001, 0x0002], [0x0001, 0, 0, 0]]
+	var zero_source = _source([0, 2], [1, 0], zero_program, [], 2)
+	var zero_owner = _owner(zero_source)
+	var zero_run = _drive(zero_owner, zero_owner.start(_fixture(zero_source), 1, 1))
+	check(not zero_run.result.has("error") and zero_run.result.effects[0].kind == "event_fields_skipped",
+		"a zero 0x0016 target stays the original no-op")
 	# 0x0035 / 0x0047 / 0x004A / 0x0053 / 0x0054.
 	var state_program: Array = [[0x0035, 0x0003, 0x0000, 0x0000], [0x0047, 0x0012, 0x0000, 0x0000],
 		[0x004A, 0x0009, 0x0000, 0x0000], [0x0053, 0x0000, 0x0000, 0x0000],
