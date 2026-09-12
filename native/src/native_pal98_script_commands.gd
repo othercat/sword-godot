@@ -112,6 +112,9 @@ const CASES = {
 	0x006E: {"range": ["0x00425178", "0x00425206"],
 		"sha256": "8b13d7703f032edde9e259c8491c84c6a86c674dc295405f1af189599284a8ea",
 		"effect": "copies the world position into the previous-position words and the viewport into its previous copies, adds the A0/A1 deltas to the viewport, stores A2*8 as the party layer word and, when either delta is nonzero, requests PostMoveUpdate (0x0041D2CC) and UpdateViewportAndPartyPosition (0x0041CC3C)"},
+	0x006C: {"range": ["0x00424F36", "0x004250D8"],
+		"sha256": "5f55d0f54bacc20c8dbe656efbc5be07cbfec5783af0c3491d18221e9cde76d5",
+		"effect": "adds the A1/A2 deltas to the resolved event and then requests the one-step animation (0x0041D164); the out-of-range fallback materializes the global record into the first slot, writes it and mirrors it back without the animation call"},
 	0x007D: {"range": ["0x004257F8", "0x00425978"],
 		"sha256": "b433fa694c5f0a8f739734011d92518dba14aec3eb88881290c4d4ed956f1271",
 		"effect": "adds the A1/A2 deltas to the resolved event's +2/+4 words, mirrors the record into the global table and materializes the global record into the first slot when the target is outside the scene range"},
@@ -324,6 +327,7 @@ func consume(state: Dictionary, request: Dictionary) -> Dictionary:
 		0x001A: return _command_001A(state, request, source)
 		0x003E: return _command_003E(state, request, source)
 		0x007D: return _command_007D(state, request, source)
+		0x006C: return _command_006C(state, request, source)
 		0x007E: return _command_007E(state, request, source)
 	var facts: Dictionary = case_facts(opcode)
 	var details: Dictionary = {"effect": facts.get("effect"), "case_range": facts.get("range"),
@@ -647,6 +651,16 @@ func _command_009A(state: Dictionary, request: Dictionary, source: Dictionary) -
 ## +2/+4 delta words (0x007D) or +6 layer word (0x007E) are written and the
 ## record is mirrored into the global table; outside the range the global record
 ## is materialized into the first slot, written there and mirrored back.
+## 0x006C moves the resolved event with the same delta arithmetic as 0x007D and
+## then requests the one-step animation for that event.
+func _command_006C(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
+	var moved: Dictionary = _event_delta_or_layer(state, request, source, true)
+	if moved.has("error"): return moved
+	if moved.effects[0].scope == "current_scene":
+		moved.requests = [{"kind": "move_and_animate_event_object_one_step",
+			"original_entry": "0x0041D164", "procedure": "0x0041D164", "event_id": moved.effects[0].slot}]
+	return moved
+
 func _command_007D(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
 	return _event_delta_or_layer(state, request, source, true)
 

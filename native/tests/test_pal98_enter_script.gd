@@ -416,6 +416,22 @@ func _synthetic_checks() -> void:
 	# 0x009A event state range and its global fallback.
 	# 0x00A3 CD/MIDI loop normalization.
 	# 0x0085 delay request scaled by ten.
+	# 0x006C moves the resolved event and requests the animation step.
+	var move_event_program: Array = [[0x006C, 0x0001, 0x0004, 0x0003], [0x0001, 0, 0, 0]]
+	var move_event_source = _source([0, 2], [1, 0], move_event_program, [], 2)
+	var move_event_owner = _owner(move_event_source)
+	var move_event_state = _fixture(move_event_source)
+	var move_event_storage = Events.new(); move_event_storage.load_source(move_event_source)
+	move_event_state.events = move_event_storage.load_scene_events(move_event_state.events, 1).state
+	var move_event_run = _drive(move_event_owner, move_event_owner.start(move_event_state, 1, 1))
+	check(not move_event_run.result.has("error")
+		and move_event_run.result.state.events.active_slots[0].decode_s16(2) == 4
+		and move_event_run.result.state.events.active_slots[0].decode_s16(4) == 3,
+		"0x006C applies the event deltas: " + str(move_event_run.result.get("error", "")))
+	check(move_event_run.requests.size() == 1
+		and move_event_run.requests[0].kind == "move_and_animate_event_object_one_step"
+		and move_event_run.requests[0].event_id == 1,
+		"0x006C requests the one-step animation for the resolved event")
 	# 0x007D/0x007E event deltas, layer and the global mirror.
 	var delta_program: Array = [[0x007D, 0x0001, 0x0005, 0xFFFE], [0x007E, 0x0001, 0x0009, 0x0000], [0x0001, 0, 0, 0]]
 	var delta_source = _source([0, 2], [1, 0], delta_program, [], 2)
