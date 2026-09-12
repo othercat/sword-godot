@@ -588,8 +588,10 @@ func _real_checks() -> void:
 	var scene2_run = _drive_with_host(scene2_owner, scene2_owner.start(scene2_state, 2,
 		scene2.value.enter_script_word), scene2_adapter)
 	var scene2_result: Dictionary = scene2_run.result
-	check(scene2_result.has("error") and str(scene2_result.error).contains("0x003C"),
-		"the second scene's real entry stops at the next named command: " + str(scene2_result.get("error", "")))
+	check(scene2_result.has("error") and scene2_result.get("diagnostic", {}).has("words")
+		and scene2_result.diagnostic.has("instruction_source"),
+		"the second scene's real entry stops at a named command with its source receipt: "
+			+ str(scene2_result.get("error", "")))
 	var scene2_kinds: Array = scene2_result.effects.map(func(effect): return effect.kind)
 	check(scene2_kinds.slice(0, 4) == ["field_music", "battle_music", "party_map_position", "cross_fade"],
 		"the second scene runs its reviewed commands in order: " + str(scene2_kinds))
@@ -604,8 +606,8 @@ func _real_checks() -> void:
 	var scene2_requests: Array = scene2_run.requests.map(func(request): return request.kind)
 	check(scene2_requests.has("play_midi") and scene2_requests.has("clear_effective_cross_fade"),
 		"the second scene's music and cross-fade reach the host: " + str(scene2_requests))
-	check(str(scene2_result.get("diagnostic", {}).get("words", [])) == str([0x003C, 0x0037, 0x0000, 0x0000]),
-		"the second-scene gap keeps the real 0x003C operands")
+	check(scene2_kinds.has("dialog_globals") and scene2_kinds.size() >= 5,
+		"the second scene's entry advances past its music, position and text commands: " + str(scene2_kinds))
 	check(opening_requests.has("load_party_sprites") and opening_requests.has("rebuild_party_equipment"),
 		"real opening asks the sprite and equipment owners: " + str(opening_requests))
 	check(opening_requests.has("restore_dialog_background") and opening_requests.count("dialogue") >= 5,

@@ -36,7 +36,10 @@ const TRAIL_SLOTS = 5
 const CASES = {
 	0x003B: {"range": ["0x0042322E", "0x00423272"],
 		"sha256": "484d663d6609be35e3f751d9ffd339139334eb4d09b80749cfba723871e1f842",
-		"effect": "centered dialog globals: mode 0, text origin (80,40)"},
+		"effect": "centered dialog globals: mode 0, text origin (80,40), colour word when A0 is positive"},
+	0x003C: {"range": ["0x00423272", "0x0042331A"],
+		"sha256": "14e1e16b5fd89ef4b78445898d329e0195fc0e5b269a6500d2665505e7b3b71f",
+		"effect": "upper dialog globals: mode 1, title (12,8), origin (44,26); a positive A0 adds the capture path, the 0x41D44C call and the 80/96 anchors, a positive A1 writes the colour word"},
 	0x003D: {"range": ["0x0042331A", "0x004233C2"],
 		"sha256": "cd726d7203549f9ca44af334f1ee5223228b14719914b049918c133c44c8f6d8",
 		"effect": "lower dialog globals: mode 2, title (12,108), body origin (44,126)"},
@@ -99,6 +102,8 @@ const RENDER_CURRENT_MAP_BACKGROUND = "render_current_map_background" # 0x0041CB
 const PLAY_MIDI_TRACK = "play_midi" # PlayMidiTrack 0x0041D26C
 const CLEAR_EFFECTIVE_CROSS_FADE = "clear_effective_cross_fade" # 0x0041CEC4
 const PLAY_SOUND_EFFECT = "play_sound_effect" # PlaySoundEffectIfEnabled 0x0041D284
+const CAPTURE_DIALOG_BACKGROUND = "capture_dialog_background" # 0x0041D29C
+const UPPER_DIALOG_LAYOUT = "upper_dialog_layout" # 0x0041D44C, identity not established
 # Named next gaps: not implemented, kept here so the diagnostic and the review
 # can name the same case identity.
 const NEXT_GAPS = {}
@@ -179,6 +184,7 @@ func consume(state: Dictionary, request: Dictionary) -> Dictionary:
 		return _result(state, request, [{"kind": "dispatch_tail", "detail": "signed opcode <= 10: no case body"}])
 	match opcode:
 		0x003B: return _command_003B(state, request, source)
+		0x003C: return _command_003C(state, request, source)
 		0x0035: return _command_0035(state, request, source)
 		0x003D: return _command_003D(state, request, source)
 		0x0015: return _command_0015(state, request, source)
@@ -217,9 +223,58 @@ func _command_003B(state: Dictionary, request: Dictionary, source: Dictionary) -
 	dialogue.mode = 0
 	dialogue.origin_x = 80
 	dialogue.origin_y = 40
-	var missing: Array = [{"sub_effect": "G022A dialog colour word", "status": "not_implemented"}]
-	return _result(state, request, [{"kind": "dialog_globals", "mode": 0, "origin_x": 80,
-		"origin_y": 40, "source": source}], missing)
+	var result: Dictionary = _result(state, request, [{"kind": "dialog_globals", "mode": 0, "origin_x": 80,
+		"origin_y": 40, "colour_word": state.globals.get("dialog_colour_word"), "source": source}])
+	return _write_positive_colour(result, state, request, source)
+
+## The G022A write only happens when the instruction's argument is positive. Its
+## consumer mapping (the dialogue caller's primary colour) is not established, so
+## the value is kept as an explicit global projection and reported as a named gap.
+## It stays outside the caller's strict dialogue context on purpose.
+func _write_positive_colour(result: Dictionary, state: Dictionary, request: Dictionary,
+		source: Dictionary) -> Dictionary:
+	var argument: int = _signed(request.words[1])
+	if argument <= 0: return result
+	state.globals.dialog_colour_word = argument & 65535
+	result.effects[0].colour_word = argument & 65535
+	result.unimplemented.append({"sub_effect": "G022A colour word consumer mapping (value "
+		+ str(argument) + " recorded as globals.dialog_colour_word)", "status": "not_implemented"})
+	return result
+
+func _command_003C(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
+	var context: Dictionary = _dialog_context(state, request, source)
+	if context.has("error"): return context
+	var dialogue: Dictionary = context.dialogue
+	dialogue.mode = 1
+	dialogue.title_x = 12
+	dialogue.title_y = 8
+	dialogue.origin_x = 44
+	dialogue.origin_y = 26
+	var effect: Dictionary = {"kind": "dialog_globals", "mode": 1, "title_x": 12, "title_y": 8,
+		"origin_x": 44, "origin_y": 26, "source": source}
+	var result: Dictionary = _result(state, request, [effect])
+	var first: int = _signed(request.words[1])
+	var third: int = _signed(request.words[3])
+	if first > 0:
+		var requests: Array = []
+		if third != 0:
+			if not _u2(dialogue.get("capture_gate")):
+				return _failure("dialogue_backing", "0x003C requires the explicit capture gate", request, source)
+			dialogue.capture_gate = third & 65535
+			requests.append({"kind": CAPTURE_DIALOG_BACKGROUND, "original_entry": "0x0041D29C",
+				"procedure": "0x0041D29C", "argument": third})
+		requests.append({"kind": UPPER_DIALOG_LAYOUT, "original_entry": "0x0041D44C",
+			"procedure": "0x0041D44C", "argument_words": request.words.duplicate(),
+			"decoded_immediates": [0x37, 0x30]})
+		dialogue.title_x = 80
+		dialogue.origin_x = 96
+		effect.title_x = 80; effect.origin_x = 96
+		effect.capture_gate = dialogue.capture_gate
+		result.requests = requests
+		result.unimplemented.append({"sub_effect": "0x0041D44C upper-dialog call identity",
+			"status": "not_implemented"})
+	result.effects[0].colour_word = state.globals.get("dialog_colour_word")
+	return _write_positive_colour(result, state, request, source)
 
 func _command_003D(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
 	var context: Dictionary = _dialog_context(state, request, source)
