@@ -67,6 +67,11 @@ source bytes for every operand.
 | `0x0065` | `0x0042477E..0x004247CC` | role `A0` map sprite field index 2 of the admitted role table becomes `A1` |
 | `0x0075` | `0x004255D8..0x0042568C` | rebuilds the active party from `A0..A2` (a nonpositive first argument selects role 0, later nonpositive arguments end the list), writes the member count and both role projections, then requests the sprite and equipment owners |
 | `0x008E` | `0x004264EE..0x00426506` | clears both dialog gates and requests the host's `RestoreDialogBackground` (`0x0041D2B4`) before the trigger resumes |
+| `0x0035` | `0x00422F16..0x00422F52` | screen-shake count and amplitude with the original default amplitude 4 |
+| `0x0047` | `0x004239F4..0x00423A16` | requests `PlaySoundEffectIfEnabled` (`0x0041D284`) with the instruction's index |
+| `0x004A` | `0x00423AEC..0x00423B08` | `G0280 = A0` (battlefield selector) |
+| `0x0053` / `0x0054` | `0x004241B4..0x004241CE` / `0x004241CE..0x004241EA` | `G026C = 0` / `G026C = 384` (day and night palette offsets) |
+| `0x0073` | `0x004254E4..0x00425516` | requests `ClearEffectiveCrossFade` (`0x0041CEC4`) with `A0` defaulting to 1 |
 
 Three boundaries are stated rather than hidden:
 
@@ -174,6 +179,27 @@ the title path draws message 1 as one whole string whose composed text equals
 the decoded source bytes. 91 checks pass.
 
 ### Full T212 cycle (2026-09-12)
+
+### Entry coverage over the real pool (2026-09-12)
+
+The suite also runs **every** admitted scene's real enter script until the first
+command the consumer cannot execute, and reports the depth and the blocking
+opcode per scene. With the reviewed commands above in place and an explicit
+synthetic lifecycle state, the current report is:
+
+| Metric | Value |
+| --- | --- |
+| Scenes with a nonzero enter word | 160 |
+| Scene entries that run to a return | 85 |
+| Average applied-command depth | 2.14 |
+| Deepest entries | scene 39 (23 commands), scene 1 (15 commands) |
+
+The remaining blockers, by scene count: `0x003C` 13, `0x0016` 7, `0x0065` 6
+(only its outside-battle reload branch), `0x0077` 5, `0x008B` 5, `0x0075` 4
+(scenes whose arguments need more explicit party/equipment backing), `0x0015` 2,
+`0x0071` 4 and a tail of single-scene commands. This table is a coverage report
+over the admitted pool with synthetic state; it is not an original Session,
+gameplay or acceptance claim.
 
 The suite also drives one complete `native_pal98_resource_reload.gd` cycle over
 the admitted sources with this owner answering the entry request: events load,

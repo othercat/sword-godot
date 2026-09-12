@@ -43,15 +43,36 @@ const CASES = {
 	0x0015: {"range": ["0x0042149E", "0x004214DC"],
 		"sha256": "6ff196f1a2b77487ac2e91af92f7ba0776d28134b53dc528ebd1d11f8344e44b",
 		"effect": "G026E = A0; G04AC[A2].field6 = G026E*3 + A1"},
+	0x0035: {"range": ["0x00422F16", "0x00422F52"],
+		"sha256": "873a78738f09dd6511e58f5a57a3bb27ce0b4a26c68a7b39ba9e0cf0a3532144",
+		"effect": "screen-shake count = A0 and amplitude = A1 with the original default 4"},
 	0x0041: {"range": ["0x004234D6", "0x004234F0"],
 		"sha256": "ad650e711580bdfef6846cfb7ad9d5c1ecf6dd18aabc688d2184ef8c7872d60c",
 		"effect": "G0302 = 0"},
+	0x0043: {"range": ["0x004235C8", "0x00423624"],
+		"sha256": "253041177018f3844200f72161b68bcbcc020827886a343452f03cd856f2b3fb",
+		"effect": "G027C = A0 and a changed field track is played through PlayMidiTrack (0x0041D26C)"},
+	0x0045: {"range": ["0x00423818", "0x00423834"],
+		"sha256": "411645d044464b94b4c2f42cee5469383bb23e6aa8126f976b07ec9a891f04f2",
+		"effect": "G027E = A0 (battle music track)"},
 	0x0046: {"range": ["0x00423834", "0x004239F4"],
 		"sha256": "5a4b534c4bc6a24139258fb2cb2f78da745a8640b29e0c8aa57afb937e7572d0",
 		"effect": "party world position, party viewport records, trail and map redraw"},
+	0x0047: {"range": ["0x004239F4", "0x00423A16"],
+		"sha256": "9951cb790ca0ae9cbc252a3a98d97cbdc850552d7312bffd0ea6ac7f65ce7357",
+		"effect": "PlaySoundEffectIfEnabled(A0)"},
 	0x0048: {"range": ["0x00423A16", "0x00423A2C"],
 		"sha256": "22117f8fba64e3bbaca08f2fdeece837148928f6f42add0ff40c75fa0cdc225a",
 		"effect": "original no-op: dispatch and exit only"},
+	0x004A: {"range": ["0x00423AEC", "0x00423B08"],
+		"sha256": "ade90cc13b3ccc4149656913c8d4351ccc36c20e2ed0c188b5a9747a19fca588",
+		"effect": "G0280 = A0 (battlefield selector word)"},
+	0x0053: {"range": ["0x004241B4", "0x004241CE"],
+		"sha256": "391a28859adbc4c28a573632f1903d4f9a5ac7e9635c8795806973c0e7e7c2f3",
+		"effect": "G026C = 0 (day palette offset)"},
+	0x0054: {"range": ["0x004241CE", "0x004241EA"],
+		"sha256": "66593d3969df57bb719347ff08e8cf48591777fb55a54db12509cedac53d35f7",
+		"effect": "G026C = 384 (night palette offset)"},
 	0x0059: {"range": ["0x004243B8", "0x00424408"],
 		"sha256": "bf234982c4cacef65ce8b3e63e275744d2a0afd8b162b2edd1e6fbb05adce0f6",
 		"effect": "valid changed scene: G0306|=12, G026A = A0, G028A = 0"},
@@ -61,6 +82,9 @@ const CASES = {
 	0x0075: {"range": ["0x004255D8", "0x0042568C"],
 		"sha256": "ca7af492236a04d1336ed2e1081028a484fe05e497f91be694423d9703576207",
 		"effect": "rebuild up-to-three-member party, then LoadPlayerAndFollowerSprites (T99), InitializePartyBattleAndEquipmentState (T156) and SyncMembersFromTrail (T230)"},
+	0x0073: {"range": ["0x004254E4", "0x00425516"],
+		"sha256": "819a92f1aea937b8536801c0e9b468524e83d90533f81c1079a7194a6cec8b6a",
+		"effect": "ClearEffectiveCrossFade (0x0041CEC4) with A0 defaulting to 1 and the two ByRef argument words"},
 	0x008E: {"range": ["0x004264EE", "0x00426506"],
 		"sha256": "282fc769a7cbac2159090b9fc1217aebc4cb32598fcae4b1f15fd51953bc5187",
 		"effect": "RestoreDialogBackground (0x0041D2B4) and clear the two capture/restore gates"},
@@ -72,6 +96,9 @@ const REBUILD_PARTY_EQUIPMENT = "rebuild_party_equipment" # T156 0x0041D374
 const SYNC_MEMBERS_FROM_TRAIL = "sync_members_from_trail" # T230 0x0041D2E4
 const RESTORE_DIALOG_BACKGROUND = "restore_dialog_background" # 0x0041D2B4
 const RENDER_CURRENT_MAP_BACKGROUND = "render_current_map_background" # 0x0041CB34
+const PLAY_MIDI_TRACK = "play_midi" # PlayMidiTrack 0x0041D26C
+const CLEAR_EFFECTIVE_CROSS_FADE = "clear_effective_cross_fade" # 0x0041CEC4
+const PLAY_SOUND_EFFECT = "play_sound_effect" # PlaySoundEffectIfEnabled 0x0041D284
 # Named next gaps: not implemented, kept here so the diagnostic and the review
 # can name the same case identity.
 const NEXT_GAPS = {}
@@ -152,13 +179,21 @@ func consume(state: Dictionary, request: Dictionary) -> Dictionary:
 		return _result(state, request, [{"kind": "dispatch_tail", "detail": "signed opcode <= 10: no case body"}])
 	match opcode:
 		0x003B: return _command_003B(state, request, source)
+		0x0035: return _command_0035(state, request, source)
 		0x003D: return _command_003D(state, request, source)
 		0x0015: return _command_0015(state, request, source)
 		0x0041: return _command_0041(state, request, source)
+		0x0043: return _command_0043(state, request, source)
+		0x0045: return _command_0045(state, request, source)
 		0x0046: return _command_0046(state, request, source)
+		0x0047: return _command_0047(state, request, source)
 		0x0048: return _result(state, request, [{"kind": "original_no_op", "source": source}])
+		0x004A: return _command_004A(state, request, source)
+		0x0053: return _command_0053(state, request, source)
+		0x0054: return _command_0054(state, request, source)
 		0x0059: return _command_0059(state, request, source)
 		0x0065: return _command_0065(state, request, source)
+		0x0073: return _command_0073(state, request, source)
 		0x0075: return _command_0075(state, request, source)
 		0x008E: return _command_008E(state, request, source)
 	var facts: Dictionary = case_facts(opcode)
@@ -238,6 +273,79 @@ func _command_0015(state: Dictionary, request: Dictionary, source: Dictionary) -
 func _command_0041(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
 	state.globals.trigger_success_word = 0
 	return _result(state, request, [{"kind": "script_failure_word", "success_word": 0, "source": source}])
+
+## 0x0043 sets the field music track and plays it through PlayMidiTrack when the
+## track actually changes. The original's loop-flag transform is not pinned, so
+## the raw argument word travels with the request and is reported as a gap.
+func _command_0043(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
+	var globals: Dictionary = state.globals
+	if not _u2(globals.get("midi_track")):
+		return _failure("music_state", "0x0043 requires the explicit G027C track word", request, source)
+	var track: int = request.words[1]
+	var effect: Dictionary = {"kind": "field_music", "track": track, "previous_track": globals.midi_track,
+		"argument_word": request.words[2], "source": source}
+	if track == globals.midi_track:
+		effect.played = false
+		return _result(state, request, [effect])
+	globals.midi_track = track
+	effect.played = true
+	var missing: Array = [{"sub_effect": "PlayMidiTrack loop-flag transform of argument word "
+		+ str(request.words[2]), "status": "not_implemented"}]
+	var result: Dictionary = _result(state, request, [effect], missing)
+	result.requests = [{"kind": PLAY_MIDI_TRACK, "original_entry": "0x0041D26C",
+		"procedure": "PlayMidiTrack", "track": track, "argument_word": request.words[2]}]
+	return result
+
+## 0x0045 stores the battle music track (G027E).
+func _command_0045(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
+	state.globals.battle_music_track = request.words[1]
+	return _result(state, request, [{"kind": "battle_music", "track": request.words[1], "source": source}])
+
+## 0x0073 calls ClearEffectiveCrossFade with the original default and ByRef args.
+func _command_0073(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
+	var first: int = _signed(request.words[1])
+	var second: int = _signed(request.words[2])
+	if first == 0: first = 1
+	var missing: Array = [{"sub_effect": "ByRef writeback of the cross-fade argument words", "status": "not_implemented"}]
+	var result: Dictionary = _result(state, request, [{"kind": "cross_fade", "first": first,
+		"second": second, "source": source}], missing)
+	result.requests = [{"kind": CLEAR_EFFECTIVE_CROSS_FADE, "original_entry": "0x0041CEC4",
+		"procedure": "ClearEffectiveCrossFade", "first": first, "second": second}]
+	return result
+
+## 0x0035 stores the screen-shake count and amplitude (G0308/G030A consumers).
+func _command_0035(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
+	var count: int = _signed(request.words[1])
+	var amplitude: int = _signed(request.words[2])
+	if amplitude == 0: amplitude = 4
+	state.globals.shake_count_word = count
+	state.globals.shake_amplitude_word = amplitude
+	return _result(state, request, [{"kind": "screen_shake", "count": count,
+		"amplitude": amplitude, "source": source}])
+
+## 0x0047 plays a sound effect through the audio owner when sound is enabled.
+func _command_0047(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
+	var result: Dictionary = _result(state, request, [{"kind": "sound_effect",
+		"index": request.words[1], "source": source}])
+	result.requests = [{"kind": PLAY_SOUND_EFFECT, "original_entry": "0x0041D284",
+		"procedure": "PlaySoundEffectIfEnabled", "index": request.words[1]}]
+	return result
+
+## 0x004A stores the battlefield selector word (G0280).
+func _command_004A(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
+	state.globals.battlefield_word = request.words[1]
+	return _result(state, request, [{"kind": "battlefield", "word": request.words[1], "source": source}])
+
+func _day_night(state: Dictionary, request: Dictionary, source: Dictionary, value: int) -> Dictionary:
+	state.globals.day_night_word = value
+	return _result(state, request, [{"kind": "day_night_palette", "offset": value, "source": source}])
+
+## 0x0053/0x0054 select the day (0) and night (384) palette offsets in G026C.
+func _command_0053(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
+	return _day_night(state, request, source, 0)
+
+func _command_0054(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
+	return _day_night(state, request, source, 384)
 
 func _command_0046(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
 	var globals: Dictionary = state.globals

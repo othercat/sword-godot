@@ -18,6 +18,7 @@ const DialogueHost = preload("res://src/native_pal98_dialogue_host.gd")
 var checks: Array = []
 var failed: int = 0
 var package
+var coverage: Dictionary = {}
 
 ## Explicit display double: it acknowledges render/restore requests so the chain
 ## can be driven, and records what it was asked to do.
@@ -79,9 +80,10 @@ func _fixture(source, scene_id: int = 1) -> Dictionary:
 	equipment.read_tables(source.copy_chunk("data",3), source.copy_chunk("sss",2), source.copy_chunk("sss",4))
 	return {"globals": {"current_scene": scene_id, "requested_scene": scene_id, "party_x": 160, "party_y": 112,
 			"viewport_x": 864, "viewport_y": 912, "resource_flags": 0, "direction_word": 0, "loaded_map_id": 0,
-			"member_last": 0, "follower_count": 0, "battle_mode": 0},
+			"member_last": 0, "follower_count": 0, "battle_mode": 0, "midi_track": 0, "battle_music_track": 0},
 		"events": events.source_state(), "dialogue": _context(), "rng": Random.create(0x12345),
 		"equipment": equipment.initial_state([0]),
+		"inventory_bytes": _zero(1536),
 		"party_records": [{"role_id": 0, "screen_x": 160, "screen_y": 112, "current_frame": 3}],
 		"party_trail": [{"x": 0, "y": 0, "direction_word": 0}, {"x": 0, "y": 0, "direction_word": 0},
 			{"x": 0, "y": 0, "direction_word": 0}, {"x": 0, "y": 0, "direction_word": 0},
@@ -269,6 +271,33 @@ func _synthetic_checks() -> void:
 	var reload_owner = _owner(reload_source)
 	var reload_result = reload_owner.start(_fixture(reload_source), 1, 1)
 	check(reload_result.has("error") and str(reload_result.error).contains("sprite reload"), "0x0065 refuses the outside-battle reload it cannot perform")
+	# 0x0035 / 0x0047 / 0x004A / 0x0053 / 0x0054.
+	var state_program: Array = [[0x0035, 0x0003, 0x0000, 0x0000], [0x0047, 0x0012, 0x0000, 0x0000],
+		[0x004A, 0x0009, 0x0000, 0x0000], [0x0053, 0x0000, 0x0000, 0x0000],
+		[0x0054, 0x0000, 0x0000, 0x0000], [0x0001, 0, 0, 0]]
+	var state_source = _source([0, 0], [1, 0], state_program)
+	var state_owner = _owner(state_source)
+	var state_adapter = EntryHost.new()
+	var state_cache = Cache.new(); state_cache.load_source(package.pal98_graphics, package.pal98_sources)
+	var state_kernel = Equipment.new()
+	state_kernel.read_tables(package.pal98_sources.copy_chunk("data", 3),
+		package.pal98_sources.copy_chunk("sss", 2), package.pal98_sources.copy_chunk("sss", 4))
+	var state_value = _fixture(state_source)
+	state_adapter.bind(state_cache, state_kernel, state_value.inventory_bytes, [0, 0, 0, 0, 0, 0])
+	state_adapter.bind_display(DisplayDouble.new())
+	var state_run = _drive_with_host(state_owner, state_owner.start(state_value, 1, 1), state_adapter)
+	var state_kinds: Array = state_run.result.effects.map(func(effect): return effect.kind)
+	check(not state_run.result.has("error") and state_kinds == ["screen_shake", "sound_effect", "battlefield",
+		"day_night_palette", "day_night_palette"],
+		"0x0035/0x0047/0x004A/0x0053/0x0054 apply in order: " + str(state_kinds))
+	check(state_run.result.state.globals.shake_count_word == 3
+		and state_run.result.state.globals.shake_amplitude_word == 4,
+		"0x0035 stores the count and default amplitude 4")
+	check(state_run.result.state.globals.battlefield_word == 9
+		and state_run.result.state.globals.day_night_word == 384,
+		"0x004A stores the battlefield word and 0x0054 selects the night offset")
+	check(state_run.requests.map(func(request): return request.kind).has("play_sound_effect"),
+		"0x0047 asks the audio owner to play the effect")
 	# 0x0075 party rebuild: multi-member, default role and out-of-range argument.
 	var multi_program: Array = [[0x0075, 0x0002, 0x0003, 0x0000], [0x0001, 0, 0, 0]]
 	var multi_source = _source([0, 0], [1, 0], multi_program)
@@ -354,6 +383,60 @@ func _synthetic_checks() -> void:
 ## scene entry script, the real owners answer the command requests, and the host
 ## answers the render/audio requests. A redirected real scene record keeps the
 ## cycle on an entry block whose commands are implemented.
+## Runs every admitted scene's real enter script until the first command this
+## consumer cannot execute, and records the depth plus the blocking opcode. This
+## is a coverage report over the real pool, not a gameplay or Session claim.
+func _coverage_checks() -> void:
+	var records = package.pal98_sources.open_records()
+	var commands = Commands.new()
+	commands.load_source(package.pal98_sources)
+	var storage = Events.new(); storage.load_source(package.pal98_sources)
+	var summary: Dictionary = records.table_summary()
+	var scene_count: int = int(summary.counts.scenes)
+	var rows: Array = []
+	var blocked: Dictionary = {}
+	var started: int = 0
+	var completed: int = 0
+	var depth_total: int = 0
+	for raw in range(scene_count):
+		var scene: Dictionary = records.scene(raw)
+		if scene.has("error"): continue
+		var entry: int = scene.value.enter_script_word
+		if entry == 0: continue
+		started += 1
+		var owner = _owner(package.pal98_sources)
+		if owner == null: continue
+		var adapter = EntryHost.new()
+		var cache = Cache.new(); cache.load_source(package.pal98_graphics, package.pal98_sources)
+		var kernel = Equipment.new()
+		kernel.read_tables(package.pal98_sources.copy_chunk("data", 3),
+			package.pal98_sources.copy_chunk("sss", 2), package.pal98_sources.copy_chunk("sss", 4))
+		var state = _fixture(package.pal98_sources, raw + 1)
+		state.events = storage.source_state()
+		adapter.bind(cache, kernel, state.inventory_bytes, [0, 0, 0, 0, 0, 0])
+		adapter.bind_display(DisplayDouble.new())
+		var dialogue_host = DialogueHost.new(); dialogue_host.bind(package.pal98_sources)
+		var run = _drive_with_host(owner, owner.start(state, raw + 1, entry), adapter, dialogue_host)
+		var steps: int = run.result.effects.size()
+		depth_total += steps
+		if not run.result.has("error"):
+			completed += 1
+			rows.append({"runtime_scene": raw + 1, "entry": entry, "steps": steps, "blocked": ""})
+		else:
+			var opcode: String = "-"
+			var words = run.result.get("diagnostic", {}).get("words", [])
+			if words is Array and words.size() > 0: opcode = "0x%04X" % words[0]
+			blocked[opcode] = blocked.get(opcode, 0) + 1
+			rows.append({"runtime_scene": raw + 1, "entry": entry, "steps": steps, "blocked": opcode})
+	coverage = {"scenes_with_entry": started, "completed": completed,
+		"average_effect_depth": (float(depth_total) / float(started)) if started > 0 else 0.0,
+		"blocking_opcodes": blocked, "rows": rows}
+	check(started >= 150, "the admitted pool exposes its scene entry scripts: " + str(started))
+	check(completed >= 1 and coverage.average_effect_depth > 0.0,
+		"at least one real scene entry runs to a return: " + str(completed))
+	check(blocked.has("0x003C") or blocked.has("0x0075") or blocked.size() > 0,
+		"the coverage report names the next blocking commands: " + str(blocked))
+
 func _drive_reload(driver, step: Dictionary, cache, kernel) -> Dictionary:
 	var effect_runs: Array = []
 	var rounds := 0
@@ -461,6 +544,7 @@ func _cycle_checks() -> void:
 		"both entry scripts applied their reviewed effects: " + str(restarted_cycle.effect_runs))
 
 func _real_checks() -> void:
+	_coverage_checks()
 	_cycle_checks()
 	var records = package.pal98_sources.open_records()
 	var opening: Dictionary = records.scene_for_runtime_id(1)
@@ -486,6 +570,42 @@ func _real_checks() -> void:
 		"real opening writes role0 sprite 193 and frame 0")
 	check(opening_result.effects[3].roles == [0], "real opening rebuilds its single-member party from the real argument")
 	var opening_requests: Array = run.requests.map(func(request): return request.kind)
+	# Real second-scene entry: music, battle music, world position, cross-fade,
+	# then the named 0x003C upper-dialog gap.
+	var scene2: Dictionary = records.scene_for_runtime_id(2)
+	check(not scene2.has("error") and scene2.value.map_word == 12 and scene2.value.enter_script_word > 0,
+		"admitted source runtime scene 2 is map12 with a real enter script")
+	var scene2_owner = _owner(package.pal98_sources)
+	var scene2_state = _fixture(package.pal98_sources, 2)
+	var scene2_adapter = EntryHost.new()
+	var scene2_cache = Cache.new(); scene2_cache.load_source(package.pal98_graphics, package.pal98_sources)
+	var scene2_kernel = Equipment.new()
+	scene2_kernel.read_tables(package.pal98_sources.copy_chunk("data", 3),
+		package.pal98_sources.copy_chunk("sss", 2), package.pal98_sources.copy_chunk("sss", 4))
+	check(scene2_adapter.bind(scene2_cache, scene2_kernel, scene2_state.inventory_bytes, [0, 0, 0, 0, 0, 0]),
+		"second-scene adapter binds the real owners")
+	var scene2_display = DisplayDouble.new(); scene2_adapter.bind_display(scene2_display)
+	var scene2_run = _drive_with_host(scene2_owner, scene2_owner.start(scene2_state, 2,
+		scene2.value.enter_script_word), scene2_adapter)
+	var scene2_result: Dictionary = scene2_run.result
+	check(scene2_result.has("error") and str(scene2_result.error).contains("0x003C"),
+		"the second scene's real entry stops at the next named command: " + str(scene2_result.get("error", "")))
+	var scene2_kinds: Array = scene2_result.effects.map(func(effect): return effect.kind)
+	check(scene2_kinds.slice(0, 4) == ["field_music", "battle_music", "party_map_position", "cross_fade"],
+		"the second scene runs its reviewed commands in order: " + str(scene2_kinds))
+	check(scene2_result.effects[0].track == 31 and scene2_result.effects[0].played == true,
+		"0x0043 sets and plays the real field track 31")
+	check(scene2_result.effects[1].track == 37, "0x0045 stores the real battle track 37")
+	check(scene2_result.effects[2].world_x == 1312 and scene2_result.effects[2].world_y == 288
+		and scene2_result.effects[2].viewport_x == 1152 and scene2_result.effects[2].viewport_y == 176,
+		"the second scene's 0x0046 applies its real world and viewport words")
+	check(scene2_result.effects[3].first == 2 and scene2_result.effects[3].second == 0,
+		"0x0073 passes the real cross-fade arguments")
+	var scene2_requests: Array = scene2_run.requests.map(func(request): return request.kind)
+	check(scene2_requests.has("play_midi") and scene2_requests.has("clear_effective_cross_fade"),
+		"the second scene's music and cross-fade reach the host: " + str(scene2_requests))
+	check(str(scene2_result.get("diagnostic", {}).get("words", [])) == str([0x003C, 0x0037, 0x0000, 0x0000]),
+		"the second-scene gap keeps the real 0x003C operands")
 	check(opening_requests.has("load_party_sprites") and opening_requests.has("rebuild_party_equipment"),
 		"real opening asks the sprite and equipment owners: " + str(opening_requests))
 	check(opening_requests.has("restore_dialog_background") and opening_requests.count("dialogue") >= 5,
@@ -621,6 +741,7 @@ func _initialize() -> void:
 	_real_checks()
 	var file = FileAccess.open(args[1], FileAccess.WRITE)
 	file.store_string(JSON.stringify({"success": failed == 0, "failed": failed, "checks": checks,
+		"coverage": coverage,
 		"host_effects": "explicit acknowledgements only", "original_gameplay": false}, "\t")); file.close()
 	print("EnterScript owner: ", checks.size(), " checks, ", failed, " failed")
 	quit(0 if failed == 0 else 1)
