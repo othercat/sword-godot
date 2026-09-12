@@ -1,5 +1,16 @@
 # PAL Wanxiang Native preview
 
+## Original trigger control flow (2026-09-12)
+
+The [T258 trigger driver](docs/pal98-trigger.md) fetches and dispatches the
+original 0000–000A local controls and FFFF dialogue calls, routing every
+continuing path through the public command gate and isolating host effects
+behind explicit requests and receipts. Line-by-line review against the fixed
+original bytes found the inherited draft matching on all checked points, so
+the draft is unchanged;69 new checks and the 48-check random regression pass.
+EnterScript callers, real command owners, display/audio/save backends and
+ordinary original Session integration remain pending.
+
 ## Original resource reload lifecycle (2026-09-12)
 
 The [resource owner](docs/pal98-resource-reload.md) connects actual event,
