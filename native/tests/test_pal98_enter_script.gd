@@ -325,7 +325,9 @@ func _synthetic_checks() -> void:
 	var sprite_owner = _owner(sprite_source)
 	var sprite_state = _fixture(sprite_source)
 	var sprite_result = _drive(sprite_owner, sprite_owner.start(sprite_state, 1, 1))
-	check(not sprite_result.result.has("error") and sprite_result.result.state.equipment.role_words[2] == 193, "0x0065 writes role0 map sprite 193 in the admitted role table")
+	check(not sprite_result.result.has("error") and sprite_result.result.state.equipment.role_words[2 * 6] == 193
+		and sprite_result.result.state.equipment.role_words[2] == 0,
+		"0x0065 writes role0 map sprite 193 at field*6+role, not the role-major word")
 	var reload_program: Array = [[0x0065, 0x0000, 0x00C1, 0x0001], [0x0001, 0, 0, 0]]
 	var reload_source = _source([0, 0], [1, 0], reload_program)
 	var reload_owner = _owner(reload_source)
@@ -418,6 +420,32 @@ func _synthetic_checks() -> void:
 	# 0x009A event state range and its global fallback.
 	# 0x00A3 CD/MIDI loop normalization.
 	# 0x0085 delay request scaled by ten.
+	# 0x001D living HP/MP clamp and the G0302 success word. Vitals sit at
+	# field*6+role: role0 HP=word54, MP=word60, HP max=word42, MP max=word48.
+	var vitals_program: Array = [[0x001D, 0x0001, 0x0005, 0x0000], [0x0001, 0, 0, 0]]
+	var vitals_source = _source([0, 0], [1, 0], vitals_program)
+	var vitals_owner = _owner(vitals_source)
+	var vitals_state = _fixture(vitals_source)
+	var vitals_words: Array = vitals_state.equipment.role_words
+	vitals_words[9 * 6] = 3; vitals_words[10 * 6] = 4; vitals_words[7 * 6] = 6; vitals_words[8 * 6] = 5
+	vitals_state.equipment.role_words = vitals_words
+	var vitals_run = _drive(vitals_owner, vitals_owner.start(vitals_state, 1, 1))
+	var vitals_effects: Array = vitals_run.result.get("effects", [])
+	check(not vitals_run.result.has("error") and vitals_effects.size() == 1
+		and vitals_effects[0].changed_total == 4 and vitals_run.result.state.globals.trigger_success_word == 1,
+		"0x001D clamps the living target and marks the change: " + str(vitals_run.result.get("error", "")))
+	check(vitals_run.result.state.equipment.role_words[9 * 6] == 6
+		and vitals_run.result.state.equipment.role_words[10 * 6] == 5,
+		"HP and MP clamp to their own maxima (6 and 5)")
+	var dead_program: Array = [[0x001D, 0x0001, 0x0005, 0x0000], [0x0001, 0, 0, 0]]
+	var dead_source = _source([0, 0], [1, 0], dead_program)
+	var dead_owner = _owner(dead_source)
+	var dead_state = _fixture(dead_source)
+	dead_state.equipment.role_words[9 * 6] = 0
+	var dead_run = _drive(dead_owner, dead_owner.start(dead_state, 1, 1))
+	check(not dead_run.result.has("error") and dead_run.result.state.globals.trigger_success_word == 0
+		and dead_run.result.effects[0].changed_total == 0,
+		"a non-living target is skipped and G0302 stays zero")
 	# 0x009B FBP chain: mode 0 reloads the map, mode 2 sets the transition cadence.
 	var fbp_program: Array = [[0x009B, 0x0000, 0x0000, 0x0000], [0x009B, 0x0002, 0x0007, 0x0000], [0x0001, 0, 0, 0]]
 	var fbp_source = _source([0, 0], [1, 0], fbp_program)
@@ -488,27 +516,46 @@ func _synthetic_checks() -> void:
 		and window_effects[0].origin_y == 32 and window_effects[0].restore_gate == 1,
 		"0x003E selects the center-window globals and sets the restore gate: "
 			+ str(window_run.result.get("error", "")))
-	# 0x001A role numeric and projection field writes.
-	var field_program: Array = [[0x001A, 0x0001, 0x002A, 0x0001], [0x001A, 0x0005, 0x0064, 0x0001], [0x0001, 0, 0, 0]]
+	# 0x001A default-context branch: fields 1/65 route to the G05CC projection
+	# words, every other field writes the DATA3 base table at field*6+role.
+	var field_program: Array = [[0x001A, 0x0001, 0x002A, 0x0000], [0x001A, 0x0005, 0x0064, 0x0000], [0x0001, 0, 0, 0]]
 	var field_source = _source([0, 0], [1, 0], field_program)
 	var field_owner = _owner(field_source)
 	var field_state = _fixture(field_source)
+	field_state.globals.current_role_slot = 0
 	var field_run = _drive(field_owner, field_owner.start(field_state, 1, 1))
 	var field_effects: Array = field_run.result.get("effects", [])
 	check(not field_run.result.has("error") and field_effects.size() == 2
 		and field_effects[0].key == "battle_sprite_word" and field_effects[0].value == 0x002A
 		and field_run.result.state.equipment.party_fields[0].battle_sprite_word == 0x002A,
 		"0x001A routes field 1 to the battle-sprite projection: " + str(field_run.result.get("error", "")))
-	check(field_effects[1].kind == "role_numeric_field" and field_effects[1].index == 5
-		and field_run.result.state.equipment.role_words[5] == 0x0064,
-		"0x001A writes any other field into the role word table")
-	var role_selector_program: Array = [[0x001A, 0x0001, 0x0011, 0x0002], [0x0001, 0, 0, 0]]
+	check(field_effects[1].kind == "role_numeric_field" and field_effects[1].index == 5 * 6
+		and field_run.result.state.equipment.role_words[5 * 6] == 0x0064,
+		"0x001A writes any other field into the role word table at field*6+role")
+	# The explicit selector is the absolute 1-based role id: it works outside the
+	# active projection and keeps field 1 in the base table, not the G05CC word.
+	var role_selector_program: Array = [[0x001A, 0x0011, 0x0099, 0x0006], [0x0001, 0, 0, 0]]
 	var role_selector_source = _source([0, 0], [1, 0], role_selector_program)
 	var role_selector_owner = _owner(role_selector_source)
-	var role_selector_run = _drive(role_selector_owner, role_selector_owner.start(_fixture(role_selector_source), 1, 1))
+	var role_selector_state = _fixture(role_selector_source)
+	role_selector_state.equipment.party_roles = [0]
+	role_selector_state.equipment.party_fields = [role_selector_state.equipment.party_fields[0]]
+	role_selector_state.equipment.party_statuses = [role_selector_state.equipment.party_statuses[0]]
+	var role_selector_run = _drive(role_selector_owner, role_selector_owner.start(role_selector_state, 1, 1))
 	check(not role_selector_run.result.has("error")
-		and role_selector_run.result.state.equipment.party_fields[1].battle_sprite_word == 0x0011,
-		"a positive selector writes the chosen member's projection")
+		and role_selector_run.result.state.equipment.role_words[0x0011 * 6 + 5] == 0x0099,
+		"a positive selector writes the absolute role A2-1 outside the party projection: "
+			+ str(role_selector_run.result.get("error", "")))
+	var explicit_sprite_program: Array = [[0x001A, 0x0001, 0x0123, 0x0001], [0x0001, 0, 0, 0]]
+	var explicit_sprite_source = _source([0, 0], [1, 0], explicit_sprite_program)
+	var explicit_sprite_owner = _owner(explicit_sprite_source)
+	var explicit_sprite_state = _fixture(explicit_sprite_source)
+	explicit_sprite_state.globals.current_role_slot = 0
+	var explicit_sprite_run = _drive(explicit_sprite_owner, explicit_sprite_owner.start(explicit_sprite_state, 1, 1))
+	check(not explicit_sprite_run.result.has("error")
+		and explicit_sprite_run.result.state.equipment.role_words[1 * 6] == 0x0123
+		and explicit_sprite_run.result.state.equipment.party_fields[0].battle_sprite_word == 0,
+		"the explicit branch keeps field 1 in the base table and leaves the projection alone")
 	var missing_selector_program: Array = [[0x001A, 0x0001, 0x0011, 0x0000], [0x0001, 0, 0, 0]]
 	var missing_selector_source = _source([0, 0], [1, 0], missing_selector_program)
 	var missing_owner = _owner(missing_selector_source)
@@ -530,8 +577,8 @@ func _synthetic_checks() -> void:
 	var anim_requests: Array = anim_run.requests.map(func(request): return request.kind)
 	check(anim_requests.has("load_rng_animation_data") and anim_requests.has("play_current_rng_animation"),
 		"the animation load and play reach the host: " + str(anim_requests))
-	# 0x007F viewport move: restore, delta rounds and member shifts.
-	var restore_program: Array = [[0x007F, 0xFFFF, 0x0000, 0x0000], [0x0001, 0, 0, 0]]
+	# 0x007F viewport move: the (0,0,-1) restore, delta rounds and member shifts.
+	var restore_program: Array = [[0x007F, 0x0000, 0x0000, 0xFFFF], [0x0001, 0, 0, 0]]
 	var restore_source = _source([0, 0], [1, 0], restore_program)
 	var restore_owner = _owner(restore_source)
 	var restore_state = _fixture(restore_source)
@@ -550,7 +597,7 @@ func _synthetic_checks() -> void:
 		"0x007F restores the default anchor and viewport: " + str(restore_run.result.get("error", "")))
 	check(restore_run.requests.map(func(request): return request.kind).has("render_current_map_background"),
 		"the restore form replays the map background")
-	var move_program: Array = [[0x007F, 0x0002, 0x0003, 0x0001], [0x0001, 0, 0, 0]]
+	var move_program: Array = [[0x007F, 0x0002, 0x0003, 0x0002], [0x0001, 0, 0, 0]]
 	var move_source = _source([0, 0], [1, 0], move_program)
 	var move_owner = _owner(move_source)
 	var move_state = _fixture(move_source)
@@ -562,16 +609,21 @@ func _synthetic_checks() -> void:
 	var move_run = _drive_with_host(move_owner, move_owner.start(move_state, 1, 1), move_adapter)
 	var move_effects: Array = move_run.result.get("effects", [])
 	check(not move_run.result.has("error") and move_effects.size() == 2
-		and move_effects[1].viewport_x == 868 and move_effects[1].viewport_y == 918
-		and move_effects[1].anchor_x == 156 and move_effects[1].anchor_y == 106,
-		"the delta form advances the viewport and recomputes the anchor per round: "
+		and move_effects[0].round == 1 and move_effects[0].viewport_x == 866
+		and move_effects[0].viewport_y == 915,
+		"the A2 round count runs one delta round per host answer: "
 			+ str(move_run.result.get("error", "")))
-	check(move_effects[1].members_shifted == 4 and move_run.result.state.party_records[1].screen_x == 172
+	check(move_effects[1].viewport_x == 868 and move_effects[1].viewport_y == 918
+		and move_effects[1].anchor_x == 156 and move_effects[1].anchor_y == 106,
+		"the second round continues from the written-back viewport and recomputes the anchor")
+	check(move_effects[0].members_shifted == 2 and move_effects[1].members_shifted == 2
+		and move_run.result.state.party_records[1].screen_x == 172
 		and move_run.result.state.party_records[1].screen_y == 98,
-		"the member records shift by the anchor delta")
+		"the member records 1..member_last shift by the anchor delta")
 	check(move_run.requests.map(func(request): return request.kind).count("render_scene_frame") == 2
-		and move_run.requests.map(func(request): return request.kind).count("update_viewport_and_party_position") == 2,
-		"each delta round renders and updates the viewport/party")
+		and move_run.requests.map(func(request): return request.kind).count("update_viewport_and_party_position") == 2
+		and move_run.requests.map(func(request): return request.kind).count("start_frame_and_process_events") == 2,
+		"each delta round starts the frame, updates the viewport/party and renders")
 	var delay_program: Array = [[0x0085, 0x0003, 0x0000, 0x0000], [0x0001, 0, 0, 0]]
 	var delay_source = _source([0, 0], [1, 0], delay_program)
 	var delay_owner = _owner(delay_source)

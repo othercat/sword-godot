@@ -142,6 +142,9 @@ const CASES = {
 	0x001A: {"range": ["0x00421708", "0x004217C0"],
 		"sha256": "9bba9614291deb56f0aaceaae873d5db557c7842f49853593755ac53c82444b3",
 		"effect": "writes role numeric fields: 1 and 65 route to the two G05CC projection words, every other field to the G079C word table; a positive A2 selects role A2-1"},
+	0x001D: {"range": ["0x00421B6C", "0x00421E6A"],
+		"sha256": "c4253953628779d2b5a5c434ba4ce125f9d01cf9b9a7e25f074b065cfc708df8",
+		"effect": "adds A1 to the living target's HP (field 9) and MP (field 10), clamps to fields 7/8 and sets G0302 from the summed absolute change; a nonzero A0 covers the party through G0266"},
 	0x001F: {"range": ["0x00421EC4", "0x00421F00"],
 		"sha256": "79fa119ab6503c8516f2ac38ffe38c581b8630ad9f6072d3a3c1d1903e55d8b0",
 		"effect": "compresses the inventory (T152 0x0041C96C), defaults a nonpositive amount to 1 and adds the item through T140 (0x0041CCCC)"},
@@ -289,6 +292,7 @@ func consume(state: Dictionary, request: Dictionary) -> Dictionary:
 		0x003C: return _command_003C(state, request, source)
 		0x0035: return _command_0035(state, request, source)
 		0x001F: return _command_001F(state, request, source)
+		0x001D: return _command_001D(state, request, source)
 		0x003D: return _command_003D(state, request, source)
 		0x0016: return _command_0016(state, request, source)
 		0x0024: return _command_0024(state, request, source)
@@ -512,6 +516,70 @@ func _command_0035(state: Dictionary, request: Dictionary, source: Dictionary) -
 ## 0x001F compresses the inventory, defaults a nonpositive amount to 1 and adds
 ## the item through the reviewed T140 procedure. The work is owner-requested so
 ## the inventory owner performs the original arithmetic.
+## 0x001D adds the same amount to the living target's HP and MP with independent
+## clamps and records whether anything actually changed in G0302. A zero A0
+## targets the invoking event context (T235 reads param +0x0c at 0x00421B92),
+## not a fixed slot and not the unbound current-role-slot global; a nonzero A0
+## traverses the active members 0..member_last without silently clamping to the
+## projection. Vitals live in the DATA3 table at field*6+role: HP field 9,
+## MP field 10, HP max field 7, MP max field 8.
+func _command_001D(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
+	if not state.get("equipment") is Dictionary or not state.equipment.get("role_words") is Array:
+		return _failure("role_backing", "0x001D requires the explicit role word table", request, source)
+	var equipment: Dictionary = state.equipment
+	var party_roles: Array = equipment.get("party_roles", [])
+	if party_roles.is_empty(): return _failure("role_backing", "0x001D requires the active role projection", request, source)
+	var selector: int = _signed(request.words[1])
+	var delta: int = _signed(request.words[2])
+	var slots: Array = []
+	if selector != 0:
+		var last = state.globals.get("member_last")
+		if not _i2(last) or last < 0: return _failure("role_backing", "0x001D needs the explicit member count", request, source)
+		if last + 1 > party_roles.size():
+			return _failure("role_backing", "0x001D member count exceeds the role projection", request, source)
+		for slot in range(last + 1): slots.append(slot)
+	else:
+		if not _i2(request.get("event_id")) or request.event_id < 0:
+			return _failure("role_backing", "0x001D needs the explicit event context", request, source)
+		if request.event_id >= party_roles.size():
+			return _failure("role_backing", "0x001D event context is outside the role projection", request, source)
+		slots.append(request.event_id)
+	var changed_total: int = 0
+	var touched: Array = []
+	var changes: Array = []
+	# Compute every target first: a failure in any member must not leave the
+	# earlier members already applied.
+	for slot in slots:
+		var role = party_roles[slot]
+		if not _i2(role) or role < 0 or role >= 6: return _failure("role_backing", "0x001D role identity outside the table", request, source)
+		var hp_index: int = 9 * ROLES + role
+		var mp_index: int = 10 * ROLES + role
+		if maxi(hp_index, mp_index) >= equipment.role_words.size():
+			return _failure("role_backing", "0x001D role fields outside the word table", request, source)
+		var hp: int = _signed(equipment.role_words[hp_index])
+		var mp: int = _signed(equipment.role_words[mp_index])
+		if hp <= 0: continue
+		var hp_max: int = _signed(equipment.role_words[7 * ROLES + role])
+		var mp_max: int = _signed(equipment.role_words[8 * ROLES + role])
+		var hp_change: int = hp + delta
+		if hp_change < -32768 or hp_change > 32767:
+			return _failure("checked_i2", "0x001D HP change leaves the signed I2 range", request, source)
+		var mp_change: int = mp + delta
+		if mp_change < -32768 or mp_change > 32767:
+			return _failure("checked_i2", "0x001D MP change leaves the signed I2 range", request, source)
+		var new_hp: int = clampi(hp_change, 0, maxi(hp_max, 0))
+		var new_mp: int = clampi(mp_change, 0, maxi(mp_max, 0))
+		changed_total += absi(new_hp - hp) + absi(new_mp - mp)
+		changes.append({"hp_index": hp_index, "mp_index": mp_index, "new_hp": new_hp, "new_mp": new_mp})
+		touched.append({"slot": slot, "role": role, "hp": new_hp, "mp": new_mp})
+	for change in changes:
+		equipment.role_words[change.hp_index] = change.new_hp & 65535
+		equipment.role_words[change.mp_index] = change.new_mp & 65535
+	state.globals.trigger_success_word = 1 if changed_total != 0 else 0
+	return _result(state, request, [{"kind": "role_vitals_change", "delta": delta,
+		"changed_total": changed_total, "success_word": state.globals.trigger_success_word,
+		"targets": touched, "source": source}])
+
 func _command_001F(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
 	if not state.get("inventory_bytes") is PackedByteArray or state.inventory_bytes.size() != 256 * 6:
 		return _failure("inventory_backing", "0x001F requires the explicit 256-record inventory", request, source)
@@ -585,12 +653,30 @@ func _command_walk(state: Dictionary, request: Dictionary, source: Dictionary, s
 ## Continues a walk after its owner requests were answered. The owner calls this
 ## with the walk pending state and the current state.
 func continue_command(pending: Dictionary, state: Dictionary) -> Dictionary:
-	if not pending.get("walk") is Dictionary:
-		return {"error": "pal98-command: unknown command continuation"}
-	var result: Dictionary = {"state": state, "entry": pending.get("entry", 0),
-		"event_id": pending.get("event_id", 0), "effects": [], "unimplemented": [],
-		"opcode": pending.get("opcode", 0), "pending": pending}
-	return _continue_walk(result, state)
+	if pending.get("walk") is Dictionary:
+		var result: Dictionary = {"state": state, "entry": pending.get("entry", 0),
+			"event_id": pending.get("event_id", 0), "effects": [], "unimplemented": [],
+			"opcode": pending.get("opcode", 0), "pending": pending}
+		return _continue_walk(result, state)
+	if pending.get("viewport") is Dictionary:
+		if not _viewport is Object: _viewport = ViewportMove.new()
+		var result: Dictionary = {"state": state, "entry": pending.get("entry", 0),
+			"event_id": pending.get("event_id", 0), "effects": [], "unimplemented": [],
+			"opcode": pending.get("opcode", 0), "pending": pending}
+		var step: Dictionary = _viewport.advance(state, pending.viewport)
+		if step.has("error"): return {"error": "pal98-command: " + str(step.error)}
+		result.effects = step.get("effects", [])
+		if step.get("terminal", false):
+			result.erase("pending")
+			result.rounds = pending.viewport.rounds
+			# The final round's frame requests are part of that round; a terminal
+			# plan still publishes them before the trigger resumes.
+			if not step.get("requests", []).is_empty(): result.requests = step.requests
+			return result
+		result.requests = step.get("requests", [])
+		result.pending = pending
+		return result
+	return {"error": "pal98-command: unknown command continuation"}
 
 func _continue_walk(result: Dictionary, state: Dictionary) -> Dictionary:
 	var pending: Dictionary = result.pending
@@ -646,9 +732,11 @@ func _command_009A(state: Dictionary, request: Dictionary, source: Dictionary) -
 ## 0x0085 requests the delay helper with the argument scaled by ten.
 ## 0x007F runs the viewport/member move state machine.
 ## 0x0036 requests the RNG animation load and sets the G0306 animation bit.
-## 0x001A writes a role numeric field: fields 1 and 65 route to the two consumed
-## G05CC projection words, every other field goes to the G079C word table. A
-## positive A2 selects role A2-1; otherwise the explicit current-role slot is used.
+## 0x001A writes a role numeric field. A positive A2 is the 1-based absolute
+## role id written straight into the DATA3 base table (field*6+role), which may
+## point outside the active party; only the default-context branch (nonpositive
+## A2, current role slot) routes fields 1 and 65 to the two consumed G05CC
+## projection words.
 ## 0x003E selects the center-window dialog globals and writes the restore gate.
 ## 0x007D/0x007E share one resolution: a zero argument targets the current event,
 ## any other value resolves against the scene event base. In range the record's
@@ -801,33 +889,49 @@ func _command_001A(state: Dictionary, request: Dictionary, source: Dictionary) -
 	var field: int = _signed(request.words[1])
 	var value: int = request.words[2]
 	var selector: int = _signed(request.words[3])
-	var slot: int = selector - 1
-	if selector <= 0:
-		var current = state.globals.get("current_role_slot")
-		if not _i2(current) or current < 0:
-			return _failure("role_backing", "0x001A needs the explicit current role slot for a nonpositive selector", request, source)
-		slot = current
-	if slot < 0 or slot >= equipment.party_fields.size():
-		return _failure("role_backing", "0x001A role slot is outside the party projection", request, source)
-	var role_word = equipment.party_roles[slot] if equipment.party_roles is Array and slot < equipment.party_roles.size() else null
-	if not _i2(role_word) or role_word < 0 or role_word >= 6:
-		return _failure("role_backing", "0x001A needs the role identity for slot " + str(slot), request, source)
 	var effects: Array = []
+	if selector > 0:
+		# 0x421796 reads the third parameter A2 and writes role A2-1 in the DATA3
+		# base table: the explicit selector is an absolute role id that may point
+		# outside the active party, so it never touches the G05CC projection.
+		var role: int = selector - 1
+		if role >= ROLES or field < 0 or field >= ROLE_FIELDS:
+			return _failure("role_backing", "0x001A role field is outside the six-role DATA3 layout", request, source)
+		var index: int = field * ROLES + role
+		if index >= equipment.role_words.size():
+			return _failure("role_backing", "0x001A field index is outside the role word table", request, source)
+		if not _u2(equipment.role_words[index]): return _failure("role_backing", "0x001A role word is not a WORD", request, source)
+		equipment.role_words[index] = value
+		effects.append({"kind": "role_numeric_field", "explicit_selector": true, "field": field,
+			"role": role, "index": index, "value": value, "source": source})
+		return _result(state, request, effects)
+	# The default-context branch resolves the current role slot inside the active
+	# projection; only this branch routes fields 1/65 to the G05CC projection words.
+	var current = state.globals.get("current_role_slot")
+	if not _i2(current) or current < 0:
+		return _failure("role_backing", "0x001A needs the explicit current role slot for the default context", request, source)
+	if current >= equipment.party_fields.size():
+		return _failure("role_backing", "0x001A role slot is outside the party projection", request, source)
+	var role_word = equipment.party_roles[current] if equipment.party_roles is Array and current < equipment.party_roles.size() else null
+	if not _i2(role_word) or role_word < 0 or role_word >= 6:
+		return _failure("role_backing", "0x001A needs the role identity for slot " + str(current), request, source)
 	if field == ROLE_FIELD_BATTLE_SPRITE or field == ROLE_FIELD_COOPERATIVE_MAGIC:
-		var projection: Dictionary = equipment.party_fields[slot]
+		var projection: Dictionary = equipment.party_fields[current]
 		var key: String = "battle_sprite_word" if field == ROLE_FIELD_BATTLE_SPRITE else "cooperative_magic_word"
 		if not _u2(projection.get(key)): return _failure("role_backing", "0x001A projection word is not a WORD", request, source)
 		projection[key] = value
-		effects.append({"kind": "role_projection_field", "field": field, "slot": slot, "key": key,
+		effects.append({"kind": "role_projection_field", "field": field, "slot": current, "key": key,
 			"value": value, "source": source})
 		return _result(state, request, effects)
-	var index: int = role_word * 75 + field
-	if field < 0 or field >= 75 or index >= equipment.role_words.size():
+	if field < 0 or field >= ROLE_FIELDS:
+		return _failure("role_backing", "0x001A role field is outside the six-role DATA3 layout", request, source)
+	var index: int = field * ROLES + role_word
+	if index >= equipment.role_words.size():
 		return _failure("role_backing", "0x001A field index is outside the role word table", request, source)
 	if not _u2(equipment.role_words[index]): return _failure("role_backing", "0x001A role word is not a WORD", request, source)
 	equipment.role_words[index] = value
-	effects.append({"kind": "role_numeric_field", "field": field, "role": role_word, "index": index,
-		"value": value, "source": source})
+	effects.append({"kind": "role_numeric_field", "explicit_selector": false, "field": field,
+		"role": role_word, "index": index, "value": value, "source": source})
 	return _result(state, request, effects)
 
 func _command_0036(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
@@ -861,13 +965,21 @@ func _command_0037(state: Dictionary, request: Dictionary, source: Dictionary) -
 
 func _command_007F(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
 	if not _viewport is Object: _viewport = ViewportMove.new()
-	var moved: Dictionary = _viewport.run(state, request.words)
-	if moved.has("error"): return _failure("viewport_move", str(moved.error), request, source)
+	var begun: Dictionary = _viewport.begin(request.words)
+	if begun.has("error"): return _failure("viewport_move", str(begun.error), request, source)
+	var pending: Dictionary = {"viewport": begun, "opcode": request.words[0],
+		"entry": request.entry, "event_id": request.event_id}
+	var step: Dictionary = _viewport.advance(state, pending.viewport)
+	if step.has("error"): return _failure("viewport_move", str(step.error), request, source)
 	var effects: Array = []
-	for effect in moved.effects:
+	for effect in step.get("effects", []):
 		var entry: Dictionary = effect.duplicate(true); entry.source = source; effects.append(entry)
 	var result: Dictionary = _result(state, request, effects)
-	if not moved.requests.is_empty(): result.requests = moved.requests
+	if not step.get("requests", []).is_empty(): result.requests = step.requests
+	if step.get("terminal", false): return result
+	# The remaining rounds wait for the host to answer this round's frame requests
+	# and continue on the state those answers write back.
+	result.pending = pending
 	return result
 
 func _command_0085(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
@@ -1207,7 +1319,7 @@ func _command_0065(state: Dictionary, request: Dictionary, source: Dictionary) -
 	var words: Array = equipment.role_words
 	if words.size() != ROLES * ROLE_FIELDS or role >= ROLES:
 		return _failure("equipment_backing", "0x0065 role index or table shape outside the source table", request, source)
-	var index: int = role * ROLE_FIELDS + ROLE_MAP_SPRITE_FIELD
+	var index: int = ROLE_MAP_SPRITE_FIELD * ROLES + role
 	if not _u2(words[index]):
 		return _failure("equipment_backing", "0x0065 role word is not a WORD", request, source)
 	words[index] = sprite
@@ -1266,10 +1378,21 @@ func _command_0075(state: Dictionary, request: Dictionary, source: Dictionary) -
 		if not existing is Dictionary or not existing.get("current_frame") is int:
 			return _failure("party_backing", "0x0075 needs the slot's explicit frame word", request, source)
 		existing.role_id = roles[slot]
+	# The equipment projections follow the active member set the original T156
+	# rebuild targets: growth materializes fresh rows, shrink slices them, and
+	# the real equipment owner then fills every row from the current base table.
+	# Requiring the old rows to already cover the new count made a shrunken
+	# party impossible to re-expand.
 	for key in ["party_fields", "party_statuses"]:
-		if not equipment.get(key) is Array or equipment[key].size() < roles.size():
+		if not equipment.get(key) is Array:
 			return _failure("party_backing", "0x0075 needs the equipment projection for every member", request, source)
-		equipment[key] = equipment[key].slice(0, roles.size())
+	while equipment.party_fields.size() < roles.size():
+		equipment.party_fields.append({"battle_sprite_word": 0, "cooperative_magic_word": 0})
+	while equipment.party_statuses.size() < roles.size():
+		var row: Array = []; row.resize(9); row.fill(0); equipment.party_statuses.append(row)
+	for key in ["party_fields", "party_statuses"]:
+		if equipment[key].size() > roles.size():
+			equipment[key] = equipment[key].slice(0, roles.size())
 	equipment.party_roles = roles.duplicate()
 	state.globals.member_last = roles.size() - 1
 	var effect: Dictionary = {"kind": "party_composition", "roles": roles.duplicate(),

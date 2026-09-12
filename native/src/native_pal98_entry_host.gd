@@ -69,7 +69,7 @@ func _role_map_sprites(equipment: Dictionary) -> Dictionary:
 		return _failure("role word table shape")
 	var ids: Array = []
 	for role in range(6):
-		var word = equipment.role_words[role * ROLE_FIELDS + ROLE_SPRITE_FIELD]
+		var word = equipment.role_words[ROLE_SPRITE_FIELD * 6 + role]
 		if typeof(word) != TYPE_INT or word < 0 or word > 65535:
 			return _failure("role sprite word is not a WORD")
 		ids.append(word)
@@ -96,7 +96,18 @@ func answer(request: Dictionary) -> Dictionary:
 				"used_words": loaded.used_words, "role_sprite_ids": sprites.ids})
 			return {"completed": true, "state": state}
 		"rebuild_party_equipment":
-			var prepared: Dictionary = _equipment.prepare_party_equipment(state.get("equipment", {}), _inventory)
+			# The request's current inventory is authoritative: an earlier
+			# add_inventory_item answer has already written state.inventory_bytes,
+			# so the bind-time snapshot would silently discard that update. Bad
+			# shapes are named errors, never a fallback to the snapshot.
+			if not state.has("inventory_bytes"):
+				return _failure("rebuild_party_equipment requires the request state's current inventory bytes")
+			var current_inventory = state.inventory_bytes
+			if not current_inventory is PackedByteArray:
+				return _failure("rebuild_party_equipment state inventory is not a PackedByteArray")
+			if current_inventory.size() != 1536:
+				return _failure("rebuild_party_equipment state inventory requires 256 six-byte records")
+			var prepared: Dictionary = _equipment.prepare_party_equipment(state.get("equipment", {}), current_inventory)
 			if prepared.has("error"): return _failure(str(prepared.error))
 			state.equipment = prepared.state
 			state.inventory_bytes = prepared.inventory_bytes
