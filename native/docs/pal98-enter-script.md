@@ -220,6 +220,30 @@ deltas, layer/clip, timed update/render and retry) rather than four unrelated
 cases. The current chain stops at those opcodes with a named diagnostic, so the
 coverage numbers above already separate them from implemented work.
 
+The rest of the body is decoded too, so the package can be implemented directly:
+
+1. `0x0070` stores speed 2 in the shared local; `0x007A`/`0x007B` store 4/8 and
+   branch to the same head.
+2. The head recomputes the target with the `0x0046` formula, copies the world
+   position into the previous-position words and the viewport into the
+   `G0330/G0332` copies, computes `dx/dy` and, when they are not both zero,
+   faces the party through `0x004172D8` (the reviewed `extf` direction helper)
+   writing `G026E`.
+3. Per step it advances the viewport by the reviewed formation tables scaled by
+   the speed (`G041C`/`G0434` and the `G0464` pair), then calls, in order,
+   `PostMoveUpdate` (`0x0041D2CC`, world recompute plus walk phase and trail
+   sync), `StartFrameAndProcessEvents(0)` (`0x0041D17C`), 
+   `UpdateViewportAndPartyPosition` (`0x0041CC3C`) and `RenderSceneFrame(1)`
+   (`0x0041CB64`), looping while the world position has not reached the target.
+4. After arrival it runs the trail sync loop over the party slots.
+
+Two consequences for the implementation: the per-step sequence contains a real
+frame with input processing, so the walk cannot be computed synchronously inside
+one command result - the consumer needs a continuation that resumes the command
+after the host has answered each step's requests; and `PostMoveUpdate`'s world/
+walk-phase/trail arithmetic is the owner that `0x006E` already requests, so the
+same module should serve both callers.
+
 `native_pal98_inventory.gd` implements the reviewed inventory arithmetic over the
 explicit 256-slot six-byte backing (`ItemId +0`, `Amount +2`, `AmountInUse +4`):
 
