@@ -15,6 +15,7 @@ const Schema = preload("res://src/native_schema.gd")
 const Package = preload("res://src/native_package.gd")
 const EntryHost = preload("res://src/native_pal98_entry_host.gd")
 const DialogueHost = preload("res://src/native_pal98_dialogue_host.gd")
+const Inventory = preload("res://src/native_pal98_inventory.gd")
 var checks: Array = []
 var failed: int = 0
 var package
@@ -143,6 +144,7 @@ func _owner(source) -> Variant:
 	return owner
 
 func _synthetic_checks() -> void:
+	_inventory_checks()
 	var program: Array = [[0x0046, 0x0020, 0x0040, 0x0000], [0x0065, 0x0000, 0x00C1, 0x0000],
 		[0x0015, 0x0000, 0x0000, 0x0000], [0x0075, 0x0001, 0x0000, 0x0000], [0x0001, 0, 0, 0]]
 	var source = _source([0, 0], [1, 0], program)
@@ -367,6 +369,45 @@ func _synthetic_checks() -> void:
 		"0x004A stores the battlefield word and 0x0054 selects the night offset")
 	check(state_run.requests.map(func(request): return request.kind).has("play_sound_effect"),
 		"0x0047 asks the audio owner to play the effect")
+	# 0x001F through the real inventory owner.
+	var item_program: Array = [[0x001F, 0x00C4, 0x0002, 0x0000], [0x0001, 0, 0, 0]]
+	var item_source = _source([0, 0], [1, 0], item_program)
+	var item_owner = _owner(item_source)
+	var item_adapter = EntryHost.new()
+	var item_cache = Cache.new(); item_cache.load_source(package.pal98_graphics, package.pal98_sources)
+	var item_kernel = Equipment.new()
+	item_kernel.read_tables(package.pal98_sources.copy_chunk("data", 3),
+		package.pal98_sources.copy_chunk("sss", 2), package.pal98_sources.copy_chunk("sss", 4))
+	var item_state = _fixture(item_source)
+	item_adapter.bind(item_cache, item_kernel, item_state.inventory_bytes, [0, 0, 0, 0, 0, 0])
+	item_adapter.bind_inventory(Inventory.new())
+	item_adapter.bind_display(DisplayDouble.new())
+	var item_run = _drive_with_host(item_owner, item_owner.start(item_state, 1, 1), item_adapter)
+	check(not item_run.result.has("error"), "0x001F completes through the real inventory owner: "
+		+ str(item_run.result.get("error", "")))
+	var added_bytes: PackedByteArray = item_run.result.state.inventory_bytes
+	check(added_bytes.decode_s16(0) == 0x00C4 and added_bytes.decode_s16(2) == 2
+		and added_bytes.decode_s16(4) == 0,
+		"the chain's 0x001F writes the item through T152 + T140")
+	var item_answer: Dictionary = {}
+	for answer in item_adapter.answered():
+		if answer.get("kind") == "add_inventory_item": item_answer = answer
+	check(item_answer.get("mode") == "created" and item_answer.get("slot") == 0,
+		"the inventory owner reports the created record: " + str(item_answer))
+	# A nonpositive amount defaults to one, as the original case does.
+	var default_amount_program: Array = [[0x001F, 0x00C4, 0x0000, 0x0000], [0x0001, 0, 0, 0]]
+	var default_amount_source = _source([0, 0], [1, 0], default_amount_program)
+	var default_amount_owner = _owner(default_amount_source)
+	var default_adapter = EntryHost.new()
+	default_adapter.bind(item_cache, item_kernel, _zero(1536), [0, 0, 0, 0, 0, 0])
+	default_adapter.bind_inventory(Inventory.new())
+	default_adapter.bind_display(DisplayDouble.new())
+	var default_item_run = _drive_with_host(default_amount_owner,
+		default_amount_owner.start(_fixture(default_amount_source), 1, 1),
+		default_adapter)
+	check(not default_item_run.result.has("error")
+		and default_item_run.result.state.inventory_bytes.decode_s16(2) == 1,
+		"a nonpositive 0x001F amount becomes one")
 	# 0x0075 party rebuild: multi-member, default role and out-of-range argument.
 	var multi_program: Array = [[0x0075, 0x0002, 0x0003, 0x0000], [0x0001, 0, 0, 0]]
 	var multi_source = _source([0, 0], [1, 0], multi_program)
@@ -483,6 +524,7 @@ func _coverage_checks() -> void:
 		var state = _fixture(package.pal98_sources, raw + 1)
 		state.events = storage.source_state()
 		adapter.bind(cache, kernel, state.inventory_bytes, [0, 0, 0, 0, 0, 0])
+		adapter.bind_inventory(Inventory.new())
 		adapter.bind_display(DisplayDouble.new())
 		var dialogue_host = DialogueHost.new(); dialogue_host.bind(package.pal98_sources)
 		var run = _drive_with_host(owner, owner.start(state, raw + 1, entry), adapter, dialogue_host)
@@ -507,6 +549,46 @@ func _coverage_checks() -> void:
 	check(blocked.has("0x003C") or blocked.has("0x0075") or blocked.size() > 0,
 		"the coverage report names the next blocking commands: " + str(blocked))
 
+## T140/T144/T152 arithmetic over explicit inventory bytes.
+func _inventory_checks() -> void:
+	var inventory = Inventory.new()
+	var bytes = _zero(1536)
+	var created: Dictionary = inventory.add_item_amount(bytes, 0x00C4, 3)
+	check(created.mode == "created" and created.slot == 0 and created.amount == 3,
+		"adding an unknown item creates the first free record")
+	check(created.inventory_bytes.decode_s16(0) == 0x00C4 and created.inventory_bytes.decode_s16(2) == 3
+		and created.inventory_bytes.decode_s16(4) == 0,
+		"the created record writes ItemId/Amount and clears AmountInUse")
+	var merged: Dictionary = inventory.add_item_amount(created.inventory_bytes, 0x00C4, 2)
+	check(merged.mode == "merged" and merged.slot == 0 and merged.amount == 5,
+		"a living match takes the checked delta")
+	check(inventory.add_item_amount(bytes, 0, 5).mode == "ignored", "a nonpositive item id returns immediately")
+	var duplicate: PackedByteArray = created.inventory_bytes.duplicate()
+	duplicate.encode_s16(6, 0x00C4); duplicate.encode_s16(8, 7)
+	var duplicate_add: Dictionary = inventory.add_item_amount(duplicate, 0x00C4, 1)
+	check(duplicate_add.slot == 0 and duplicate_add.amount == 4, "the add path merges the first living match")
+	check(inventory.find_last_active_slot(duplicate, 0x00C4).value == 1,
+		"the last-slot query returns the highest duplicate index")
+	check(inventory.find_last_active_slot(bytes, 0x00C4).value == -1, "an absent item reports -1")
+	var full = _zero(1536)
+	for slot in range(256):
+		full.encode_s16(slot * 6, 0x0100 + slot); full.encode_s16(slot * 6 + 2, 1)
+	check(inventory.add_item_amount(full, 0x7FFF, 1).mode == "no_space",
+		"a full inventory ends silently without a partial write")
+	var messy = _zero(1536)
+	messy.encode_s16(3 * 6, 0x0011); messy.encode_s16(3 * 6 + 2, 150)
+	messy.encode_s16(7 * 6, 0x0022); messy.encode_s16(7 * 6 + 2, 5)
+	var compressed: Dictionary = inventory.compress_and_return_last_slot(messy)
+	check(compressed.last_slot == 1 and compressed.inventory_bytes.decode_s16(0) == 0x0011
+		and compressed.inventory_bytes.decode_s16(2) == 99 and compressed.inventory_bytes.decode_s16(6) == 0x0022
+		and compressed.inventory_bytes.decode_s16(8) == 5,
+		"compress clamps to 99 and moves living records to the front in order")
+	check(inventory.compress_and_return_last_slot(_zero(1536)).last_slot == -1, "an empty inventory compresses to -1")
+	var overflow = _zero(1536)
+	overflow.encode_s16(0, 0x0033); overflow.encode_s16(2, 32000)
+	check(inventory.add_item_amount(overflow, 0x0033, 1000).has("error"),
+		"a merge that leaves the signed I2 range is diagnosed instead of wrapped")
+
 func _drive_reload(driver, step: Dictionary, cache, kernel) -> Dictionary:
 	var effect_runs: Array = []
 	var rounds := 0
@@ -518,6 +600,7 @@ func _drive_reload(driver, step: Dictionary, cache, kernel) -> Dictionary:
 			if not adapter.bind(cache, kernel, request.state.inventory_bytes, [0, 0, 0, 0, 0, 0]):
 				return {"step": {"error": "cycle adapter bind failed: " + adapter.error}}
 			adapter.bind_display(DisplayDouble.new())
+			adapter.bind_inventory(Inventory.new())
 			var dialogue_host = DialogueHost.new()
 			dialogue_host.bind(package.pal98_sources)
 			var owner = _owner(package.pal98_sources)

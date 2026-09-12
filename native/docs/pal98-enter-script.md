@@ -82,6 +82,7 @@ source bytes for every operand.
 | `0x008B` | `0x00426338..0x0042637A` | requests the palette selection (`0x0041D11C`) and, when the explicit `G0250` fade gate is zero, the palette apply (`0x004174D0`) at the `G026C` day/night offset |
 | `0x0093` | `0x004266E8..0x00426704` | requests `FadeScenePaletteAndUpdateFrames` (`0x0041CE04`) with the instruction's argument |
 | `0x0099` | `0x004268EC..0x0042694E` | writes the scene record's map word; a negative `A0` means the current scene and additionally requests `EnsureMapResourcesLoaded` (`0x0041C834`) |
+| `0x001F` | `0x00421EC4..0x00421F00` | defaults a nonpositive amount to 1 and requests `CompressInventoryAndReturnLastSlot` (T152 `0x0041C96C`) plus `AddInventoryItemAmount` (T140 `0x0041CCCC`) from the inventory owner |
 
 Three boundaries are stated rather than hidden:
 
@@ -191,6 +192,29 @@ the decoded source bytes. 91 checks pass.
 ### Full T212 cycle (2026-09-12)
 
 ### Chain-driven dialogue frame (2026-09-12)
+
+### Inventory owner (2026-09-12)
+
+`native_pal98_inventory.gd` implements the reviewed inventory arithmetic over the
+explicit 256-slot six-byte backing (`ItemId +0`, `Amount +2`, `AmountInUse +4`):
+
+- `add_item_amount` (T140 `0x0041CCCC`): a nonpositive item id returns
+  immediately, the first living record with the same item takes a checked I2
+  delta, otherwise the first slot with `Amount <= 0` receives
+  `Amount = delta`, `ItemId = item` and cleared usage, and a full inventory ends
+  silently. There is no delta default, no 99 cap and no success value in this
+  path, matching the review.
+- `find_last_active_slot` (T144 `0x0041CF84`): the highest matching living slot,
+  or -1.
+- `compress_and_return_last_slot` (T152 `0x0041C96C`): clamps amounts above 99,
+  moves living records to the front with the original swap sequence and returns
+  the last living slot, or -1 for an empty inventory.
+
+`0x001F` routes through the entry host's inventory binding, so the chain's add
+uses the real owner (`CompressInventory…` then `AddInventoryItemAmount`) and the
+updated bytes travel back with the state. 145 checks pass, and the coverage scan
+binds the same owner, which lifts the run-to-return count to 116 with 13.71
+average command depth.
 
 `tests/window_enter_script_dialogue.gd` drives the same real opening entry, and
 when the caller composes the whole-string draw for the opening title the raw

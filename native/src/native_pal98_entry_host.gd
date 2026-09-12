@@ -10,6 +10,7 @@ extends RefCounted
 ## snapshot, the cache fork and the inventory backing.
 const ROLE_FIELDS = 75
 const ROLE_SPRITE_FIELD = 2
+const Inventory = preload("res://src/native_pal98_inventory.gd")
 
 var error: String = ""
 var _cache
@@ -17,6 +18,7 @@ var _equipment
 var _inventory: PackedByteArray = PackedByteArray()
 var _role_sprite_ids: Array = []
 var _display_owner
+var _inventory_owner
 var _answered: Array = []
 
 ## `role_sprite_ids` is the per-role map sprite projection (G079C[role,2]).
@@ -38,6 +40,11 @@ func bind(cache, equipment, inventory_bytes: PackedByteArray, role_sprite_ids: A
 ## binds a test double must say so; the adapter does not create one itself.
 func bind_display(owner) -> void:
 	_display_owner = owner
+
+## Optional real inventory owner for the 0x001F chain. Without it those requests
+## are refused by name instead of being acknowledged.
+func bind_inventory(owner) -> void:
+	_inventory_owner = owner
 
 func answered() -> Array:
 	return _answered.duplicate(true)
@@ -87,6 +94,18 @@ func answer(request: Dictionary) -> Dictionary:
 			state.equipment = prepared.state
 			state.inventory_bytes = prepared.inventory_bytes
 			_answered.append({"kind": request.kind, "party_roles": prepared.state.party_roles.duplicate()})
+			return {"completed": true, "state": state}
+		"add_inventory_item":
+			if _inventory_owner == null:
+				return _failure("no inventory owner bound for " + request.kind)
+			var compressed: Dictionary = _inventory_owner.compress_and_return_last_slot(state.inventory_bytes)
+			if compressed.has("error"): return _failure(str(compressed.error))
+			var added: Dictionary = _inventory_owner.add_item_amount(compressed.inventory_bytes,
+				request.get("item", 0), request.get("amount", 1))
+			if added.has("error"): return _failure(str(added.error))
+			state.inventory_bytes = added.inventory_bytes
+			_answered.append({"kind": request.kind, "mode": added.mode, "slot": added.slot,
+				"amount": added.amount, "last_slot": compressed.last_slot})
 			return {"completed": true, "state": state}
 	if _display_owner != null and _display_owner.has_method("answer"):
 		var forwarded: Dictionary = _display_owner.answer(request)

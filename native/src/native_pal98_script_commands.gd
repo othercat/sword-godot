@@ -103,6 +103,9 @@ const CASES = {
 	0x0059: {"range": ["0x004243B8", "0x00424408"],
 		"sha256": "bf234982c4cacef65ce8b3e63e275744d2a0afd8b162b2edd1e6fbb05adce0f6",
 		"effect": "valid changed scene: G0306|=12, G026A = A0, G028A = 0"},
+	0x001F: {"range": ["0x00421EC4", "0x00421F00"],
+		"sha256": "79fa119ab6503c8516f2ac38ffe38c581b8630ad9f6072d3a3c1d1903e55d8b0",
+		"effect": "compresses the inventory (T152 0x0041C96C), defaults a nonpositive amount to 1 and adds the item through T140 (0x0041CCCC)"},
 	0x0065: {"range": ["0x0042477E", "0x004247CC"],
 		"sha256": "8f02d5a65015d7ddff5937ccf88a3484ef2e9e5f1fd73d47787aa8f22558a00c",
 		"effect": "G079C[A0,2] = A1; optional outside-battle sprite reload"},
@@ -125,7 +128,7 @@ const CASES = {
 		"sha256": "cf2a332b02f7f20c715aed6298f0fb2ff7fd3921c90cd9b13e84fac85405203f",
 		"effect": "writes the scene record's map word; a negative A0 means the current scene and additionally requests EnsureMapResourcesLoaded (0x0041C834)"},
 }
-# Owner procedures the party rebuild calls, kept by their original entry points
+	# Owner procedures the party rebuild calls, kept by their original entry points
 # so the relayed requests name the same identities the review does.
 const LOAD_PARTY_SPRITES = "load_party_sprites"          # T99 0x0041C864
 const REBUILD_PARTY_EQUIPMENT = "rebuild_party_equipment" # T156 0x0041D374
@@ -145,6 +148,7 @@ const SET_PALETTE = "set_palette" # 0x0041D11C
 const APPLY_PALETTE = "apply_palette" # 0x004174D0
 const FADE_SCENE_PALETTE = "fade_scene_palette_and_update_frames" # 0x0041CE04
 const ENSURE_MAP_RESOURCES = "ensure_map_resources_loaded" # 0x0041C834
+const ADD_INVENTORY_ITEM = "add_inventory_item" # T152 0x0041C96C then T140 0x0041CCCC
 # Named next gaps: not implemented, kept here so the diagnostic and the review
 # can name the same case identity.
 const NEXT_GAPS = {}
@@ -227,6 +231,7 @@ func consume(state: Dictionary, request: Dictionary) -> Dictionary:
 		0x003B: return _command_003B(state, request, source)
 		0x003C: return _command_003C(state, request, source)
 		0x0035: return _command_0035(state, request, source)
+		0x001F: return _command_001F(state, request, source)
 		0x003D: return _command_003D(state, request, source)
 		0x0016: return _command_0016(state, request, source)
 		0x0024: return _command_0024(state, request, source)
@@ -429,6 +434,23 @@ func _command_0035(state: Dictionary, request: Dictionary, source: Dictionary) -
 	state.globals.shake_amplitude_word = amplitude
 	return _result(state, request, [{"kind": "screen_shake", "count": count,
 		"amplitude": amplitude, "source": source}])
+
+## 0x001F compresses the inventory, defaults a nonpositive amount to 1 and adds
+## the item through the reviewed T140 procedure. The work is owner-requested so
+## the inventory owner performs the original arithmetic.
+func _command_001F(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
+	if not state.get("inventory_bytes") is PackedByteArray or state.inventory_bytes.size() != 256 * 6:
+		return _failure("inventory_backing", "0x001F requires the explicit 256-record inventory", request, source)
+	var item: int = _signed(request.words[1])
+	var amount: int = _signed(request.words[2])
+	if amount <= 0: amount = 1
+	var effect: Dictionary = {"kind": "inventory_add", "item": item, "amount": amount,
+		"amount_defaulted": amount != _signed(request.words[2]), "source": source}
+	var result: Dictionary = _result(state, request, [effect])
+	result.requests = [{"kind": ADD_INVENTORY_ITEM, "original_entry": "0x0041C96C",
+		"procedure": "CompressInventoryAndReturnLastSlot", "add_entry": "0x0041CCCC",
+		"add_procedure": "AddInventoryItemAmount", "item": item, "amount": amount}]
+	return result
 
 ## 0x0047 plays a sound effect through the audio owner when sound is enabled.
 func _command_0047(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
