@@ -128,6 +128,8 @@ func _fixture(source, scene_id: int = 1) -> Dictionary:
 		# projections the same size, so multi-member entry commands can run.
 		"equipment": equipment.initial_state([0, 1, 3]),
 		"inventory_bytes": _zero(1536),
+		# G0150: the explicit palette buffer the 0x0080/0x008C fades consume.
+		"palette_bytes": _zero(0x780),
 		# The fixed G04AC projection: five slots, of which the active count is
 		# carried by globals.member_last and the equipment role projection.
 		"party_records": [{"role_id": 0, "screen_x": 160, "screen_y": 112, "current_frame": 3},
