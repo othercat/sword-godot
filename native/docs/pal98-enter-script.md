@@ -198,6 +198,28 @@ the decoded source bytes. 91 checks pass.
 
 ### Inventory owner (2026-09-12)
 
+### Decoded grounds for the shared party-walk body (next package)
+
+The four remaining movement cases share one implementation, so the next package
+can start from decoded facts instead of re-deriving them:
+
+- `0x007A` and `0x007B` store the speed (`4` and `8`) in the same local and
+  branch into `0x00425278`, which is the body `0x0070` enters with speed `2`;
+- the body computes the walk target with the same formula as `0x0046`
+  (`((2*A0+A2)*16, (2*A1+A2)*8)`), copies the world position into the
+  previous-position words, saves the viewport into the `G0330/G0332` copies, and
+  only when the target differs from the current world position does it call
+  `0x004172D8` (`extf`) to face the party and continue stepping;
+- `0x007F` (`0x00425A7C..0x00425D24`, 680 bytes) is the viewport move state
+  machine that the walk and `0x007D/0x007E` feed; `0x41D2CC` `PostMoveUpdate`
+  and `0x41CC3C` `UpdateViewportAndPartyPosition` are its owners, and `0x006E`
+  now requests both through this chain.
+
+That makes the movement package a single owner (target, direction, per-step
+deltas, layer/clip, timed update/render and retry) rather than four unrelated
+cases. The current chain stops at those opcodes with a named diagnostic, so the
+coverage numbers above already separate them from implemented work.
+
 `native_pal98_inventory.gd` implements the reviewed inventory arithmetic over the
 explicit 256-slot six-byte backing (`ItemId +0`, `Amount +2`, `AmountInUse +4`):
 
