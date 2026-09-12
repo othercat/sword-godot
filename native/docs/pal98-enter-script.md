@@ -183,7 +183,16 @@ real owner adapter and dialogue host, the MIDI request is answered, and the real
 equipment kernel prepares the party before the cycle completes with
 `resource_flags == 0`. The scene record is redirected to a real minimal entry
 block so the cycle stays on implemented commands; the sources, graphics and
-instruction bytes are the admitted originals. 98 checks pass.
+instruction bytes are the admitted originals.
+
+A second scenario drives the same chain through a **scene-request restart**: the
+first scene's entry is a real `0059 0002` block from the admitted pool, so the
+script asks for scene 2 with `G0306 |= 12`; the chain commits scene 1's events,
+loads scene 2's (redirected empty) event range and map identity, runs scene 2's
+own entry script through the same real owners, and finishes with
+`current_scene == requested_scene == 2` and a consumed mask. Both entry scripts
+appear in the trace and their applied effects are recorded per run. 103 checks
+pass in the working tree.
 
 ### Decoded facts behind the 0x0046 loop
 

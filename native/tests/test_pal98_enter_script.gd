@@ -354,6 +354,41 @@ func _synthetic_checks() -> void:
 ## scene entry script, the real owners answer the command requests, and the host
 ## answers the render/audio requests. A redirected real scene record keeps the
 ## cycle on an entry block whose commands are implemented.
+func _drive_reload(driver, step: Dictionary, cache, kernel) -> Dictionary:
+	var effect_runs: Array = []
+	var rounds := 0
+	while step.has("request") and rounds < 64:
+		rounds += 1
+		var request: Dictionary = step.request
+		if request.kind == "enter_script":
+			var adapter = EntryHost.new()
+			if not adapter.bind(cache, kernel, request.state.inventory_bytes, [0, 0, 0, 0, 0, 0]):
+				return {"step": {"error": "cycle adapter bind failed: " + adapter.error}}
+			adapter.bind_display(DisplayDouble.new())
+			var dialogue_host = DialogueHost.new()
+			dialogue_host.bind(package.pal98_sources)
+			var owner = _owner(package.pal98_sources)
+			var entry_state: Dictionary = request.state.duplicate(true)
+			entry_state.dialogue = _context(); entry_state.rng = Random.create(0x12345)
+			var run = _drive_with_host(owner, owner.start(entry_state, request.scene_id, request.entry,
+				request.event_id), adapter, dialogue_host)
+			if run.result.has("error"): return {"step": run.result}
+			effect_runs.append(run.result.effects.duplicate(true))
+			step = driver.resume(request.id, {"state": run.result.state,
+				"return_entry": run.result.return_entry})
+		else:
+			step = driver.resume(request.id, {"completed": true})
+	return {"step": step, "effect_runs": effect_runs}
+
+func _pool_block(records, opcode: int, argument: int) -> int:
+	for index in range(1, package.pal98_sources.counts().scripts - 1):
+		var probe: Dictionary = records.instruction(index)
+		if probe.has("error"): continue
+		if probe.value.words[0] != opcode or probe.value.words[1] != argument: continue
+		var following: Dictionary = records.instruction(index + 1)
+		if not following.has("error") and following.value.words[0] in [0x0000, 0x0001]: return index
+	return -1
+
 func _cycle_checks() -> void:
 	var records = package.pal98_sources.open_records()
 	var minimal := -1
@@ -379,32 +414,10 @@ func _cycle_checks() -> void:
 		package.pal98_sources.copy_chunk("sss", 2), package.pal98_sources.copy_chunk("sss", 4))
 	var driver = Reload.new()
 	check(driver.load_source(package.pal98_sources, package.pal98_graphics), "cycle owner binds the admitted sources")
-	var step: Dictionary = driver.start(reload_state, cache)
-	var trace: Array = []
-	var effects: Array = []
-	var rounds := 0
-	while step.has("request") and rounds < 32:
-		rounds += 1
-		var request: Dictionary = step.request
-		if request.kind == "enter_script":
-			var adapter = EntryHost.new()
-			check(adapter.bind(cache, kernel, request.state.inventory_bytes, [0, 0, 0, 0, 0, 0]),
-				"cycle owner adapter binds the real owners")
-			adapter.bind_display(DisplayDouble.new())
-			var dialogue_host = DialogueHost.new()
-			dialogue_host.bind(package.pal98_sources)
-			var owner = _owner(package.pal98_sources)
-			var entry_state: Dictionary = request.state.duplicate(true)
-			entry_state.dialogue = _context(); entry_state.rng = Random.create(0x12345)
-			var run = _drive_with_host(owner, owner.start(entry_state, request.scene_id, request.entry,
-				request.event_id), adapter, dialogue_host)
-			if run.result.has("error"):
-				check(false, "cycle entry script failed: " + str(run.result.error)); return
-			effects = run.result.effects.duplicate(true)
-			step = driver.resume(request.id, {"state": run.result.state, "return_entry": run.result.return_entry})
-		else:
-			step = driver.resume(request.id, {"completed": true})
-	trace = step.get("trace", [])
+	var cycle: Dictionary = _drive_reload(driver, driver.start(reload_state, cache), cache, kernel)
+	var step: Dictionary = cycle.step
+	var effects: Array = cycle.get("effect_runs", [[]])[0]
+	var trace: Array = step.get("trace", [])
 	check(not step.has("error"), "the full T212 cycle completes: " + str(step.get("error", "")))
 	check(trace.has("load_events") and trace.has("load_event_sprites") and trace.has("load_party_sprites")
 		and trace.has("enter_script:1") and trace.has("prepare_equipment"),
@@ -413,6 +426,39 @@ func _cycle_checks() -> void:
 		"the redirected real entry block ran its reviewed command: " + str(effects))
 	check(step.state.globals.resource_flags == 0 and step.state.globals.direction_word == 0,
 		"the completed cycle consumes the mask and keeps the script's direction word")
+	# Second scenario: a real scene-request block restarts the chain on another
+	# scene whose (redirected) event range is empty, so the whole loop closes.
+	var request_block: int = _pool_block(records, 0x0059, 2)
+	check(request_block > 0, "the admitted script pool has a real scene-request block for scene 2")
+	if request_block <= 0: return
+	var chain_state = _fixture(package.pal98_sources)
+	chain_state.inventory_bytes = PackedByteArray(); chain_state.inventory_bytes.resize(1536)
+	chain_state.globals.resource_flags = 29
+	chain_state.events = storage.source_state()
+	chain_state.events.scene_records = chain_state.events.scene_records.duplicate()
+	chain_state.events.scene_records.encode_u16(2, request_block)
+	chain_state.events.scene_records.encode_u16(10, minimal)
+	chain_state.events.scene_records.encode_u16(14, 0)
+	chain_state.events.scene_records.encode_u16(22, 0)
+	chain_state.events.scene_records.encode_u16(30, 0)
+	var chain_cache = Cache.new(); chain_cache.load_source(package.pal98_graphics, package.pal98_sources)
+	var chain_driver = Reload.new()
+	check(chain_driver.load_source(package.pal98_sources, package.pal98_graphics), "restart chain owner binds the admitted sources")
+	var restarted_cycle: Dictionary = _drive_reload(chain_driver, chain_driver.start(chain_state, chain_cache),
+		chain_cache, kernel)
+	var restarted_step: Dictionary = restarted_cycle.step
+	var restarted_trace: Array = restarted_step.get("trace", [])
+	check(not restarted_step.has("error"), "the scene-request restart chain completes: " + str(restarted_step.get("error", "")))
+	check(restarted_trace.count("entry") == 2 and restarted_trace.has("commit_events")
+		and restarted_trace.has("enter_script:1") and restarted_trace.has("enter_script:2"),
+		"the real scene request restarts the chain and both entry scripts run: " + str(restarted_trace))
+	check(restarted_step.state.globals.current_scene == 2 and restarted_step.state.globals.requested_scene == 2
+		and restarted_step.state.globals.resource_flags == 0,
+		"the restarted chain ends on the requested scene with a consumed mask")
+	check(restarted_cycle.effect_runs.size() == 2 and restarted_cycle.effect_runs[0].size() == 1
+		and restarted_cycle.effect_runs[0][0].kind == "scene_request"
+		and restarted_cycle.effect_runs[1][0].kind == "party_direction_frame",
+		"both entry scripts applied their reviewed effects: " + str(restarted_cycle.effect_runs))
 
 func _real_checks() -> void:
 	_cycle_checks()
