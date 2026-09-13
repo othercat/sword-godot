@@ -41,12 +41,19 @@ class ColdClock:
 ## render owner is a later work package.
 class SplitDisplay:
 	var palette_executor
+	var renderer
 	var doubled: Array = []
-	func _init(executor) -> void:
-		palette_executor = executor
+	func _init(executor, scene_renderer) -> void:
+		palette_executor = executor; renderer = scene_renderer
 	func answer(request: Dictionary) -> Dictionary:
 		if request.kind in ["apply_palette", "fade_wait", "fade_event_pump", "fade_frame"]:
 			return palette_executor.answer(request)
+		if request.kind == "render_current_map_background" and renderer != null:
+			var rendered: Dictionary = renderer.render(request.get("state", {}))
+			if rendered.has("error"): return rendered
+			var answer: Dictionary = {"completed": true, "render": rendered.receipt}
+			if request.get("state") is Dictionary: answer.state = request.state.duplicate(true)
+			return answer
 		doubled.append(request.kind)
 		return {"completed": true}
 
@@ -78,7 +85,9 @@ class EnterDriver:
 		executor.bind_clock(ColdClock.new())
 		var installed: Dictionary = executor.install_cold(cold_rgb6)
 		if installed.has("error"): push_error(str(installed.error))
-		split = SplitDisplay.new(executor)
+		var renderer = load("res://src/native_pal98_scene_render.gd").new()
+		if not renderer.bind(package.pal98_graphics.open_records()): push_error(str(renderer.error))
+		split = SplitDisplay.new(executor, renderer)
 		adapter.bind_display(split)
 		var facing = load("res://src/native_pal98_walk_facing.gd").new()
 		facing.bind_fallback(split)
@@ -228,9 +237,18 @@ func _initialize() -> void:
 	var executor = driver.enter_driver.executor
 	check(executor.installed_rgb6() == day.value,
 		"the cold display palette is byte-identical to the admitted day variant")
-	var doubled: Array = driver.enter_driver.split.doubled
-	check(doubled.has("render_current_map_background"),
-		"non-palette display kinds stay a named double boundary: " + str(doubled))
+	var split: SplitDisplay = driver.enter_driver.split
+	var doubled: Array = split.doubled
+	check(doubled.has("restore_dialog_background"),
+		"the remaining display kinds stay a named double boundary: " + str(doubled))
+	var render_receipts: Array = split.renderer.receipts()
+	check(render_receipts.size() >= 2 and render_receipts[0].map_id == 20
+		and render_receipts[0].frame_sha256 is String and render_receipts[0].frame_sha256.length() == 64,
+		"the background renders are real 320x200 frames with content hashes: "
+			+ str(render_receipts.size()))
+	var render_maps: Array = render_receipts.map(func(receipt): return receipt.map_id)
+	check(20 in render_maps and 12 in render_maps,
+		"both scenes' backgrounds rendered through the real pass: " + str(render_maps))
 
 	# Exit and reopen: rebuild every owner from a fresh package load and stop
 	# at the same named bound; the chain must repeat itself byte-for-byte.
@@ -251,6 +269,8 @@ func _initialize() -> void:
 	check(driver2.enter_driver.terminals.size() == 2
 		and driver2.enter_driver.terminals[1].get("effects", []) == terminals[1].get("effects", []),
 		"the reopen reproduces the scene 2 entry effects byte-for-byte")
+	check(driver2.enter_driver.split.renderer.receipts() == split.renderer.receipts(),
+		"the reopen reproduces the background renders byte-for-byte")
 
 	finish(args)
 
