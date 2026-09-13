@@ -43,6 +43,21 @@ var awaiting_player := false
 var awaiting_confirm := false
 var _pending_dialogue: Dictionary = {}
 var _active_enter_request: Dictionary = {}
+var _page_requests: Array = []
+var _sources
+var _graphics
+var _frames: Array = []
+var _coordination_steps: int = 0
+var _generation: int = 0
+var page_revision: int = 0
+var _captured_page_requests: Array = []
+var _presentation_required := true
+var nested_traces: Array = []
+
+const MAX_COORDINATION_DEPTH := 64
+const MAX_COORDINATION_STEPS := 65536
+const PRESENTATION_KINDS := ["draw_string", "draw_glyph", "capture_background",
+	"restore_background", "draw_dialogue_icon", "draw_dialogue_box"]
 var _palette = Palette.new()
 var _doubles: Dictionary = {}
 var _initial_cache
@@ -62,12 +77,34 @@ class DisplayRouter:
 ## Cancellation invalidates both continuation generations and captured pages.
 ## It does not manufacture a terminal result or erase the caller's diagnostic.
 func cancel() -> void:
+	for frame in _frames:
+		if frame.reload != reload: frame.reload.cancel()
+		if frame.enter != enter: frame.enter.cancel()
 	if reload != null: reload.cancel()
 	if enter != null: enter.cancel()
-	_pending_dialogue = {}; _active_enter_request = {}
+	_frames = []; _coordination_steps = 0; _generation += 1; page_revision += 1
+	_pending_dialogue = {}; _active_enter_request = {}; _page_requests = []; _captured_page_requests = []
+	nested_traces = []
 	awaiting_confirm = false; awaiting_player = false; _running = false
 	terminals = []; enters_seen = []
 	if renderer != null and records != null: renderer.bind(records)
+
+## The parked page's raw draw requests, recorded exactly as the dialogue host
+## answered them. They exist so the display adapter can publish the same page
+## the chain produced; they are not a glyph policy.
+func pending_page_requests() -> Array:
+	return _page_requests.duplicate(true)
+
+func is_dialogue_parked() -> bool:
+	return not _pending_dialogue.is_empty()
+
+func pending_kind() -> String:
+	if _pending_dialogue.is_empty(): return ""
+	return String(_pending_dialogue.get("effect", {}).get("kind", ""))
+
+func pending_model() -> String:
+	if _pending_dialogue.is_empty(): return ""
+	return String(_pending_dialogue.get("effect", {}).get("model", ""))
 
 func _failure(message: String) -> Dictionary:
 	var diagnostic := {"enters": enters_seen.duplicate(), "pending": _pending_dialogue.duplicate(true)}
@@ -104,6 +141,7 @@ func open(package) -> bool:
 	cancel(); state = {}; map_cache = {}; _start_state = {}; _initialized = false
 	if package == null or package.pal98_sources == null or package.pal98_graphics == null:
 		return _open_fail("admitted package sources and graphics required")
+	_sources = package.pal98_sources; _graphics = package.pal98_graphics
 	records = package.pal98_graphics.open_records()
 	if records == null: return _open_fail("graphics records unavailable")
 	storage = Events.new()
@@ -262,51 +300,173 @@ func _adopt(candidate: Dictionary, sprites, maps: Dictionary) -> Dictionary:
 	state = candidate.duplicate(true); cache = sprites; map_cache = maps.duplicate(true)
 	return {"completed": true}
 
+## Each suspended T212 owns its reload, EnterScript and continuation. A child
+## returns the current resource lease together, before its parent resumes.
 func _drive_reload(step: Dictionary) -> Dictionary:
-	for guard in range(32768):
+	_frames = [{"reload": reload, "enter": enter, "phase": "reload", "step": step,
+		"active_enter": {}, "child_request": {}}]
+	return _drive()
+
+func _push_nested(request: Dictionary) -> Dictionary:
+	if _frames.size() >= MAX_COORDINATION_DEPTH:
+		return _failure("nested T212 coordination depth budget exceeded")
+	var child_reload = Reload.new(); var child_enter = Enter.new()
+	if not child_reload.load_source(_sources, _graphics): return _failure(child_reload.error)
+	if not child_enter.load_source(_sources): return _failure(child_enter.error)
+	var parent: Dictionary = _frames.back()
+	parent.child_request = request.duplicate(true)
+	var started: Dictionary = child_reload.start(request.state, cache, map_cache)
+	_frames.append({"reload": child_reload, "enter": child_enter, "phase": "reload",
+		"step": started, "active_enter": {}, "child_request": {}})
+	return {}
+
+func _drive() -> Dictionary:
+	while not _frames.is_empty():
+		_coordination_steps += 1
+		if _coordination_steps > MAX_COORDINATION_STEPS:
+			return _failure("T212 coordination step budget exceeded")
+		var frame: Dictionary = _frames.back()
+		var step: Dictionary = frame.step
 		if step.has("error"): return _failure(str(step.error))
-		if step.get("state") is Dictionary:
+		if not step.has("request"):
+			if not step.get("state") is Dictionary: return _failure("coordinator terminal lacks state")
+			if frame.phase == "enter":
+				terminals.append(step.duplicate(true))
+				frame.phase = "reload"
+				frame.step = frame.reload.resume(frame.active_enter.id,
+					{"state": step.state, "return_entry": step.get("return_entry", 0),
+					"cache": cache, "map_cache": map_cache.duplicate(true)})
+				continue
 			var adopted: Dictionary = _adopt(step.state, step.get("cache"), step.get("map_cache", {}))
 			if adopted.has("error"): return adopted
-			awaiting_player = true; _running = false
-			return {"completed": true, "state": state.duplicate(true), "trace": step.get("trace", []),
-				"enters": enters_seen.duplicate(), "awaiting_player": true, "awaiting_confirm": false}
-		if not step.has("request"): return _failure("reload stopped without terminal state")
+			_frames.pop_back()
+			if _frames.is_empty():
+				awaiting_player = true; _running = false
+				return {"completed": true, "state": state.duplicate(true),
+					"trace": step.get("trace", []), "enters": enters_seen.duplicate(),
+					"awaiting_player": true, "awaiting_confirm": false}
+			nested_traces.append(step.get("trace", []).duplicate())
+			var parent: Dictionary = _frames.back()
+			_active_enter_request = parent.active_enter
+			parent.step = parent.enter.resume(parent.child_request.id,
+				{"completed": true, "state": state.duplicate(true)})
+			parent.child_request = {}
+			continue
 		var request: Dictionary = step.request
-		match request.kind:
-			"render_background":
-				var rendered: Dictionary = renderer.render(request.state)
-				if rendered.has("error"): return _failure("reload render: " + str(rendered.error))
-				step = reload.resume(request.id, {"completed": true, "state": rendered.state})
-			"enter_script":
-				var adopted: Dictionary = _adopt(request.state, request.get("cache"), request.get("map_cache", {}))
-				if adopted.has("error"): return adopted
-				enters_seen.append(request.scene_id); _active_enter_request = request
-				var run: Dictionary = _drive_entry(enter.start(request.state, request.scene_id, request.entry, request.event_id))
-				if run.has("error"): return _failure(str(run.error))
-				if run.get("parked"): return _parked()
-				step = reload.resume(request.id, {"state": run.state, "return_entry": run.get("return_entry", 0)})
-			"play_midi":
-				var answer: Dictionary = _named(request.kind, request)
-				if answer.has("error"): return _failure(str(answer.error))
-				step = reload.resume(request.id, answer)
-			_:
-				return _failure("unowned reload request: " + str(request.kind))
-	return _failure("reload coordination budget exceeded")
+		if frame.phase == "reload":
+			match request.kind:
+				"render_background":
+					var rendered: Dictionary = renderer.render(request.state)
+					if rendered.has("error"): return _failure("reload render: " + str(rendered.error))
+					_new_scene_page()
+					frame.step = frame.reload.resume(request.id, {"completed": true, "state": rendered.state})
+				"enter_script":
+					var adopted: Dictionary = _adopt(request.state, request.get("cache"), request.get("map_cache", {}))
+					if adopted.has("error"): return adopted
+					enters_seen.append(request.scene_id)
+					frame.active_enter = request; _active_enter_request = request
+					frame.phase = "enter"
+					frame.step = frame.enter.start(request.state, request.scene_id, request.entry, request.event_id)
+				"play_midi":
+					var answer: Dictionary = _named(request.kind, request)
+					if answer.has("error"): return _failure(str(answer.error))
+					frame.step = frame.reload.resume(request.id, answer)
+				_:
+					return _failure("unowned reload request: " + str(request.kind))
+			continue
+		# All script host state comes from the request, never an opening snapshot.
+		if request.kind == "load_resources_if_needed":
+			var pushed: Dictionary = _push_nested(request)
+			if pushed.has("error"): return pushed
+			continue
+		if request.kind == "dialogue":
+			var effect: Dictionary = request.get("effect", {})
+			if effect.get("kind") in ["poll_input", "wait"]:
+				return _park_request(request, effect, "event")
+			if _presentation_required and effect.get("kind") in PRESENTATION_KINDS:
+				return _park_request(request, effect, "presentation_event")
+			var event: Dictionary = dialogue_host.answer(effect)
+			if event.has("error"): return _failure("dialogue host: " + str(event.error))
+			_record_page(effect)
+			frame.step = frame.enter.resume(request.id, {"event": event})
+			continue
+		if _presentation_required and request.kind in ["capture_dialog_background", "restore_dialog_background", "restore_background"]:
+			var effect := {"kind": "capture_background" if request.kind == "capture_dialog_background" else "restore_background"}
+			return _park_request(request, effect, "presentation_owner")
+		if request.has("original_entry"):
+			var adopted: Dictionary = _adopt(request.state, cache, map_cache)
+			if adopted.has("error"): return adopted
+			var answer: Dictionary = adapter.answer(request)
+			if answer.has("error"): return _failure("enter host: " + str(answer.error))
+			frame.step = frame.enter.resume(request.id, answer)
+		elif request.kind == "restore_background":
+			var page_request: Dictionary = request.duplicate(true)
+			page_request.kind = "restore_dialog_background"
+			var answer: Dictionary = _route_display(page_request)
+			if answer.has("error"): return _failure(str(answer.error))
+			_record_page({"kind": "restore_background"})
+			frame.step = frame.enter.resume(request.id, answer)
+		else:
+			var answer: Dictionary = _named(request.kind, request)
+			if answer.has("error"): return _failure(str(answer.error))
+			frame.step = frame.enter.resume(request.id, answer)
+	return _failure("coordinator has no active frame")
+
+func _new_scene_page() -> void:
+	page_revision += 1
+	_page_requests = []
+
+func _record_page(effect: Dictionary) -> void:
+	match effect.get("kind"):
+		"draw_string", "draw_glyph":
+			_page_requests.append(effect.duplicate(true))
+		"capture_background":
+			_captured_page_requests = _page_requests.duplicate(true)
+		"restore_background":
+			_page_requests = _captured_page_requests.duplicate(true)
+
+func _park_request(request: Dictionary, effect: Dictionary, transport: String) -> Dictionary:
+	var adopted: Dictionary = _adopt(request.state, cache, map_cache)
+	if adopted.has("error"): return adopted
+	_pending_dialogue = request.duplicate(true)
+	_pending_dialogue.inner_id = request.id
+	_pending_dialogue.id = str(_generation) + ":" + request.id
+	_pending_dialogue.effect = effect.duplicate(true)
+	_pending_dialogue.transport = transport
+	awaiting_confirm = effect.get("kind") == "poll_input" and effect.get("model") == "until_nonzero"
+	return _parked()
 
 func _parked() -> Dictionary:
 	return {"completed": false, "awaiting_confirm": awaiting_confirm, "awaiting_effect": true,
-		"state": state.duplicate(true), "enters": enters_seen.duplicate(), "input_move": false,
+		"awaiting_presentation": has_pending_presentation(), "state": state.duplicate(true),
+		"enters": enters_seen.duplicate(), "input_move": false,
 		"pending_effect": _pending_dialogue.get("effect", {}).duplicate(true),
 		"pending_id": _pending_dialogue.get("id", "")}
 
-## timer_tick is one explicit nominal timer event from the caller. A function
-## call is not elapsed time. Each invocation consumes at most ONE input or
-## timer event, so one press cannot release several subsequent waits.
+func has_pending_presentation() -> bool:
+	return String(_pending_dialogue.get("transport", "")).begins_with("presentation_")
+
+func pending_presentation() -> Dictionary:
+	if not has_pending_presentation(): return {}
+	return {"id": _pending_dialogue.id, "effect": _pending_dialogue.effect.duplicate(true),
+		"generation": _generation, "page_revision": page_revision}
+
+func presentation_generation() -> int: return _generation
+
+## Explicit test-only choice. Production defaults to awaiting real presentation.
+func bind_recording_dialogue_for_probe() -> bool:
+	if _running: return false
+	_presentation_required = false
+	return true
+
+func require_presented_dialogue() -> void:
+	_presentation_required = true
+
 func tick(key_levels, timer_tick: bool = false) -> Dictionary:
 	var polled: Dictionary = input.poll(key_levels)
 	if polled.has("error"): return _failure(str(polled.error))
 	if not _pending_dialogue.is_empty():
+		if has_pending_presentation(): return _parked()
 		var effect: Dictionary = _pending_dialogue.effect
 		if effect.kind == "wait" and not timer_tick: return _parked()
 		var event: Dictionary = {"kind": "tick"} if effect.kind == "wait" else {"kind": "input", "action": 2 if polled.confirm else 0}
@@ -319,54 +479,38 @@ func tick(key_levels, timer_tick: bool = false) -> Dictionary:
 	state = ticked.state
 	return ticked
 
-## Internal explicit-host continuation. Stale receipts cannot cancel or write
-## a newer pending generation. Non-dialogue commands never receive generic ACKs.
 func resume_dialogue(request_id: String, event: Dictionary) -> Dictionary:
-	if _pending_dialogue.is_empty() or request_id != _pending_dialogue.id:
-		return {"error": "pal98-new-game: stale dialogue completion"}
+	if _pending_dialogue.is_empty() or request_id != _pending_dialogue.id or has_pending_presentation():
+		return {"error": "pal98-new-game: stale or non-input dialogue completion"}
 	var pending: Dictionary = _pending_dialogue
 	_pending_dialogue = {}; awaiting_confirm = false
-	var run: Dictionary = _drive_entry(enter.resume(pending.id, {"event": event}))
-	if run.has("error"): return _failure(str(run.error))
-	if run.get("parked"): return _parked()
-	return _drive_reload(reload.resume(_active_enter_request.id,
-		{"state": run.state, "return_entry": run.get("return_entry", 0)}))
+	var frame: Dictionary = _frames.back()
+	frame.step = frame.enter.resume(pending.inner_id, {"event": event})
+	return _drive()
 
-func _drive_entry(result: Dictionary) -> Dictionary:
-	for guard in range(16384):
-		if result.has("error"): return result
-		if not result.has("request"):
-			if not result.get("state") is Dictionary: return {"error": "entry terminal lacks state"}
-			terminals.append(result.duplicate(true))
-			return {"state": result.state, "return_entry": result.get("return_entry", 0)}
-		var pending: Dictionary = result.request
-		if pending.kind == "dialogue":
-			if pending.get("effect", {}).get("kind") in ["poll_input", "wait"]:
-				var adopted: Dictionary = _adopt(pending.state, cache, map_cache)
-				if adopted.has("error"): return adopted
-				_pending_dialogue = pending.duplicate(true)
-				awaiting_confirm = pending.effect.kind == "poll_input" and pending.effect.get("model") == "until_nonzero"
-				return {"parked": true}
-			var event: Dictionary = dialogue_host.answer(pending.effect)
-			if event.has("error"): return {"error": "dialogue host: " + str(event.error)}
-			result = enter.resume(pending.id, {"event": event})
-		elif pending.has("original_entry"):
-			# Scene/event state may have changed since the last wait.
-			var rebound: Dictionary = _adopt(pending.state, cache, map_cache)
-			if rebound.has("error"): return rebound
-			var answer: Dictionary = adapter.answer(pending)
-			if answer.has("error"): return {"error": "enter host: " + str(answer.error)}
-			result = enter.resume(pending.id, answer)
-		elif pending.kind == "restore_background":
-			var page_request: Dictionary = pending.duplicate(true); page_request.kind = "restore_dialog_background"
-			var answer: Dictionary = _route_display(page_request)
-			if answer.has("error"): return answer
-			result = enter.resume(pending.id, answer)
-		else:
-			var answer: Dictionary = _named(pending.kind, pending)
-			if answer.has("error"): return answer
-			result = enter.resume(pending.id, answer)
-	return {"error": "entry coordination budget exceeded"}
+## Match the exact parked generation and rendered receipt before releasing it.
+func resume_presentation(request_id: String, response: Dictionary) -> Dictionary:
+	if not has_pending_presentation() or request_id != _pending_dialogue.id:
+		return {"error": "pal98-new-game: stale presentation completion"}
+	if response.has("error"): return _failure("presentation: " + str(response.error))
+	if not response.get("receipt") is Dictionary:
+		return {"error": "pal98-new-game: matching rendered receipt required"}
+	var receipt: Dictionary = response.receipt
+	if not receipt.get("source") is Dictionary:
+		return {"error": "pal98-new-game: matching rendered receipt source required"}
+	if receipt.source.get("request_id") != request_id or typeof(receipt.get("rendered_process_frame")) != TYPE_INT:
+		return {"error": "pal98-new-game: matching rendered receipt required"}
+	var pending: Dictionary = _pending_dialogue
+	var kind: String = pending.effect.kind
+	var expected: String = "captured" if kind == "capture_background" else ("restored" if kind == "restore_background" else ("box_drawn" if kind == "draw_dialogue_box" else "drawn"))
+	if response.get("event") != {"kind": expected}:
+		return {"error": "pal98-new-game: presentation event does not match request"}
+	_record_page(pending.effect)
+	_pending_dialogue = {}; awaiting_confirm = false
+	var answer: Dictionary = {"event": response.event} if pending.transport == "presentation_event" else {"completed": true, "state": pending.state}
+	var frame: Dictionary = _frames.back()
+	frame.step = frame.enter.resume(pending.inner_id, answer)
+	return _drive()
 
 func _named(kind: String, request: Dictionary) -> Dictionary:
 	if _doubles.has(kind): return _doubles[kind].answer(request)
@@ -380,6 +524,7 @@ func _route_display(request: Dictionary) -> Dictionary:
 		"capture_dialog_background":
 			var captured: Dictionary = renderer.capture_page()
 			if captured.has("error"): return captured
+			_record_page({"kind": "capture_background"})
 			var cap: Dictionary = {"completed": true, "capture": captured.receipt}
 			if request.get("state") is Dictionary: cap.state = request.state.duplicate(true)
 			return cap
@@ -391,12 +536,14 @@ func _route_display(request: Dictionary) -> Dictionary:
 				if str(restored.error).contains("requires the captured-page owner") and _doubles.has("restore_dialog_background_without_initial_page"):
 					return _doubles["restore_dialog_background_without_initial_page"].answer(request)
 				return restored
+			_record_page({"kind": "restore_background"})
 			var res: Dictionary = {"completed": true, "restore": restored.receipt}
 			if request.get("state") is Dictionary: res.state = request.state.duplicate(true)
 			return res
 		"render_current_map_background":
 			var rendered: Dictionary = renderer.render(request.get("state", {}))
 			if rendered.has("error"): return rendered
+			_new_scene_page()
 			var answer: Dictionary = {"completed": true, "render": rendered.receipt}
 			if request.get("state") is Dictionary: answer.state = rendered.state
 			return answer

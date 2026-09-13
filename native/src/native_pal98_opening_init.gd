@@ -27,7 +27,7 @@ static func base_levels(role_words: Array) -> Dictionary:
 		return {"error": "opening init requires the full 450-word DATA3 role backing"}
 	var levels: Array = []
 	for role in range(EXPERIENCE_ROLES):
-		var word: int = role_words[LEVEL_FIELD * 6 + role]
+		var word = role_words[LEVEL_FIELD * 6 + role]
 		if typeof(word) != TYPE_INT or word < 0 or word > 65535:
 			return {"error": "DATA3 level backing is not a stored WORD", "role": role}
 		levels.append(_signed_i2(word))

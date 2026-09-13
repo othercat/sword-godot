@@ -96,7 +96,27 @@ func resume(request_id: String, response: Dictionary) -> Dictionary:
 		if kind == "enter_script":
 			var entry = response.get("return_entry")
 			if not entry is int or entry < 0 or entry > 65535: return _fail("EnterScript must return its ByRef entry WORD")
-		_state = response.state.duplicate(true)
+		var returned_cache = _cache
+		var returned_map: Dictionary = _map
+		if kind == "enter_script" and (response.has("cache") or response.has("map_cache")):
+			if not response.get("cache") is Object or not response.get("map_cache") is Dictionary:
+				return _fail("EnterScript must return both resource caches")
+			if not response.cache.has_method("source") or not response.cache.has_method("fork_for_reload"):
+				return _fail("EnterScript resource cache owner is invalid")
+			var identity: Dictionary = response.cache.source()
+			if identity.get("table_fingerprint") != _source.tables or identity.get("graphics_fingerprint") != _source.graphics:
+				return _fail("EnterScript cache source identity mismatch")
+			var maps: Dictionary = response.map_cache
+			if typeof(maps.get("map_id")) != TYPE_INT or maps.map_id < 0 or maps.map_id >= 32768:
+				return _fail("EnterScript MAP cache identity is not a supported signed WORD")
+			if maps.get("map_id") != response.state.globals.get("loaded_map_id") or maps.get("graphics_fingerprint") != _source.graphics:
+				return _fail("EnterScript state and MAP cache identity mismatch")
+			if not maps.get("map_bytes") is PackedByteArray or maps.map_bytes.size() != 65536 or not maps.get("gop_bytes") is PackedByteArray or maps.gop_bytes.size() < 2:
+				return _fail("EnterScript MAP/GOP backing missing")
+			returned_cache = response.cache.fork_for_reload()
+			if returned_cache == null: return _fail("EnterScript resource cache cannot be forked")
+			returned_map = maps.duplicate(true)
+		_state = response.state.duplicate(true); _cache = returned_cache; _map = returned_map
 		if kind == "enter_script":
 			_state.events.scene_records.encode_u16((_enter_scene - 1) * 8 + 2, response.return_entry)
 			_phase = "after_enter"

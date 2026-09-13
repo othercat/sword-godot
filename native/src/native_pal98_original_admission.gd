@@ -70,9 +70,9 @@ static func report_for(candidate) -> Dictionary:
 			"detail": "the package carries no pal98 original source/graphics components"})
 		capabilities.append({"name": "audio_backend", "present": false,
 			"detail": "the formal runtime has no audio backend owner"})
-		var playable: bool = true
-		for cap in capabilities: playable = playable and cap.present
-		return {"readable": readable, "capabilities": capabilities, "playable": playable}
+		for cap in capabilities:
+			cap.required = cap.name in ["package_admission", "ordinary_session_play"]
+		return {"readable": readable, "capabilities": capabilities, "playable": activated}
 	var records = candidate.pal98_graphics.open_records()
 	if records == null: return {"error": "graphics records unavailable"}
 	readable.graphics_fingerprint = str(records.metadata().get("source_fingerprint", ""))
@@ -114,19 +114,26 @@ static func report_for(candidate) -> Dictionary:
 			if bare.has("error"):
 				chain.detail = str(bare.error)
 			else:
-				chain.present = true
-				chain.detail = "enters=" + str(game.enters_seen) + " parked_kind=" + game.pending_kind()
+				chain.detail = "diagnostic probe reached enters=" + str(game.enters_seen) + " parked_kind=" + game.pending_kind()
+				chain.probe_reached = true
+	game.cancel()
+	# This probe uses explicit unverified initialization and may stop at its
+	# first request. Reaching that point is not the complete production chain.
+	chain.present = false
 	capabilities.append({"name": "original_opening_chain", "present": chain.present,
 		"detail": chain.detail,
-		"note": "audio requests are served by in-module named stubs for detection only"})
+		"scope": "diagnostic_probe", "probe_reached": chain.get("probe_reached", false),
+		"note": "unverified initialization and any named stubs are diagnostic inputs, not production capability"})
 	var audio_detail: String = "the formal runtime has no audio backend owner"
 	if audio.needed_stub:
 		audio_detail += "; the detection chain's audio requests were served by a named stub"
 	else:
 		audio_detail += "; the opening detection ended before any audio request"
 	capabilities.append({"name": "audio_backend", "present": false, "detail": audio_detail})
-	var playable: bool = true
-	for cap in capabilities: playable = playable and cap.present
+	var playable: bool = activated
+	for cap in capabilities:
+		cap.required = true
+		playable = playable and cap.present
 	return {"readable": readable, "capabilities": capabilities, "playable": playable}
 
 ## One human-readable summary line per capability for app display.
@@ -134,12 +141,13 @@ static func summary(report: Dictionary) -> String:
 	if report.has("error"): return report.error
 	var lines: Array = []
 	var readable: Dictionary = report.readable
-	lines.append("来源身份 %s；图形指纹 %s" % [readable.source_id, readable.graphics_fingerprint])
-	lines.append("MAP20 可读=%s，MAP12 可读=%s，日/夜调色板=%s/%s，DATA3=%d 字节，场景1 可读=%s" % [
-		str(readable.map20_readable), str(readable.map12_readable),
-		str(readable.day_palette_rgb6 > 0), str(readable.night_palette_readable),
-		readable.data3_bytes, str(readable.scene1_readable)])
+	lines.append("来源身份 %s；图形指纹 %s" % [readable.get("source_id", ""), readable.get("graphics_fingerprint", "不适用")])
+	if readable.get("original_components", false):
+		lines.append("MAP20 可读=%s，MAP12 可读=%s，日/夜调色板=%s/%s，DATA3=%d 字节，场景1 可读=%s" % [
+			str(readable.get("map20_readable", false)), str(readable.get("map12_readable", false)),
+			str(readable.get("day_palette_rgb6", 0) > 0), str(readable.get("night_palette_readable", false)),
+			readable.get("data3_bytes", 0), str(readable.get("scene1_readable", false))])
 	for cap in report.capabilities:
-		lines.append(("[可] " if cap.present else "[缺] ") + cap.name + "：" + cap.detail)
+		lines.append(("[可] " if cap.present else ("[缺] " if cap.get("required", true) else "[不适用] ")) + cap.name + "：" + cap.detail)
 	lines.append("当前可正式试玩：%s" % str(report.playable))
 	return "\n".join(lines)

@@ -6,6 +6,7 @@ const Requests = preload("res://src/native_pal98_scene_sprite_requests.gd")
 const Background = preload("res://src/native_pal98_map_background.gd")
 const Occlusion = preload("res://src/native_pal98_map_occlusion.gd")
 const Queue = preload("res://src/native_pal98_depth_queue.gd")
+const Indexed = preload("res://src/native_pal98_indexed_image.gd")
 
 static func build(owner: String, records, storage, event_state: Dictionary, cache, caller: Dictionary) -> Dictionary:
 	for field in ["map_id", "palette_index", "palette_variant", "map_mode", "clip_bottom"]:
@@ -19,7 +20,17 @@ static func build(owner: String, records, storage, event_state: Dictionary, cach
 	var resolved: Dictionary = cache.resolve_requests(storage, event_state, caller.party_records, requests.value)
 	if resolved.has("error"): return resolved
 	var background = Background.new(); var marks = Occlusion.new(); var queue = Queue.new()
+	var palette: Dictionary
+	if caller.has("palette_rgb6"):
+		if not caller.palette_rgb6 is PackedByteArray: return {"error": "active palette must be RGB6 bytes"}
+		var issue: String = Indexed.validate_palette(caller.palette_rgb6)
+		if not issue.is_empty(): return {"error": issue}
+		palette = {"value": caller.palette_rgb6.duplicate()}
+	else:
+		palette = records.palette(caller.palette_index, caller.palette_variant)
+	if palette.has("error"): return palette
 	if not background.load_source(records, caller.map_id, caller.palette_index, caller.palette_variant): return {"error": background.error}
+	if caller.has("palette_rgb6") and not background.install_palette(palette.value): return {"error": background.error}
 	if not marks.load_source(records, caller.map_id): return {"error": marks.error}
 	var rows: Array = []
 	for selected in resolved.value:
@@ -35,8 +46,6 @@ static func build(owner: String, records, storage, event_state: Dictionary, cach
 	rows.append_array(map_rows.value)
 	if not queue.load_rows(rows): return {"error": queue.error}
 	var cell: Dictionary = Occlusion.world_to_cell(caller.viewport_x, caller.viewport_y).value
-	var palette: Dictionary = records.palette(caller.palette_index, caller.palette_variant)
-	if palette.has("error"): return palette
 	var depth_view: Dictionary = queue.make_view(palette.value, caller.clip_bottom)
 	if depth_view.has("error"): return depth_view
 	var map_view: Dictionary = background.make_view(cell.x, cell.y, cell.half)

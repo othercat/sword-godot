@@ -4,6 +4,7 @@ extends RefCounted
 ## Compose each lower/upper tile pair, then draw cells in original row order.
 const Indexed = preload("res://src/native_pal98_indexed_image.gd")
 const Terrain = preload("res://src/native_terrain.gd")
+const Schema = preload("res://src/native_schema.gd")
 const PIXEL_BUDGET = 33554432
 var error: String = ""
 var _map: PackedByteArray
@@ -20,6 +21,13 @@ func load_source(records, map_index: int, palette_index: int, variant: int) -> b
 		if selected.has("error"): error = selected.error; return false
 	_map = map.value.duplicate(); _gop = gop.value.duplicate(); _palette = palette.value.duplicate()
 	_identity = {"map": map.source.duplicate(true), "gop": gop.source.duplicate(true), "palette": palette.source.duplicate(true)}
+	error = ""; return true
+
+func install_palette(rgb6: PackedByteArray) -> bool:
+	var issue: String = Indexed.validate_palette(rgb6)
+	if not issue.is_empty(): error = issue; return false
+	_palette = rgb6.duplicate()
+	_identity.palette = {"kind": "runtime_installed", "sha256": Schema.digest(rgb6)}
 	error = ""; return true
 
 func source() -> Dictionary:

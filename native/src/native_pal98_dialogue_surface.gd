@@ -11,6 +11,7 @@ var _captured: Image
 var _capture_sha: String = ""
 var _configured: bool = false
 var _busy: bool = false
+var _generation: int = 0
 
 func _opaque_image(background: Image) -> Image:
 	if background == null or background.is_empty() or background.is_compressed() or background.get_size() != Vector2i(320,200): return null
@@ -37,6 +38,26 @@ func configure(font: Font, palette: PackedColorArray, background: Image) -> bool
 	_background.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST; _background.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_background); _text = layer; add_child(_text); _configured = true
 	return true
+
+## Invalidates outstanding asynchronous work and every old captured page.
+func invalidate() -> void:
+	_generation += 1; _busy = false; _captured = null; _capture_sha = ""
+	if _configured: _text.clear_text()
+
+## Rebuild a page base and palette without advancing a script. Captures remain
+## owned by the current generation; callers invalidate on source/session rebind.
+func reset_page(font: Font, palette: PackedColorArray, background: Image) -> Dictionary:
+	if not _configured:
+		if not configure(font, palette, background): return _failure("invalid_dialogue_page_configuration", {})
+		var generation: int = _generation
+		await _rendered_frame()
+		if generation != _generation: return _failure("stale_dialogue_page_reset", {})
+		return {"completed": true}
+	var invalid: Dictionary = _target_error({})
+	if not invalid.is_empty(): return invalid
+	if _opaque_image(background) == null or not _text.configure(font, palette):
+		return _failure("invalid_dialogue_page_configuration", {})
+	return await replace_scene_frame(background)
 
 func text_snapshot() -> Array:
 	return _text.snapshot() if _configured else []
@@ -68,8 +89,10 @@ func replace_scene_frame(background: Image, source: Dictionary = {}) -> Dictiona
 	var initial: Image = _opaque_image(background)
 	if initial == null: return _failure("invalid_dialogue_scene_frame",source)
 	var receipt: Dictionary = {"kind":"replace_scene_frame","source":source.duplicate(true)}
+	var generation: int = _generation
 	_busy = true; _background.texture = ImageTexture.create_from_image(initial); _text.clear_text()
 	await _rendered_frame()
+	if generation != _generation: return _failure("stale_dialogue_scene_frame", source)
 	_busy = false
 	invalid = _target_error(receipt.source)
 	if not invalid.is_empty(): return invalid
@@ -92,11 +115,13 @@ func apply_request(request: Dictionary, encoding: String, source: Dictionary = {
 	if kind in ["draw_glyph","draw_string"]:
 		queued = _text.append_draw(request,encoding,source)
 		if queued.has("error"): return queued
+	var generation: int = _generation
 	_busy = true
 	if kind == "restore_background":
 		_background.texture = ImageTexture.create_from_image(_captured)
 		_text.clear_text()
 	await _rendered_frame()
+	if generation != _generation: return _failure("stale_dialogue_surface_request", source)
 	_busy = false
 	invalid = _target_error(source)
 	if not invalid.is_empty(): return invalid

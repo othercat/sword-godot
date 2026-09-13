@@ -49,6 +49,7 @@ class NamedGap:
 
 ## Explicitly scoped replay gaps, not production implementations.
 static func bind_gaps(game, audio: bool = true):
+	game.bind_recording_dialogue_for_probe()
 	var owner = NamedGap.new()
 	for kind in ["clear_effective_cross_fade", "restore_dialog_background_without_initial_page",
 			"upper_dialog_layout", "start_frame_and_process_events", "update_viewport_and_party_position",

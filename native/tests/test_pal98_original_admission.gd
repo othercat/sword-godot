@@ -48,8 +48,8 @@ func _initialize() -> void:
 		"the audio row reports the real backend absence: " + str(audio_cap.get("detail", "")))
 	var chain_cap: Dictionary = _capability(report, "original_opening_chain")
 	check(not chain_cap.is_empty() and not chain_cap.present
-		and str(chain_cap.detail).contains("restore_dialog_background"),
-		"the opening chain reports its first real named dependency gap: " + str(chain_cap.get("detail", "")))
+		and chain_cap.get("scope") == "diagnostic_probe" and not str(chain_cap.detail).is_empty(),
+		"reaching a request with unverified initialization is diagnostic, not complete original capability")
 	check(not report.playable, "the original package is honestly reported not formally playable")
 	var text: String = Admission.summary(report)
 	check(text.contains("[缺] ordinary_session_play") and text.contains("[缺] original_opening_chain")
@@ -63,11 +63,9 @@ func _initialize() -> void:
 		var author_session: Dictionary = _capability(author, "ordinary_session_play")
 		check(author_session.present,
 			"the author package satisfies the formal session branch: " + str(author_session.get("detail", "")))
-		check(author.playable == (author_session.present
-			and _capability(author, "package_admission").present
-			and _capability(author, "original_opening_chain").present
-			and _capability(author, "audio_backend").present),
-			"playable stays the conjunction of the detected rows")
+		check(author.playable == author_session.present and author.playable,
+			"irrelevant original-only rows do not block an admitted author session")
+		check(not Admission.summary(author).is_empty(), "author summary supports absent optional original fields")
 
 	finish(args)
 

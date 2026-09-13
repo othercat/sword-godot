@@ -135,11 +135,10 @@ func _initialize() -> void:
 		and b.globals.view_offset_x == 13, "preparation retains T244 writeback only in its candidate state")
 	check(renderer.bind_transition_clock(TransitionClock.new()), "the transition logical clock binds for real execution")
 	var host = renderer.answer({"kind": "clear_effective_cross_fade", "state": b, "first": 1, "second": 2})
-	check(host.get("completed") == true and host.state.globals.view_offset_x == 0
-		and renderer.current_rgba() != pixels_a,
-		"production host executes the recovered phases and completes at the endpoint with the T244 state")
-	check(host.receipt.phases == 2 and str(host.receipt.named_gap).contains("adpic"),
-		"the executed transition keeps its inclusive phase bound and the named adpic approximation")
+	check(host.has("error") and not host.get("completed", false) and renderer.current_rgba() == pixels_a,
+		"missing full T121 owners refuse completion and preserve the displayed page")
+	check(host.get("prepared", false) and str(host.receipt.boundary).contains("adpic"),
+		"valid preparation keeps the unresolved lane execution explicit")
 	var battle = b.duplicate(true); battle.globals.battle_mode = 1
 	check(renderer.prepare_clear_cross_fade(battle, 1, 2).has("error"), "unowned battle branch cannot reuse normal background preparation")
 	check(renderer.restore_dialog_background().get("completed") == true and renderer.current_rgba() == pixels_a,

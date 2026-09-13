@@ -9,8 +9,8 @@ const LOGICAL_SIZE := Vector2i(320, 200)
 ## Integer scale with centred margins. The scale never drops below 1 and
 ## never becomes fractional, so pixels stay square at every window size.
 static func fit(window_size: Vector2i) -> Dictionary:
-	if window_size.x <= 0 or window_size.y <= 0:
-		return {"error": "window size must be positive"}
+	if window_size.x < LOGICAL_SIZE.x or window_size.y < LOGICAL_SIZE.y:
+		return {"error": "window size must be at least the 320x200 logical frame"}
 	var scale: int = maxi(1, mini(window_size.x / LOGICAL_SIZE.x, window_size.y / LOGICAL_SIZE.y))
 	var content := LOGICAL_SIZE * scale
 	var offset := Vector2i((window_size.x - content.x) / 2, (window_size.y - content.y) / 2)

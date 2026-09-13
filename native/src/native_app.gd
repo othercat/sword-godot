@@ -79,6 +79,7 @@ var _ui_generation: int = 0
 
 func _ready() -> void:
 	get_window().gui_embed_subwindows = true
+	get_window().min_size = get_window().min_size.max(Vector2i(320,200))
 	var theme_data = Theme.new()
 	theme_data.default_font_size = 20
 	var font = preload("res://src/native_ui_font.gd").create()
@@ -705,7 +706,7 @@ func _show_equipment() -> void:
 func _modal_changed() -> void:
 	_clear_input()
 	input_router.clear()
-	session.set_modal(picker.visible or save_picker.visible or equipment_menu.visible or input_settings.visible or status_picker.visible or frame_selector.get_popup().visible)
+	session.set_modal(picker.visible or save_picker.visible or equipment_menu.visible or input_settings.visible or status_picker.visible or admission_picker.visible or load_error_picker.visible or frame_selector.get_popup().visible)
 
 func _show_status() -> void:
 	if session.state.is_empty() or session.paused or session.modal or battle_view.playing(): return

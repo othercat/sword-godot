@@ -88,7 +88,7 @@ func _run() -> void:
 	var moved := 0
 	var last_digest := ""
 	for step in range(5):
-		var shown: Dictionary = display.tick_presented(PackedInt32Array([0, 0, 0, 2, 0, 0, 0, 0, 0]))
+		var shown: Dictionary = await display.tick_presented(PackedInt32Array([0, 0, 0, 2, 0, 0, 0, 0, 0]))
 		if shown.has("error"): check(false, "tick_presented refused: " + str(shown.error)); finish(); return
 		if shown.input_move: moved += 1
 		var party_request: Dictionary = {}
