@@ -29,8 +29,13 @@ class EffectsDouble:
 func state() -> Dictionary:
 	return {"globals": {"viewport_x": 880, "viewport_y": 920, "party_x": 160, "party_y": 112,
 		"previous_x": 1024, "previous_y": 1024, "world_x": 1024, "world_y": 1024,
-		"direction_word": 3, "walk_phase_word": 0, "leader_frame_offset_word": 0, "party_frame_offset_word": 0},
-		"party_trail": [{"x": 1010, "y": 1000, "direction_word": 2}]}
+		"direction_word": 3, "walk_phase_word": 0, "leader_frame_offset_word": 0, "party_frame_offset_word": 0,
+		"member_last": 1, "follower_count": 0},
+		"party_trail": [{"x": 1010, "y": 1000, "direction_word": 2},
+			{"x": 1000, "y": 992, "direction_word": 3}, {"x": 990, "y": 984, "direction_word": 3},
+			{"x": 980, "y": 976, "direction_word": 3}, {"x": 970, "y": 968, "direction_word": 3}],
+		"party_records": [{"role_id": 0, "screen_x": 160, "screen_y": 112},
+			{"role_id": 1, "screen_x": 172, "screen_y": 98}]}
 func _initialize() -> void:
 	var args = OS.get_cmdline_user_args()
 	if args.size() != 2 or FileAccess.file_exists(args[1]): quit(2); return
@@ -59,16 +64,23 @@ func _initialize() -> void:
 	check(input.convert_to_isometric(5, 0).has("error"), "isometric conversion rejects non-unit direction")
 	check(input.probe_and_prepare({"x": 65536,"y": 0}, {"x": 0,"y": 0}, 1, 1, p).has("error"), "out-of-WORD party anchor is rejected")
 	var facing = Facing.new()
-	for kind in ["sync_members_from_trail", "start_frame_and_process_events", "update_viewport_and_party_position", "render_scene_frame"]:
+	for kind in ["start_frame_and_process_events", "update_viewport_and_party_position", "render_scene_frame"]:
 		check(facing.answer({"kind": kind,"state": state()}).has("error"), "unbound " + kind + " cannot acknowledge work")
+	check(facing.answer({"kind": "sync_members_from_trail","state": state()}).get("completed") == true,
+		"the sync dependent executes for real instead of acknowledging")
 	var source = state(); var before = source.duplicate(true)
-	check(facing.answer({"kind":"post_move_update","state":source}).has("error") and source == before, "post-move requires its real dependent owners and preserves input on failure")
+	var first_run: Dictionary = facing.answer({"kind":"post_move_update","state":source})
+	check(not first_run.has("error") and source == before, "post-move succeeds through its real dependent owners and preserves the caller's input")
 	check(facing.answer({"kind":"face_party_toward","state":source.globals,"delta_x":16,"delta_y":8}).has("error"), "flat globals are not a source state")
 	var effects = EffectsDouble.new(); facing.bind_fallback(effects)
+	facing.executed.clear()
 	var moved = facing.answer({"kind":"post_move_update","state":source})
 	check(not moved.has("error") and moved.state.globals.previous_x == 1024, "post-move does not overwrite caller-owned previous world")
-	check(effects.kinds == ["rotate_party_trail", "sync_members_from_trail"], "movement delegates rotate then sync in original order")
-	check(not moved.has("error") and moved.state.party_trail == before.party_trail, "post-move does not fabricate the sync owner's trail head")
+	check(facing.executed == ["rotate_party_trail", "sync_members_from_trail"], "movement executes rotate then sync in original order: " + str(facing.executed))
+	var head: Dictionary = moved.state.party_trail[0]
+	check(head.get("x") == 1024 and head.get("y") == 1024 and head.get("direction_word") == 3
+		and moved.state.party_trail[1].get("x") == 1010,
+		"the sync owner writes the real shifted trail head, not a fabrication")
 	var package = Package.new()
 	if not package.load_package(args[0]): push_error(package.error); quit(2); return
 	var commands = Commands.new(); commands.load_source(package.pal98_sources)

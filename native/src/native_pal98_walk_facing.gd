@@ -18,6 +18,8 @@ const DIRECTION_TABLE_SHA256 = "5418a11928803f449f1bb4b4ca3fe8865c1ebf6c3c30a06d
 var error: String = ""
 ## Every request kind this owner has answered, in order, for host evidence.
 var requests: Array = []
+## The dependent kinds executed by this owner, in order, for host evidence.
+var executed: Array = []
 ## Optional owner for forwarded kinds this movement owner does not execute
 ## (the display family); without it such kinds are refused by name.
 var _fallback = null
@@ -123,10 +125,91 @@ func answer(request: Dictionary) -> Dictionary:
 			dependencies.append("sync_members_from_trail")
 			for kind in dependencies:
 				var child = request.duplicate(true); child.kind = kind; child.state = moved
-				var answer = _forward(child)
+				var answer = _execute_dependent(child)
 				if answer.has("error"): return answer
 				moved = answer.state
 			return {"completed": true, "state": moved}
+		"rotate_party_trail":
+			return _rotate_party_trail(moved)
+		"sync_members_from_trail":
+			return _sync_members_from_trail(moved)
+	return _forward(request)
+
+## The recovered ShiftPartyTrailAndStorePreviousPosition: the five trail
+## entries shift back and the newest entry carries the team direction plus
+## the pre-move world position the caller refreshed.
+func _rotate_party_trail(moved: Dictionary) -> Dictionary:
+	var trail = moved.get("party_trail", [])
+	if not trail is Array or trail.size() != 5:
+		return _failure("rotate_party_trail requires the five-entry party trail")
+	for entry in trail:
+		if not entry is Dictionary: return _failure("party trail entries must be dictionaries")
+	for index in range(4, 0, -1):
+		trail[index] = trail[index - 1].duplicate(true)
+	trail[0] = {"x": moved.globals.get("previous_x", 0), "y": moved.globals.get("previous_y", 0),
+		"direction_word": moved.globals.get("direction_word", 0)}
+	moved.party_trail = trail
+	return {"completed": true, "state": moved}
+
+## The recovered SyncMembersFromTrail position sync. The leader adopts the
+## party-in-viewport position; members adopt their trail position relative to
+## the viewport through the original's probe-rejected fallback (the
+## formation-offset candidate needs the unrecovered G041C/G0434 values, so
+## the receipt names that adaptation); followers adopt trail[follower+2]
+## directly. Frame indices stay untouched: FramesPerDirection is sprite
+## metadata the state does not carry.
+func _sync_members_from_trail(moved: Dictionary) -> Dictionary:
+	var trail = moved.get("party_trail", [])
+	var records = moved.get("party_records", [])
+	if not trail is Array or trail.size() < 3:
+		return _failure("sync_members_from_trail requires the party trail")
+	if not records is Array or records.is_empty():
+		return _failure("sync_members_from_trail requires party records")
+	for entry in trail:
+		if not entry is Dictionary: return _failure("party trail entries must be dictionaries")
+	var globals: Dictionary = moved.globals
+	var viewport_x = globals.get("viewport_x"); var viewport_y = globals.get("viewport_y")
+	if not viewport_x is int or not viewport_y is int:
+		return _failure("sync_members_from_trail requires the viewport words")
+	var member_last = globals.get("member_last")
+	var follower_count = globals.get("follower_count")
+	if not member_last is int or member_last < 0 or not follower_count is int or follower_count < 0:
+		return _failure("sync_members_from_trail requires the explicit member counters")
+	if records[0] is Dictionary:
+		records[0]["screen_x"] = globals.get("party_x", 0)
+		records[0]["screen_y"] = globals.get("party_y", 0)
+	var source: Dictionary = trail[1]
+	var adaptations: Array = []
+	for member_index in range(1, member_last + 1):
+		if member_index >= records.size() or not records[member_index] is Dictionary:
+			return _failure("sync_members_from_trail member slot missing: " + str(member_index))
+		records[member_index]["screen_x"] = _u2_as_i2(source.get("x", 0) - viewport_x)
+		records[member_index]["screen_y"] = _u2_as_i2(source.get("y", 0) - viewport_y)
+		adaptations.append("member %d uses the probe-rejected fallback trail position" % member_index)
+	for follower in range(1, follower_count + 1):
+		var slot: int = member_last + follower
+		var trail_index: int = follower + 2
+		if slot >= records.size() or not records[slot] is Dictionary:
+			return _failure("sync_members_from_trail follower slot missing: " + str(slot))
+		if trail_index >= trail.size() or not trail[trail_index] is Dictionary:
+			return _failure("sync_members_from_trail follower trail missing: " + str(trail_index))
+		records[slot]["screen_x"] = _u2_as_i2(trail[trail_index].get("x", 0) - viewport_x)
+		records[slot]["screen_y"] = _u2_as_i2(trail[trail_index].get("y", 0) - viewport_y)
+	moved.party_records = records
+	moved.party_trail = trail
+	var receipt: Dictionary = {"adaptations": adaptations}
+	return {"completed": true, "state": moved, "sync": receipt}
+
+
+## Dependent kinds execute here for real; only kinds this owner does not
+## implement fall through to the display fallback.
+func _execute_dependent(request: Dictionary) -> Dictionary:
+	executed.append(request.kind)
+	match request.kind:
+		"rotate_party_trail":
+			return _rotate_party_trail(request.state)
+		"sync_members_from_trail":
+			return _sync_members_from_trail(request.state)
 	return _forward(request)
 
 func _forward(request: Dictionary) -> Dictionary:

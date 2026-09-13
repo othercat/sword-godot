@@ -39,7 +39,13 @@ func _initialize() -> void:
 
 	var globals := {"viewport_x": 864, "viewport_y": 912, "party_x": 160, "party_y": 112,
 		"world_x": 1024, "world_y": 1024, "previous_x": 1024, "previous_y": 1024, "direction_word": 0, "walk_phase_word": 0,
-		"leader_frame_offset_word": 0, "party_frame_offset_word": 0}
+		"leader_frame_offset_word": 0, "party_frame_offset_word": 0,
+		"member_last": 0, "follower_count": 0}
+	var frame_state := {"globals": globals,
+		"party_trail": [{"x": 1024, "y": 1024, "direction_word": 0},
+			{"x": 1024, "y": 1024, "direction_word": 0}, {"x": 1024, "y": 1024, "direction_word": 0},
+			{"x": 1024, "y": 1024, "direction_word": 0}, {"x": 1024, "y": 1024, "direction_word": 0}],
+		"party_records": [{"role_id": 0, "screen_x": 160, "screen_y": 112}]}
 
 	# Frame 1: right newly pressed.
 	var direction: Dictionary = input.resolve([0, 0, 0, 2, 0, 0, 0, 0], [0, 1, 2, 3, 4, 5, 6, 7])
@@ -61,10 +67,12 @@ func _initialize() -> void:
 			+ str(faced.state.globals.direction_word))
 	globals = faced.state.globals
 	globals.viewport_x += intent.delta_x; globals.viewport_y += intent.delta_y
-	var post: Dictionary = facing.answer({"kind": "post_move_update", "state": {"globals": globals}})
+	frame_state.globals = globals
+	var post: Dictionary = facing.answer({"kind": "post_move_update", "state": frame_state})
 	check(not post.has("error") and post.state.globals.world_x == 1040
 		and post.state.globals.world_y == 1032,
-		"the recovered world relation moves the party to 1040,1032")
+		"the recovered world relation moves the party to 1040,1032: " + str(post.get("error", ""))
+			+ " world=%s,%s" % [str(post.state.globals.world_x), str(post.state.globals.world_y)])
 	globals = post.state.globals
 
 	# Frame 2: no keys held - the loop prepares no movement.
