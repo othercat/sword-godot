@@ -54,6 +54,13 @@ class SplitDisplay:
 			var answer: Dictionary = {"completed": true, "render": rendered.receipt}
 			if request.get("state") is Dictionary: answer.state = request.state.duplicate(true)
 			return answer
+		if request.kind == "clear_effective_cross_fade" and renderer != null:
+			var prepared: Dictionary = renderer.prepare_clear_cross_fade(
+				request.get("state", {}), request.get("first", 0), request.get("second", 0))
+			if prepared.has("error"): return prepared
+			var answer: Dictionary = {"completed": true, "cross_fade": prepared.receipt}
+			if request.get("state") is Dictionary: answer.state = request.state.duplicate(true)
+			return answer
 		if request.kind == "restore_dialog_background" and renderer != null:
 			var restored: Dictionary = renderer.restore_dialog_background()
 			if restored.has("error"): return restored
@@ -252,8 +259,15 @@ func _initialize() -> void:
 		"the cold display palette is byte-identical to the admitted day variant")
 	var split: SplitDisplay = driver.enter_driver.split
 	var doubled: Array = split.doubled
-	check(doubled.has("play_midi") and not doubled.has("restore_dialog_background"),
-		"the dialog restore is real; the remaining kinds stay named doubles: " + str(doubled))
+	check(doubled.has("play_midi") and not doubled.has("restore_dialog_background")
+		and not doubled.has("clear_effective_cross_fade"),
+		"the dialog restore and cross-fade clear are real; the remaining kinds stay named doubles: "
+			+ str(doubled))
+	var fades: Array = split.renderer.receipts().filter(func(receipt): return receipt.kind == "clear_effective_cross_fade")
+	check(fades.size() >= 1 and fades[0].pixels_per_lane == 0x29AC and fades[0].phases > 0
+		and fades[0].post_render.get("frame_sha256") is String,
+		"the cross-fade clear prepares two real renders with the recovered lane parameters: "
+			+ str(fades.size()))
 	var restores: Array = split.renderer.receipts().filter(func(receipt): return receipt.kind == "restore_dialog_background")
 	check(not restores.is_empty()
 		and restores[0].frame_sha256 == split.renderer.receipts()[0].frame_sha256,

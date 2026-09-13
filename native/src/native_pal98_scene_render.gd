@@ -99,6 +99,27 @@ func render(state: Dictionary, palette_index: int = 0, palette_variant: int = 0)
 	return {"completed": true, "rgba": frame_buffer, "width": WIDTH, "height": HEIGHT,
 		"receipt": receipt}
 
+## The 0x0073 clear-effective-cross-fade preparation (original entry
+## 0x0041CEC4, non-battle branch): render the current map background, record
+## the prepared lane parameters (0x29AC pixels per lane, effective phases with
+## the 0 defaulting to 88) and render the post-fade background. The per-lane
+## fade animation itself is presentation; the renders and parameters here are
+## the headless-verifiable preparation.
+func prepare_clear_cross_fade(state: Dictionary, first: int, second: int) -> Dictionary:
+	var before: int = _renders.size()
+	var rendered: Dictionary = render(state)
+	if rendered.has("error"): return rendered
+	var phases: int = 88 if first == 0 else first
+	var prepared: Dictionary = {"kind": "clear_effective_cross_fade",
+		"phases": phases, "delay": second, "pixels_per_lane": 0x29AC,
+		"pre_render": rendered.receipt}
+	_renders.append(prepared)
+	var after: Dictionary = render(state)
+	if after.has("error"): return after
+	prepared.post_render = after.receipt
+	prepared.renders_before = before
+	return {"completed": true, "receipt": prepared.duplicate(true)}
+
 ## The 0x008E dialog-background restore: the dialog box was drawn over the
 ## last flattened background, so the restore re-establishes exactly that
 ## frame. With no rendered frame yet there is nothing to restore and the
