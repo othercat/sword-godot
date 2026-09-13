@@ -202,7 +202,11 @@ const PLAY_MIDI_TRACK = "play_midi" # PlayMidiTrack 0x0041D26C
 const CLEAR_EFFECTIVE_CROSS_FADE = "clear_effective_cross_fade" # 0x0041CEC4
 const PLAY_SOUND_EFFECT = "play_sound_effect" # PlaySoundEffectIfEnabled 0x0041D284
 const CAPTURE_DIALOG_BACKGROUND = "capture_dialog_background" # 0x0041D29C
-const UPPER_DIALOG_LAYOUT = "upper_dialog_layout" # 0x0041D44C, identity not established
+# 0x0041D44C is recovered as DrawCenteredRgmSprite (PAL98_DRAW_CENTERED_RGM_
+# SPRITE_STAGE_OPINION.md): centered position math from the RGM.MKF chunk and
+# the object image index. The upper-window container's full multi-frame
+# layout, this call site's ByRef argument binding and the putp pixels stay open.
+const UPPER_DIALOG_LAYOUT = "upper_dialog_layout"
 const STOP_CD_OR_MUSIC = "stop_cd_or_music" # 0x0041D254, identity inferred from its call site
 const QUERY_CD_TRACK_PLAYING = "query_cd_track_playing" # 0x0041D224, identity inferred from its call site
 const FADE_TO_BLACK = "fade_palette_to_black" # 0x0041CDD4
@@ -438,8 +442,10 @@ func _command_003C(state: Dictionary, request: Dictionary, source: Dictionary) -
 		effect.title_x = 80; effect.origin_x = 96
 		effect.capture_gate = dialogue.capture_gate
 		result.requests = requests
-		result.unimplemented.append({"sub_effect": "0x0041D44C upper-dialog call identity",
-			"status": "not_implemented"})
+		result.unimplemented.append({"sub_effect": "0x0041D44C DrawCenteredRgmSprite upper-dialog call",
+			"status": "not_implemented",
+			"recovered": "centered position math",
+			"open": "container multi-frame layout, ByRef argument binding, putp pixels"})
 	result.effects[0].colour_word = state.globals.get("dialog_colour_word")
 	return _write_positive_colour(result, state, request, source)
 
