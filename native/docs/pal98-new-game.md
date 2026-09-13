@@ -14,13 +14,18 @@ executor, scene renderer, the movement owner with the real member executor
   a cold-installed display palette. The RNG seed is a required argument (the
   original new-game seed is unobserved); the zeroed trail is the named Native
   representation of the original's uninitialized walk trail.
-- `begin()` drives the real reload/enter chain. The intro runs scene 1's own
-  entry, which requests scene 2; the chain loads MAP20 and MAP12, renders
-  both backgrounds through the real pass and rests on scene 2 awaiting a real
-  player. A further scene entry stops the intro by name instead of inventing
-  player input. Display routing is real: palette family through the display
-  executor, capture/restore through the shared indexed page owner, map
-  backgrounds through the renderer.
+- `begin(confirm_gated)` runs the real reload/enter chain. Non-gated (the
+  default), the intro auto-answers its dialogues through the real host. With
+  `confirm_gated` the intro parks on each page-text draw (`draw_string`);
+  a player confirm — a new press on the bound confirm slot delivered through
+  `tick` — advances that one real dialogue through the dialogue host and the
+  chain continues to the next page. The capture/restore/box/glyph sub-effects
+  and waits are not player pages. Gating the page on its text draw is a named
+  Native reading: the original confirm gate point is not decoded. A further
+  scene entry stops the intro by name instead of inventing player input.
+  Display routing is real: palette family through the display executor,
+  capture/restore through the shared indexed page owner, map backgrounds
+  through the renderer.
 - `bind_key_map(map, layer_base)` forwards the host input configuration to
   the input frame; `tick(key_levels)` rebinds the collision probe to the
   current map/events and runs one production logic tick.

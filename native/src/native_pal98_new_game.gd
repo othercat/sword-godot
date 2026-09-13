@@ -60,6 +60,10 @@ var input
 var enters_seen: Array = []
 var terminals: Array = []
 var awaiting_player := false
+var awaiting_confirm := false
+var _confirm_gated := false
+var _pending_dialogue: Dictionary = {}
+var _active_enter_request: Dictionary = {}
 var _palette: Palette
 var _doubles: Dictionary = {}
 var _roles_snapshot: Array = []
@@ -92,11 +96,12 @@ func bind_runtime(runtime) -> bool:
 
 ## The eight-slot G0854-style logical key map and the T209 layer base word
 ## come from the host input configuration; the original default map is not
-## decoded yet, so the host must pass one explicitly.
-func bind_key_map(logical_map: Array, layer_base: int) -> bool:
+## decoded yet, so the host must pass one explicitly. confirm_slot: the
+## optional logical slot whose new press confirms a parked dialogue page.
+func bind_key_map(logical_map: Array, layer_base: int, confirm_slot: int = -1) -> bool:
 	if input == null:
 		error = "pal98-new-game: the input frame is not assembled"; return false
-	return input.bind(facing, probe, logical_map, layer_base)
+	return input.bind(facing, probe, logical_map, layer_base, confirm_slot)
 
 func open(package) -> bool:
 	if package == null or package.pal98_sources == null or package.pal98_graphics == null:
@@ -188,17 +193,27 @@ func new_state(seed: int) -> Dictionary:
 
 ## Runs the real reload/enter chain until it rests on the entry's own next
 ## scene; a further scene entry stops the intro as awaiting_player instead of
-## inventing player input.
-func begin() -> Dictionary:
-	error = ""; awaiting_player = false; enters_seen = []
+## inventing player input. With `confirm_gated` the intro's dialogue requests
+## park instead of auto-advancing: each player confirm (a new press on the
+## bound confirm slot, delivered through `tick`) advances one real dialogue
+## through the dialogue host and the chain continues to the next page.
+func begin(confirm_gated := false) -> Dictionary:
+	error = ""; awaiting_player = false; awaiting_confirm = false
+	_confirm_gated = confirm_gated
+	_pending_dialogue = {}; _active_enter_request = {}
+	enters_seen = []
 	var step: Dictionary = reload.start(state, cache)
+	return _drive_reload(step)
+
+func _drive_reload(step: Dictionary) -> Dictionary:
 	for guard in range(32768):
 		if step.has("error"): return _failure(str(step.error))
 		if step.get("state") is Dictionary:
 			state = step.state
 			_refresh_roles(); _rebind_probe()
 			return {"completed": true, "state": state.duplicate(true), "trace": step.get("trace", []),
-				"enters": enters_seen.duplicate(), "awaiting_player": awaiting_player}
+				"enters": enters_seen.duplicate(), "awaiting_player": awaiting_player,
+				"awaiting_confirm": false}
 		if not step.has("request"): return _failure("reload stopped without a terminal state")
 		var request: Dictionary = step.request
 		match request.kind:
@@ -211,9 +226,16 @@ func begin() -> Dictionary:
 				if enters_seen.size() > 2:
 					awaiting_player = true
 					return _await_player(step, request)
-				var run: Dictionary = _run_entry(request)
+				_active_enter_request = request
+				var run: Dictionary = _drive_entry(enter.start(request.state, request.scene_id,
+					request.entry, request.event_id))
 				if run.has("error"): return _failure("reload enter: " + str(run.error))
-				step = reload.resume(request.id, run)
+				if run.get("parked"):
+					return {"completed": false, "awaiting_confirm": true, "advanced": false,
+						"state": state.duplicate(true), "enters": enters_seen.duplicate(),
+						"pending_effect": str(_pending_dialogue.get("effect", {}).get("kind", ""))}
+				step = reload.resume(request.id, {"state": run.state,
+					"return_entry": run.get("return_entry", 0)})
 			"play_midi":
 				var answered: Dictionary = _named(request.kind, request)
 				if answered.has("error"): return _failure(str(answered.error))
@@ -235,16 +257,39 @@ func _await_player(step: Dictionary, request: Dictionary) -> Dictionary:
 		"enters": enters_seen.duplicate(), "stopped_request": request.kind}
 
 ## One player input tick on the resting state through the production input
-## frame; the collision probe rebinds to the current map and events first.
+## frame; the collision probe rebinds to the current map and events first. A
+## confirm press on the bound slot advances a parked intro dialogue through
+## the real dialogue host — the production input tick is the only path.
 func tick(key_levels) -> Dictionary:
 	_rebind_probe()
 	var ticked: Dictionary = input.tick(state, key_levels)
 	if ticked.has("error"): return _failure(str(ticked.error))
 	state = ticked.state
-	return ticked
+	var out: Dictionary = ticked
+	if ticked.get("confirm", false) and awaiting_confirm:
+		var advanced: Dictionary = _confirm_advance()
+		if advanced.has("error"): return _failure(str(advanced.error))
+		out["confirm_advanced"] = true
+		out["state"] = state
+	out["awaiting_confirm"] = awaiting_confirm
+	return out
 
-func _run_entry(request: Dictionary) -> Dictionary:
-	var result: Dictionary = enter.start(request.state, request.scene_id, request.entry, request.event_id)
+func _confirm_advance() -> Dictionary:
+	var pending: Dictionary = _pending_dialogue
+	_pending_dialogue = {}; awaiting_confirm = false
+	var event: Dictionary = dialogue_host.answer(pending.effect)
+	if event.has("error"): return _failure("dialogue host: " + str(event.error))
+	var result: Dictionary = enter.resume(pending.id, {"event": event})
+	var run: Dictionary = _drive_entry(result)
+	if run.has("error"): return _failure(str(run.error))
+	if run.get("parked"):
+		return {"completed": true, "awaiting_confirm": true}
+	var step: Dictionary = reload.resume(_active_enter_request.id,
+		{"state": run.state, "return_entry": run.get("return_entry", 0)})
+	var done: Dictionary = _drive_reload(step)
+	return done
+
+func _drive_entry(result: Dictionary) -> Dictionary:
 	for guard in range(16384):
 		if result.has("error"): return {"error": str(result.error)}
 		if not result.has("request"):
@@ -252,6 +297,15 @@ func _run_entry(request: Dictionary) -> Dictionary:
 			return {"state": result.state, "return_entry": result.get("return_entry", 0)}
 		var pending: Dictionary = result.request
 		if pending.kind == "dialogue":
+			if _confirm_gated and pending.get("effect", {}).get("kind") == "draw_string":
+				# Park: the page advances only on a player confirm through tick.
+				# The gate sits on the page-text draw; the capture/restore/box/
+				# glyph sub-effects and the waits are not player pages. Gating
+				# the page on its text draw is a named Native reading — the
+				# original confirm gate point is not decoded.
+				_pending_dialogue = pending
+				awaiting_confirm = true
+				return {"parked": true}
 			var event: Dictionary = dialogue_host.answer(pending.effect)
 			if event.has("error"): return {"error": "dialogue host: " + str(event.error)}
 			result = enter.resume(pending.id, {"event": event})

@@ -60,16 +60,34 @@ func _initialize() -> void:
 	if not game.error.is_empty(): finish(args); return
 	game.bind_clock(ReplayClock.new())
 	game.bind_runtime(ReplayRuntime.new())
-	game.bind_key_map([0, 1, 2, 3, 4, 5, 6, 7], 0)
+	game.bind_key_map([0, 1, 2, 3, 4, 5, 6, 7, 8], 0, 8)
 	var begun: Dictionary = game.new_state(0x12345)
 	if begun.has("error"): check(false, str(begun.error)); finish(args); return
-	begun = game.begin()
-	check(not begun.has("error") and begun.get("enters", []) == [1, 2],
-		"the ordinary intro rests on the entry's own next scene: " + str(begun.get("error", begun.get("enters", []))))
-	if begun.has("error"): finish(args); return
-	var resting: Dictionary = begun.state.globals
-	check(resting.current_scene == 2 and resting.loaded_map_id == 12,
-		"the ordinary entry rests on scene 2 with MAP12 loaded")
+	begun = game.begin(true)
+	check(not begun.has("error") and begun.get("awaiting_confirm") == true
+		and begun.get("enters", []) == [1],
+		"the gated intro parks on its first dialogue page: " + str(begun.get("error", begun)))
+	if not begun.get("awaiting_confirm", false): finish(args); return
+	# Every player confirm is a new press on the bound confirm slot delivered
+	# through the production input tick; each one advances one real dialogue
+	# page through the dialogue host until the intro rests on scene 2.
+	var confirm_press: PackedInt32Array = PackedInt32Array([0, 0, 0, 0, 0, 0, 0, 0, 2])
+	var advances := 0
+	var done: Dictionary = {}
+	for press in range(128):
+		var ticked: Dictionary = game.tick(confirm_press)
+		if ticked.has("error"): check(false, "confirm tick failed: " + str(ticked.error)); finish(args); return
+		if ticked.get("confirm_advanced", false): advances += 1
+		if not ticked.get("awaiting_confirm", true):
+			done = ticked
+			break
+	check(advances > 0 and not done.is_empty(),
+		"player confirms advanced %d real dialogue pages through the production tick" % advances)
+	_confirm_advances = advances
+	check(done.get("state", {}).get("globals", {}).get("current_scene") == 2
+		and done.state.globals.loaded_map_id == 12,
+		"the confirmed intro rests on scene 2 with MAP12 loaded")
+	var resting: Dictionary = done.state.globals
 
 	var root = Window.new(); root.size = Vector2i(560, 400)
 	root.title = "PAL Wanxiang | ordinary original new game (probe)"
@@ -151,7 +169,7 @@ func finish(args: Array) -> void:
 	var file = FileAccess.open(args[3], FileAccess.WRITE)
 	file.store_string(JSON.stringify({"success": failed == 0, "failed": failed, "checks": checks,
 		"original_gameplay": false, "window_probe": true, "injected_logical_input": true,
-		"composition_gap": _composition_gap,
+		"composition_gap": _composition_gap, "confirm_advances": _confirm_advances,
 		"world_x": game_state_world_x(), "world_y": game_state_world_y()}, "\t")); file.close()
 	print("Ordinary entry window probe: ", checks.size(), " checks, ", failed, " failed")
 	quit(0 if failed == 0 else 1)
@@ -164,3 +182,4 @@ func game_state_world_y() -> int:
 
 var _world: Dictionary = {}
 var _composition_gap: String = ""
+var _confirm_advances: int = 0

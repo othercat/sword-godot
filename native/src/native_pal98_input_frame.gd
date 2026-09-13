@@ -24,6 +24,7 @@ var _probe = null
 var _logical_map: Array = []
 var _layer_base: int = 0
 var _events = null
+var _confirm_slot: int = -1
 
 func _failure(message: String) -> Dictionary:
 	error = "pal98-input-frame: " + message
@@ -33,9 +34,13 @@ static func _i2(value) -> bool:
 	return typeof(value) == TYPE_INT and value >= -32768 and value <= 32767
 
 ## facing: the movement owner with the member executor bound; probe: the
-## two-level collision owner; logical_map: the eight-entry G0854 slot map;
-## layer_base: the explicit T209 layer base word.
-func bind(facing, probe, logical_map: Array, layer_base: int) -> bool:
+## two-level collision owner; logical_map: the eight-entry G0854 slot map
+## (nine or more when a confirm slot is bound); layer_base: the explicit T209
+## layer base word. confirm_slot: the logical slot (index into logical_map)
+## whose new press means the player's confirm; the original confirm mapping
+## is not decoded, so the host binds it explicitly and -1 keeps the tick
+## direction-only.
+func bind(facing, probe, logical_map: Array, layer_base: int, confirm_slot: int = -1) -> bool:
 	if facing == null or not facing.has_method("answer"):
 		error = "pal98-input-frame: the movement owner is required"; return false
 	if probe == null or not probe.has_method("probe"):
@@ -44,8 +49,11 @@ func bind(facing, probe, logical_map: Array, layer_base: int) -> bool:
 		error = "pal98-input-frame: the logical key map requires eight slots"; return false
 	if not _i2(layer_base):
 		error = "pal98-input-frame: the T209 layer base requires an I2"; return false
+	if confirm_slot >= 0 and confirm_slot >= logical_map.size():
+		error = "pal98-input-frame: the confirm slot must index the logical key map"; return false
 	_facing = facing; _probe = probe; _logical_map = logical_map.duplicate()
-	_layer_base = layer_base; _input = DirectionInput.new(); error = ""; return true
+	_layer_base = layer_base; _confirm_slot = confirm_slot
+	_input = DirectionInput.new(); error = ""; return true
 
 ## Optional T213 side: the scene-events storage. Rebind after the scene or
 ## its events change; an unbound storage publishes party requests only.
@@ -65,6 +73,14 @@ func tick(state: Dictionary, key_levels) -> Dictionary:
 	if resolved.has("error"): return _failure(str(resolved.error))
 	var direction_x: int = resolved.direction_x
 	var direction_y: int = resolved.direction_y
+	# The bound confirm slot is a new-press/held level on the same key-state
+	# table; the tick reports it so the host can gate dialogue advances on it.
+	var confirm := false
+	if _confirm_slot >= 0:
+		var mapped: int = _logical_map[_confirm_slot]
+		if mapped >= 0 and mapped < key_levels.size():
+			var level = key_levels[mapped]
+			confirm = typeof(level) == TYPE_INT and level >= 2
 	var moving := false
 	var next_state: Dictionary = state
 	if direction_x != 0 or direction_y != 0:
@@ -112,5 +128,6 @@ func tick(state: Dictionary, key_levels) -> Dictionary:
 		if events.has("error"): return _failure(str(events.error))
 		requests += events.value
 	return {"completed": true, "state": final, "requests": requests, "input_move": moving,
+		"confirm": confirm,
 		"receipt": {"kind": "input_frame_tick", "direction": [direction_x, direction_y],
-			"moved": moving}}
+			"moved": moving, "confirm": confirm}}
