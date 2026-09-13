@@ -29,7 +29,10 @@ func _state() -> Dictionary:
 		"fade_gate_word": 0, "member_last": 0, "follower_count": 0, "trigger_success_word": 0,
 		"party_x": 160, "party_y": 112, "viewport_x": 864, "viewport_y": 912,
 		"world_x": 1024, "world_y": 1024, "previous_x": 1024, "previous_y": 1024,
-		"previous_viewport_x": 864, "previous_viewport_y": 912, "direction_word": 0}}
+		"previous_viewport_x": 864, "previous_viewport_y": 912, "direction_word": 0},
+		"party_trail": [{"x": 1024, "y": 1024, "direction_word": 0},
+			{"x": 1024, "y": 1024, "direction_word": 0}, {"x": 1024, "y": 1024, "direction_word": 0},
+			{"x": 1024, "y": 1024, "direction_word": 0}, {"x": 1024, "y": 1024, "direction_word": 0}]}
 
 func _drive(commands, facing, state: Dictionary, words: Array) -> Dictionary:
 	var run: Dictionary = commands.consume(state, {"words": words, "entry": 1, "event_id": 0})
@@ -68,6 +71,29 @@ func _initialize() -> void:
 	check(mapping_ok, "the sign-combo mapping matches the decoded direction table")
 	check(facing.face(0, 0).get("unchanged") == true,
 		"a zero delta writes no direction, like the original index-4 case")
+
+	# The recovered PostMoveUpdate: U2 world relation, movement-driven phase
+	# and frame offsets, and the pre-move world into the newest trail entry.
+	var mover = Facing.new()
+	var mstate: Dictionary = _state()
+	mstate.globals.viewport_x = 65500
+	var request: Dictionary = {"kind": "post_move_update", "state": mstate}
+	var moved: Dictionary = mover.answer(request)
+	check(not moved.has("error") and moved.state.globals.world_x == 124
+		and moved.state.globals.world_y == 1024,
+		"the world relation wraps through U2 like the recovered body: %d,%d"
+			% [moved.state.globals.world_x, moved.state.globals.world_y])
+	check(moved.state.globals.walk_phase_word == 1 and moved.state.globals.leader_frame_offset_word == 1
+		and moved.state.globals.party_frame_offset_word == 2,
+		"a movement step advances the WalkPhase and frame offsets")
+	check(moved.state.party_trail[0].x == 1024 and moved.state.party_trail[0].y == 1024,
+		"the newest trail entry carries the pre-move world")
+	var moved2: Dictionary = mover.answer({"kind": "post_move_update", "state": moved.state})
+	check(moved2.state.globals.walk_phase_word == 2 and moved2.state.globals.leader_frame_offset_word == 0,
+		"the second movement step lands on the even phase with zero offsets")
+	var still: Dictionary = mover.answer({"kind": "post_move_update", "state": moved2.state})
+	check(still.state.globals.walk_phase_word == 0 and still.state.globals.leader_frame_offset_word == 0,
+		"a stationary step folds the phase back to zero")
 
 	# Open boundary, named: with the decoded extf table plus the reviewed
 	# world relation (world = viewport + anchor), real script walks do not yet

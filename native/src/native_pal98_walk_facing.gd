@@ -22,6 +22,10 @@ func _failure(message: String) -> Dictionary:
 	error = "pal98-walk-facing: " + message
 	return {"error": error}
 
+func _u2(value) -> int:
+	if value is bool or not value is int or value < 0 or value > 65535: return 0
+	return value
+
 ## The decoded extf core: returns {"direction": word} for a facing change, or
 ## {"unchanged": true} when both deltas are zero (the original writes nothing).
 func face(delta_x: int, delta_y: int) -> Dictionary:
@@ -57,12 +61,48 @@ func answer(request: Dictionary) -> Dictionary:
 				moved.globals = globals
 			return {"completed": true, "state": moved}
 		"post_move_update":
+			# The recovered PostMoveUpdate body: world = U2(party-in-viewport +
+			# viewport) per axis, then movement detection against the previous
+			# world words drives the WalkPhase/frame-offset pair, and the newest
+			# trail entry carries the direction plus the pre-move world.
 			var world_x = globals.get("viewport_x"); var party_x = globals.get("party_x")
 			var world_y = globals.get("viewport_y"); var party_y = globals.get("party_y")
 			if not world_x is int or not party_x is int or not world_y is int or not party_y is int:
 				return _failure("post_move_update requires the explicit viewport and party words")
-			globals.world_x = world_x + party_x
-			globals.world_y = world_y + party_y
+			var new_x: int = (world_x + party_x) & 0xFFFF
+			var new_y: int = (world_y + party_y) & 0xFFFF
+			var previous_x = globals.get("previous_x", new_x)
+			var previous_y = globals.get("previous_y", new_y)
+			if not previous_x is int or not previous_y is int:
+				return _failure("post_move_update requires the explicit previous world words")
+			var phase: int = _u2(globals.get("walk_phase_word", 0))
+			var leader_offset: int = _u2(globals.get("leader_frame_offset_word", 0))
+			var party_offset: int = _u2(globals.get("party_frame_offset_word", 0))
+			if new_x != previous_x or new_y != previous_y:
+				phase = (phase + 1) & 3
+				if (phase & 1) == 0:
+					leader_offset = 0; party_offset = 0
+				else:
+					leader_offset = (phase + 1) / 2
+					party_offset = 3 - leader_offset
+			else:
+				leader_offset = 0; party_offset = 0
+				phase = (phase & 2) ^ 2
+			globals.world_x = new_x
+			globals.world_y = new_y
+			globals.walk_phase_word = phase
+			globals.leader_frame_offset_word = leader_offset
+			globals.party_frame_offset_word = party_offset
+			# The walk body's loop head copies the world into the previous words
+			# before each step, so the next comparison sees exactly this step's
+			# delta and the trail carries the pre-move world.
+			globals.previous_x = new_x
+			globals.previous_y = new_y
+			var trail = moved.get("party_trail", [])
+			if trail is Array and trail.size() > 0 and trail[0] is Dictionary:
+				trail[0] = {"x": previous_x, "y": previous_y,
+					"direction_word": globals.get("direction_word", 0)}
+				moved.party_trail = trail
 			moved.globals = globals
 			return {"completed": true, "state": moved}
 	if request.kind in ACKED_KINDS:
