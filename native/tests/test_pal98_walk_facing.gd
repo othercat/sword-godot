@@ -95,26 +95,35 @@ func _initialize() -> void:
 	check(still.state.globals.walk_phase_word == 0 and still.state.globals.leader_frame_offset_word == 0,
 		"a stationary step folds the phase back to zero")
 
-	# Open boundary, named: with the decoded extf table plus the reviewed
-	# world relation (world = viewport + anchor), real script walks do not yet
-	# close — even a same-quadrant diagonal target stops on the step budget,
-	# because the recovered direction table's Y component faces away from the
-	# target for two quadrants. Closing this needs the recovered
-	# PostMoveUpdate (0x0041D2CC) body or the original step-table values; the
-	# coverage scan keeps the reviewed facing approximation until then.
-	var state: Dictionary = _state()
-	var run: Dictionary = _drive(commands, facing, state,
-		[0x0070, 34, 62, 0])
-	check(run.has("error") and "step budget" in str(run.error),
-		"the decoded facing alone leaves real walks open on the named budget: "
-			+ str(run.get("error", "")))
-
-	# An axis-aligned residue cannot close with any 2:1 diagonal facing rule;
-	# the walk stops on the named step budget instead of pretending to arrive.
-	var off: Dictionary = _state()
-	var bad: Dictionary = _drive(commands, facing, off, [0x0070, 1, 0, 0])
-	check(bad.has("error") and "step budget" in str(bad.error),
-		"an axis-aligned target exposes the open world-relation boundary by name: true")
+	# Walk closure: with the corrected G0464 pairing, every lattice walk lands
+	# exactly on its tile-derived target at every speed. The step-table signs
+	# are derived, not guessed: of the 24 possible sign assignments, exactly
+	# one closes the decoded extf loop on all isometric lattice states.
+	var converged: int = 0; var broken: int = 0
+	var broken_sample: String = ""
+	for arg0 in range(-4, 5):
+		for arg1 in range(-4, 5):
+			for arg2 in range(0, 2):
+				for speed in [2, 4, 8]:
+					var encoded: Array = [0x0070,
+						(arg0 + 65536) & 0xFFFF, (arg1 + 65536) & 0xFFFF, (arg2 + 65536) & 0xFFFF]
+					var state: Dictionary = _state()
+					var run: Dictionary = _drive(commands, facing, state, encoded)
+					var target_x: int = (arg0 * 2 + arg2) * 16
+					var target_y: int = (arg1 * 2 + arg2) * 8
+					var at: bool = not run.has("error") \
+						and run.state.globals.world_x == target_x \
+						and run.state.globals.world_y == target_y
+					if run.has("error"):
+						broken += 1
+						if broken_sample.is_empty(): broken_sample = str(run.error) + " args=%d,%d,%d s=%d world=%d,%d" % [arg0, arg1, arg2, speed, run.state.globals.world_x, run.state.globals.world_y]
+					elif at: converged += 1
+					else:
+						broken += 1
+						if broken_sample.is_empty(): broken_sample = "world %d,%d" % [run.state.globals.world_x, run.state.globals.world_y]
+	check(broken == 0,
+		"every lattice walk lands exactly on its tile-derived target: %d broken %s" % [broken, broken_sample])
+	check(converged == 486, "all 486 lattice/speed walks converge: %d" % converged)
 
 	# The owner refuses foreign kinds instead of acknowledging them.
 	var foreign: Dictionary = facing.answer({"kind": "play_midi"})

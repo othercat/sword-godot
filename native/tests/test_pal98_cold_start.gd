@@ -54,34 +54,6 @@ class SplitDisplay:
 ## has no body in PAL.EXE): face the delta quadrant, then recompute the world
 ## position from the viewport plus the party anchor. Other forwarded kinds go
 ## to the display router with the ByRef state round-trip preserved.
-class WalkDouble:
-	var display
-	var _flip: bool = true
-	func _init(display_owner) -> void:
-		display = display_owner
-	func answer(request: Dictionary) -> Dictionary:
-		var state: Dictionary = request.get("state", {})
-		if request.kind in ["face_party_toward", "post_move_update", "sync_members_from_trail",
-				"start_frame_and_process_events", "update_viewport_and_party_position", "render_scene_frame"]:
-			var moved: Dictionary = state.duplicate(true)
-			var globals: Dictionary = moved.get("globals", {})
-			match request.kind:
-				"face_party_toward":
-					var dx: int = request.get("delta_x", 0); var dy: int = request.get("delta_y", 0)
-					var x_positive: bool = dx > 0 if dx != 0 else _flip
-					var y_positive: bool = dy > 0 if dy != 0 else _flip
-					_flip = not _flip
-					if x_positive: globals.direction_word = 2 if y_positive else 3
-					else: globals.direction_word = 0 if y_positive else 1
-				"post_move_update":
-					globals.world_x = globals.viewport_x + globals.party_x
-					globals.world_y = globals.viewport_y + globals.party_y
-			return {"completed": true, "state": moved}
-		var answer: Dictionary = display.answer(request)
-		if not answer.has("error") and not answer.has("state") and state is Dictionary:
-			answer.state = state.duplicate(true)
-		return answer
-
 ## Binds the real Enter chain with the real palette display executor. The cold
 ## display palette is installed before any fade runs, with a receipt.
 class EnterDriver:
@@ -108,7 +80,9 @@ class EnterDriver:
 		if installed.has("error"): push_error(str(installed.error))
 		split = SplitDisplay.new(executor)
 		adapter.bind_display(split)
-		adapter.bind_movement(WalkDouble.new(split))
+		var facing = load("res://src/native_pal98_walk_facing.gd").new()
+		facing.bind_fallback(split)
+		adapter.bind_movement(facing)
 		dialogue_host = DialogueHost.new(); dialogue_host.bind(package.pal98_sources)
 	func run(state: Dictionary, scene_id: int, entry: int, event_id: int) -> Dictionary:
 		var result: Dictionary = enter.start(state, scene_id, entry, event_id)

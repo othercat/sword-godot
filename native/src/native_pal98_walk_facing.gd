@@ -17,6 +17,14 @@ const ACKED_KINDS = ["sync_members_from_trail", "start_frame_and_process_events"
 	"update_viewport_and_party_position", "render_scene_frame"]
 
 var error: String = ""
+## Every request kind this owner has answered, in order, for host evidence.
+var requests: Array = []
+## Optional owner for forwarded kinds this movement owner does not execute
+## (the display family); without it such kinds are refused by name.
+var _fallback = null
+
+func bind_fallback(owner) -> void:
+	_fallback = owner
 
 func _failure(message: String) -> Dictionary:
 	error = "pal98-walk-facing: " + message
@@ -25,6 +33,11 @@ func _failure(message: String) -> Dictionary:
 func _u2(value) -> int:
 	if value is bool or not value is int or value < 0 or value > 65535: return 0
 	return value
+
+## The original stores the wrapped sum into a 16-bit field and reads it back
+## as a signed Integer: U2 storage with an I2 read-back.
+func _u2_as_i2(raw: int) -> int:
+	return ((raw + 32768) & 0xFFFF) - 32768
 
 ## The decoded extf core: returns {"direction": word} for a facing change, or
 ## {"unchanged": true} when both deltas are zero (the original writes nothing).
@@ -45,6 +58,7 @@ func face(delta_x: int, delta_y: int) -> Dictionary:
 func answer(request: Dictionary) -> Dictionary:
 	if not request is Dictionary or not request.get("kind") is String:
 		return _failure("owner request shape")
+	requests.append(request.kind)
 	var state: Dictionary = request.get("state", {})
 	if not state is Dictionary: return _failure("movement request requires the pending state")
 	var moved: Dictionary = state.duplicate(true)
@@ -69,8 +83,8 @@ func answer(request: Dictionary) -> Dictionary:
 			var world_y = globals.get("viewport_y"); var party_y = globals.get("party_y")
 			if not world_x is int or not party_x is int or not world_y is int or not party_y is int:
 				return _failure("post_move_update requires the explicit viewport and party words")
-			var new_x: int = (world_x + party_x) & 0xFFFF
-			var new_y: int = (world_y + party_y) & 0xFFFF
+			var new_x: int = _u2_as_i2(world_x + party_x)
+			var new_y: int = _u2_as_i2(world_y + party_y)
 			var previous_x = globals.get("previous_x", new_x)
 			var previous_y = globals.get("previous_y", new_y)
 			if not previous_x is int or not previous_y is int:
@@ -107,4 +121,9 @@ func answer(request: Dictionary) -> Dictionary:
 			return {"completed": true, "state": moved}
 	if request.kind in ACKED_KINDS:
 		return {"completed": true, "state": moved}
+	if _fallback != null and _fallback.has_method("answer"):
+		var forwarded: Dictionary = _fallback.answer(request)
+		if not forwarded.has("error") and not forwarded.has("state") and state is Dictionary:
+			forwarded.state = state.duplicate(true)
+		return forwarded
 	return _failure("not a walk facing request: " + str(request.kind))

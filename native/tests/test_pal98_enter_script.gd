@@ -13,6 +13,7 @@ const Random = preload("res://src/native_pal98_fixed_random.gd")
 const Sources = preload("res://src/native_pal98_sources.gd")
 const Schema = preload("res://src/native_schema.gd")
 const Package = preload("res://src/native_package.gd")
+const WalkFacing = preload("res://src/native_pal98_walk_facing.gd")
 const EntryHost = preload("res://src/native_pal98_entry_host.gd")
 const DialogueHost = preload("res://src/native_pal98_dialogue_host.gd")
 const Inventory = preload("res://src/native_pal98_inventory.gd")
@@ -687,12 +688,12 @@ func _synthetic_checks() -> void:
 	walk_kernel.read_tables(package.pal98_sources.copy_chunk("data", 3),
 		package.pal98_sources.copy_chunk("sss", 2), package.pal98_sources.copy_chunk("sss", 4))
 	walk_adapter.bind(walk_cache, walk_kernel, walk_state.inventory_bytes, [0, 0, 0, 0, 0, 0])
-	var walk_double = WalkDouble.new()
-	walk_adapter.bind_movement(walk_double)
-	walk_adapter.bind_display(DisplayDouble.new())
+	var walk_display = DisplayDouble.new()
+	walk_adapter.bind_display(walk_display)
+	var walk_facing = WalkFacing.new()
+	walk_facing.bind_fallback(walk_display)
+	walk_adapter.bind_movement(walk_facing)
 	var walk_run = _drive_with_host(walk_owner, walk_owner.start(walk_state, 1, 1), walk_adapter)
-	print("walk debug kinds(first12)=", (walk_double.requests.slice(0, 12) if walk_double.requests.size() > 0 else []),
-		" total=", walk_double.requests.size(), " log=", walk_double.log)
 	var walk_effects: Array = walk_run.result.get("effects", [])
 	check(not walk_run.result.has("error"), "the party walk completes: " + str(walk_run.result.get("error", "")))
 	check(walk_effects.size() == 8 and walk_effects[0].kind == "party_walk_step",
@@ -701,10 +702,10 @@ func _synthetic_checks() -> void:
 		and walk_run.result.state.globals.viewport_x == 896 and walk_run.result.state.globals.viewport_y == 928,
 		"the walk lands on the target world position through the movement owner")
 	check(walk_run.result.get("walk_steps") == 8, "the walk reports its step count")
-	check(walk_double.requests.count("face_party_toward") == 8
-		and walk_double.requests.count("post_move_update") == 8
-		and walk_double.requests.count("sync_members_from_trail") == 1,
-		"each iteration faces and updates, and arrival syncs once: " + str(walk_double.requests))
+	check(walk_facing.requests.count("face_party_toward") == 8
+		and walk_facing.requests.count("post_move_update") == 8
+		and walk_facing.requests.count("sync_members_from_trail") == 1,
+		"each iteration faces and updates, and arrival syncs once: " + str(walk_facing.requests))
 	check(walk_run.requests.map(func(request): return request.kind).has("render_scene_frame"),
 		"each walk step renders through the host")
 	var range_program: Array = [[0x009A, 0x0001, 0x0002, 0x0042], [0x0001, 0, 0, 0]]
@@ -967,7 +968,15 @@ func _coverage_checks() -> void:
 		state.events = storage.source_state()
 		adapter.bind(cache, kernel, state.inventory_bytes, [0, 0, 0, 0, 0, 0])
 		adapter.bind_inventory(Inventory.new())
-		adapter.bind_display(DisplayDouble.new())
+		var display_double = DisplayDouble.new()
+		adapter.bind_display(display_double)
+		# The real walk-facing owner closes the former walk-budget double
+		# boundary: facing follows the recovered PALOLD extf table and world
+		# follows the recovered PostMoveUpdate relation, so real scene walks
+		# arrive; display kinds still fall through to the named double.
+		var facing_owner = WalkFacing.new()
+		facing_owner.bind_fallback(display_double)
+		adapter.bind_movement(facing_owner)
 		var dialogue_host = DialogueHost.new(); dialogue_host.bind(package.pal98_sources)
 		var run = _drive_with_host(owner, owner.start(state, raw + 1, entry), adapter, dialogue_host)
 		var steps: int = run.result.get("effects", []).size()

@@ -14,10 +14,14 @@ extends RefCounted
 ## Facing and the world/trail arithmetic stay with their owners: this module owns
 ## the target, the loop and the viewport steps, and reports every step as an
 ## explicit request.
-# G044C / G0464 from the generated initializer: the 2:1 walk steps per direction.
+# G044C / G0464: the 2:1 walk steps per direction. G044C and G0464[0..1] match
+# the earlier generated-initializer reading; G0464[2..3] are corrected by the
+# recovered extf facing table (PALOLD ordinal 44): of the 24 possible sign
+# assignments, exactly one makes the original walk loop converge on every
+# isometric lattice target, and it requires G0464 = [1,-1,-1,1].
 const WALK_STEP_X = [-1, -1, 1, 1]
-const WALK_STEP_Y = [1, -1, 1, -1]
-const MAX_STEPS = 512
+const WALK_STEP_Y = [1, -1, -1, 1]
+const MAX_STEPS = 65536
 
 var error: String = ""
 
@@ -42,8 +46,16 @@ func begin(state: Dictionary, words: Array, speed: int) -> Dictionary:
 	var target_x: int = (arg0 * 2 + arg2) * 16
 	var target_y: int = (arg1 * 2 + arg2) * 8
 	if not _u2_or_i2(target_x) or not _u2_or_i2(target_y): return _failure("walk target leaves WORD range")
+	# The original loop runs until arrival with no step cap. The guard is a
+	# Native safety net, so it scales with this walk's own distance: a lattice
+	# walk needs at most |dx|/2s + |dy|/s steps (the axis phase costs at most
+	# half that again), and a cycling non-lattice walk still trips the named
+	# budget instead of running forever.
+	var world_x: int = state.globals.get("world_x", 0)
+	var world_y: int = state.globals.get("world_y", 0)
+	var distance: int = absi(target_x - world_x) / (2 * speed) + absi(target_y - world_y) / speed
 	var pending: Dictionary = {"speed": speed, "target_x": target_x, "target_y": target_y,
-		"steps": 0, "words": words.duplicate()}
+		"steps": 0, "budget": mini(distance * 2 + 64, MAX_STEPS), "words": words.duplicate()}
 	# The body copies the world position into the previous-position words before
 	# the stepping loop starts.
 	state.globals.previous_x = state.globals.get("world_x", 0)
@@ -63,7 +75,8 @@ func advance(state: Dictionary, pending: Dictionary) -> Dictionary:
 	var globals: Dictionary = state.globals
 	for key in ["world_x", "world_y", "viewport_x", "viewport_y"]:
 		if not _i2(globals.get(key)): return _failure("walk requires the explicit " + key)
-	if pending.steps >= MAX_STEPS: return _failure("walk step budget exceeded")
+	if pending.steps >= int(pending.get("budget", MAX_STEPS)):
+		return _failure("walk step budget exceeded")
 	var at_target: bool = globals.world_x == pending.target_x and globals.world_y == pending.target_y
 	var effects: Array = []
 	if at_target:

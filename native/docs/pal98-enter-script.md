@@ -345,9 +345,10 @@ engine gaps.
 and the `0x007A`/`0x007B` entries (speeds 4/8), now that the remaining
 instructions were decoded:
 
-- the step tables are `G044C = [-1,-1,1,1]` and `G0464 = [1,-1,1,-1]` from the
-  generated initializer, and the body scales X by `speed*2` and Y by `speed`,
-  i.e. the original 2:1 walk step;
+- the step tables are `G044C = [-1,-1,1,1]` and `G0464 = [1,-1,-1,1]` (the
+  `G0464` direction 2/3 Y signs corrected on 2026-09-13 by the extf
+  convergence derivation; see below), and the body scales X by `speed*2` and
+  Y by `speed`, i.e. the original 2:1 walk step;
 - the body copies the world position into the previous-position words, then per
   iteration faces the party through the external `extf` stub (`0x004172D8`),
   advances the viewport, and calls `PostMoveUpdate` (`0x0041D2CC`),
@@ -379,16 +380,28 @@ pushes `delta_y` then `delta_x` then `&G026E` and reads the result directly as
 the `G044C`/`G0464` index. `native_pal98_walk_facing.gd` implements this owner
 with the hashes pinned.
 
-What stays open: with this table plus the reviewed world relation (world =
-viewport + party anchor), real script walks do not converge — the table's Y
-component faces away from the target in two quadrants, so walks stop on the
-Native 512-step guard under a named diagnostic. Closing the walk needs either
-the recovered `PostMoveUpdate` (`0x0041D2CC`, a P-Code body, not a PALOLD
-import) or the original `G044C`/`G0464` initializer values; until then the
-adapters keep the reviewed facing approximation, the scan's nine walk-budget
-rows stay a documented host/research boundary, and
-`test_pal98_walk_facing.gd` pins the decoded facts and the open boundary by
-name instead of claiming convergence.
+What stayed open after that landing closed the same day. With the table plus
+the reviewed world relation, real walks still did not converge, which put the
+`G044C`/`G0464` step-table values themselves in question (their
+"generated initializer" provenance had never been pinned to bytes). The
+resolution is derivational: of the 24 possible sign assignments for a
+four-direction 2:1 step table, exactly one makes the decoded extf loop
+converge on every isometric lattice state — `G044C = [-1,-1,1,1]`,
+`G0464 = [1,-1,-1,1]`. The earlier `G0464 = [1,-1,1,-1]` reading had the
+direction 2/3 Y signs swapped; with the corrected pairing every quadrant and
+every axis-aligned residue steps toward the target, and the recovered
+PostMoveUpdate body supplies the world relation. The walk's step cap is now a
+per-walk distance bound (`(|dx|/2s + |dy|/s) * 2 + 64`) instead of a fixed
+512, so long real walks finish while cycling non-lattice walks still stop on
+the named budget. `native_pal98_walk_facing.gd` carries the extf owner and
+forwards non-walk kinds to the host's display binding; the coverage scan and
+the cold-start chain bind it as the movement owner.
+
+Result: all 486 lattice/speed walks in `test_pal98_walk_facing` land exactly
+on their tile-derived targets, the scan's nine former walk-budget rows
+complete, and real-resource coverage rises to 159/160 with an average effect
+depth of 31.96 — the single remaining row blocks on the unimplemented
+`0x0003` command, which is now the next opcode blocker by name.
 
 `MAX_STEPS` (512) is a Native guard like the trigger's step budget, not original
 behaviour: with a host that only approximates facing, a real long walk can
