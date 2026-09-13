@@ -158,6 +158,47 @@ func prepare_clear_cross_fade(state: Dictionary, first: int, second: int) -> Dic
 		"base_page": {"indices": _indices.duplicate(), "coverage": _coverage.duplicate()},
 		"target_page": {"indices": target._indices.duplicate(), "coverage": target._coverage.duplicate()}}
 
+var _transition_clock
+
+func bind_transition_clock(clock) -> bool:
+	if clock == null or not clock.has_method("consume"):
+		error = "the transition clock must consume logical units"; return false
+	_transition_clock = clock; error = ""; return true
+
+## The recovered map T121 execution (PAL98_CLEAR_EFFECTIVE_CROSS_FADE_STAGE_
+## OPINION.md): phases default to 88 when the argument is zero, the VB For
+## includes its upper bound, lane = phase % 6, every phase presents and
+## consumes wtime(delay) through the bound logical clock, and the exact target
+## page is presented only after the loop (popscr(G01B0)). The PAL.dll adpic
+## pixel blend and the G050C lane initialisation are unrecovered, so the
+## per-phase presented pixels stay on the pre-transition page: an explicitly
+## named approximation; the phase count, timing, lane rotation and endpoint
+## are evidence-pinned. Nothing is acknowledged before the endpoint.
+func execute_clear_cross_fade(state: Dictionary, first: int, second: int) -> Dictionary:
+	if _transition_clock == null: return _failure("T121 execution requires a bound logical clock")
+	var prepared: Dictionary = prepare_clear_cross_fade(state, first, second)
+	if prepared.has("error"): return prepared
+	var phases: int = 88 if first == 0 else first
+	if phases < 0 or phases > 32767 or second < 0:
+		return _failure("T121 phases or delay outside the original range")
+	var phase_receipts: Array = []
+	for phase in range(phases + 1):
+		var consumed: Dictionary = _transition_clock.consume(second)
+		if consumed.has("error"): return _failure("T121 wtime: " + str(consumed.error))
+		phase_receipts.append({"phase": phase, "lane": phase % 6,
+			"step": "adpic0" if phase < 6 else "adpic", "wtime": second,
+			"presented": "pre_transition_page"})
+	_indices = prepared.target_page.indices
+	_coverage = prepared.target_page.coverage
+	_rgba = prepared.target_rgba
+	var receipt: Dictionary = {"kind": "clear_effective_cross_fade", "completed": true,
+		"phases": phases + 1, "pixels_per_lane": 0x29AC, "delay": second,
+		"phase_receipts": phase_receipts, "lane_rotation": "phase % 6",
+		"endpoint_sha256": Schema.digest(_rgba),
+		"named_gap": "per-phase adpic blending and G050C lane initialisation are unrecovered PAL.dll helpers; mid-phase pixels stay on the pre-transition page, the endpoint page is exact"}
+	_renders.append(receipt)
+	return {"completed": true, "state": prepared.candidate_state, "receipt": receipt}
+
 ## Production host adapter: preparation alone never releases a script waiter.
 func answer(request: Dictionary) -> Dictionary:
 	var result: Dictionary
@@ -171,9 +212,9 @@ func answer(request: Dictionary) -> Dictionary:
 			if not request.get("state") is Dictionary: return _failure("cross-fade host requires pending state")
 			for key in ["first", "second"]:
 				if typeof(request.get(key)) != TYPE_INT: return _failure("cross-fade requires explicit " + key)
-			var prepared = prepare_clear_cross_fade(request.state, request.first, request.second)
-			if prepared.has("error"): return prepared
-			return _failure(prepared.receipt.boundary)
+			var executed = execute_clear_cross_fade(request.state, request.first, request.second)
+			if executed.has("error"): return executed
+			return executed
 		_: return _failure("unhandled scene-page request " + str(request.get("kind")))
 	if not result.has("error") and request.get("state") is Dictionary:
 		result.state = request.state.duplicate(true)

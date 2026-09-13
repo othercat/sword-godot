@@ -82,7 +82,15 @@ func bind_named_double(kind: String, owner) -> bool:
 		error = "pal98-new-game: an explicit named owner is required (no wildcard)"; return false
 	_doubles[kind] = owner; error = ""; return true
 
-func bind_clock(clock) -> bool: return executor.bind_clock(clock)
+## One logical clock drives both the palette fade waits and the T121 phase
+## waits; the transition refuses to run without it.
+func bind_clock(clock) -> bool:
+	var fade: bool = executor.bind_clock(clock)
+	var transition: bool = renderer.bind_transition_clock(clock)
+	if not fade or not transition:
+		error = "clock binding failed: fade=%s transition=%s" % [str(fade), str(transition)]
+		return false
+	return true
 func bind_runtime(runtime) -> bool: return executor.bind_runtime(runtime)
 
 func bind_key_map(logical_map: Array, layer_base: int, confirm_slot: int = -1) -> bool:

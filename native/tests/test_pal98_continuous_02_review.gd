@@ -13,6 +13,12 @@ const Package = preload("res://src/native_package.gd")
 var checks: Array = []
 var failed := 0
 
+class TransitionClock:
+	var units := 0
+	func consume(units_in: int) -> Dictionary:
+		units += units_in
+		return {"consumed": units_in, "total": units}
+
 class FrameDouble:
 	var fail := false
 	var corrupt_identity := false
@@ -127,9 +133,13 @@ func _initialize() -> void:
 		and fade.candidate_state.globals.previous_viewport_x == 448
 		and fade.candidate_state.globals.previous_viewport_y == 368
 		and b.globals.view_offset_x == 13, "preparation retains T244 writeback only in its candidate state")
+	check(renderer.bind_transition_clock(TransitionClock.new()), "the transition logical clock binds for real execution")
 	var host = renderer.answer({"kind": "clear_effective_cross_fade", "state": b, "first": 1, "second": 2})
-	check(host.has("error") and not host.has("state") and renderer.current_rgba() == pixels_a,
-		"production host refuses unfinished lanes without releasing a script or publishing target")
+	check(host.get("completed") == true and host.state.globals.view_offset_x == 0
+		and renderer.current_rgba() != pixels_a,
+		"production host executes the recovered phases and completes at the endpoint with the T244 state")
+	check(host.receipt.phases == 2 and str(host.receipt.named_gap).contains("adpic"),
+		"the executed transition keeps its inclusive phase bound and the named adpic approximation")
 	var battle = b.duplicate(true); battle.globals.battle_mode = 1
 	check(renderer.prepare_clear_cross_fade(battle, 1, 2).has("error"), "unowned battle branch cannot reuse normal background preparation")
 	check(renderer.restore_dialog_background().get("completed") == true and renderer.current_rgba() == pixels_a,
