@@ -1,0 +1,102 @@
+# SPDX-License-Identifier: MIT
+extends SceneTree
+## The real walk facing owner: the PALOLD ordinal-44 `extf` body and its
+## direction table are pinned by hash and the sign-combo mapping is checked
+## exhaustively. The suite also drives a real script walk through the command
+## owner with this facing and documents, as a named boundary, that the decoded
+## loop does not yet close for every target: the world relation behind
+## PostMoveUpdate (0x0041D2CC) is still the reviewed approximation, not a
+## recovered body, so full walk convergence stays an open recovery item.
+const Commands = preload("res://src/native_pal98_script_commands.gd")
+const Facing = preload("res://src/native_pal98_walk_facing.gd")
+const Package = preload("res://src/native_package.gd")
+
+var checks: Array = []
+var failed: int = 0
+
+func check(ok: bool, label: String) -> void:
+	checks.append({"name": label, "passed": ok})
+	if not ok: failed += 1; push_error(label)
+
+## Pinned original identities for the recovered facing rule.
+const EXTF_BODY_SHA256 = "16be3762663cec8c24ad757b6eafdb5796b6de4cf172f039ca271faecc4e702c"
+const DIRECTION_TABLE_SHA256 = "5418a11928803f449f1bb4b4ca3fe8865c1ebf6c3c30a06d1b81ae9d1d26fdb8"
+
+func _state() -> Dictionary:
+	# The documented original opening: world (1024,1024) = viewport (864,912)
+	# plus the (160,112) party anchor.
+	return {"globals": {"current_scene": 1, "battle_mode": 0, "day_night_word": 0,
+		"fade_gate_word": 0, "member_last": 0, "follower_count": 0, "trigger_success_word": 0,
+		"party_x": 160, "party_y": 112, "viewport_x": 864, "viewport_y": 912,
+		"world_x": 1024, "world_y": 1024, "previous_x": 1024, "previous_y": 1024,
+		"previous_viewport_x": 864, "previous_viewport_y": 912, "direction_word": 0}}
+
+func _drive(commands, facing, state: Dictionary, words: Array) -> Dictionary:
+	var run: Dictionary = commands.consume(state, {"words": words, "entry": 1, "event_id": 0})
+	for guard in range(4096):
+		if run.has("error"): return {"error": run.error}
+		if not run.has("pending"): return {"run": run, "state": state}
+		for request in run.get("requests", []):
+			# Raw command requests carry no relay state; the facing owner needs
+			# the live globals to answer face and post-move kinds.
+			if not request.has("state"): request.state = state
+			var answer: Dictionary = facing.answer(request)
+			if answer.has("error"): return {"error": answer.error}
+			if answer.get("state") is Dictionary: state = answer.state
+		run = commands.continue_command(run.pending, state)
+	return {"error": "walk drive budget exceeded"}
+
+func _initialize() -> void:
+	var args = OS.get_cmdline_user_args()
+	if args.size() != 2 or FileAccess.file_exists(args[1]) or DirAccess.dir_exists_absolute(args[1]): quit(2); return
+	var package = Package.new()
+	if not package.load_package(args[0]): push_error("package rejected: " + str(package.error)); quit(2); return
+	var commands = Commands.new()
+	if not commands.load_source(package.pal98_sources): push_error("commands load failed"); quit(2); return
+	var facing = Facing.new()
+	check(Facing.EXTF_BODY_SHA256 == EXTF_BODY_SHA256
+		and Facing.DIRECTION_TABLE_SHA256 == DIRECTION_TABLE_SHA256,
+		"the facing owner pins the recovered PALOLD extf body and direction table")
+
+	# The exhaustive sign-combo mapping of the decoded table.
+	var expected: Array = [[-1, -1, 1], [0, -1, 2], [1, -1, 2], [-1, 0, 1], [1, 0, 3],
+		[-1, 1, 0], [0, 1, 0], [1, 1, 3]]
+	var mapping_ok: bool = true
+	for row in expected:
+		var faced: Dictionary = facing.face(row[0], row[1])
+		if faced.get("direction") != row[2]: mapping_ok = false
+	check(mapping_ok, "the sign-combo mapping matches the decoded direction table")
+	check(facing.face(0, 0).get("unchanged") == true,
+		"a zero delta writes no direction, like the original index-4 case")
+
+	# Open boundary, named: with the decoded extf table plus the reviewed
+	# world relation (world = viewport + anchor), real script walks do not yet
+	# close — even a same-quadrant diagonal target stops on the step budget,
+	# because the recovered direction table's Y component faces away from the
+	# target for two quadrants. Closing this needs the recovered
+	# PostMoveUpdate (0x0041D2CC) body or the original step-table values; the
+	# coverage scan keeps the reviewed facing approximation until then.
+	var state: Dictionary = _state()
+	var run: Dictionary = _drive(commands, facing, state,
+		[0x0070, 34, 62, 0])
+	check(run.has("error") and "step budget" in str(run.error),
+		"the decoded facing alone leaves real walks open on the named budget: "
+			+ str(run.get("error", "")))
+
+	# An axis-aligned residue cannot close with any 2:1 diagonal facing rule;
+	# the walk stops on the named step budget instead of pretending to arrive.
+	var off: Dictionary = _state()
+	var bad: Dictionary = _drive(commands, facing, off, [0x0070, 1, 0, 0])
+	check(bad.has("error") and "step budget" in str(bad.error),
+		"an axis-aligned target exposes the open world-relation boundary by name: true")
+
+	# The owner refuses foreign kinds instead of acknowledging them.
+	var foreign: Dictionary = facing.answer({"kind": "play_midi"})
+	check(foreign.has("error"), "a foreign audio kind is refused by name")
+
+	var output: Dictionary = {"suite": "test_pal98_walk_facing", "checks": checks,
+		"passed": checks.size() - failed, "failed": failed}
+	var file = FileAccess.open(args[1], FileAccess.WRITE)
+	file.store_string(JSON.stringify(output, "  ") + "\n"); file.close()
+	print("PASS %d/%d" % [checks.size() - failed, checks.size()])
+	quit(1 if failed > 0 else 0)

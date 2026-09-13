@@ -365,6 +365,31 @@ gained a per-command continuation: a command may return owner requests plus a
 round until the command reaches its terminal result. Owner answers now also keep
 the relayed state current for the remaining requests of the same command.
 
+### The extf body recovered, and the walk closure still open (2026-09-13)
+
+The facing external is `PALOLD.dll` export ordinal 44 (`extf`, stdcall, three
+arguments): body at RVA `0x37E0` (74 bytes, SHA256
+`16be3762663cec8c24ad757b6eafdb5796b6de4cf172f039ca271faecc4e702c`), combining
+the argument signs into an index (second argument `delta_x`: `<0→+0, ==0→+1,
+>0→+2`; third argument `delta_y`: `<0→+0, ==0→+3, >0→+6`) and storing one byte
+of the direction table at RVA `0x1000E890` (`01 02 02 01 00 03 00 00 03`,
+SHA256 `5418a11928803f449f1bb4b4ca3fe8865c1ebf6c3c30a06d1b81ae9d1d26fdb8`) as
+the direction word; index 4 — both deltas zero — writes nothing. The walk body
+pushes `delta_y` then `delta_x` then `&G026E` and reads the result directly as
+the `G044C`/`G0464` index. `native_pal98_walk_facing.gd` implements this owner
+with the hashes pinned.
+
+What stays open: with this table plus the reviewed world relation (world =
+viewport + party anchor), real script walks do not converge — the table's Y
+component faces away from the target in two quadrants, so walks stop on the
+Native 512-step guard under a named diagnostic. Closing the walk needs either
+the recovered `PostMoveUpdate` (`0x0041D2CC`, a P-Code body, not a PALOLD
+import) or the original `G044C`/`G0464` initializer values; until then the
+adapters keep the reviewed facing approximation, the scan's nine walk-budget
+rows stay a documented host/research boundary, and
+`test_pal98_walk_facing.gd` pins the decoded facts and the open boundary by
+name instead of claiming convergence.
+
 `MAX_STEPS` (512) is a Native guard like the trigger's step budget, not original
 behaviour: with a host that only approximates facing, a real long walk can
 exhaust it and the run stops with that named diagnostic. 163 checks pass
