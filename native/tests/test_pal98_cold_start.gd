@@ -52,6 +52,25 @@ class SplitDisplay:
 	func answer(request: Dictionary) -> Dictionary:
 		if request.kind in ["apply_palette", "fade_wait", "fade_event_pump", "fade_frame"]:
 			return palette_executor.answer(request)
+		if request.kind == "capture_dialog_background" and renderer != null:
+			var captured: Dictionary = renderer.capture_page()
+			if captured.has("error"): return captured
+			var cap: Dictionary = {"completed": true, "capture": captured.receipt}
+			if request.get("state") is Dictionary: cap.state = request.state.duplicate(true)
+			return cap
+		if request.kind == "restore_dialog_background" and renderer != null:
+			var restored: Dictionary = renderer.restore_dialog_background()
+			if restored.has("error"): return restored
+			var res: Dictionary = {"completed": true, "restore": restored.receipt}
+			if request.get("state") is Dictionary: res.state = request.state.duplicate(true)
+			return res
+		if request.kind == "clear_effective_cross_fade" and renderer != null:
+			var prepared: Dictionary = renderer.prepare_clear_cross_fade(
+				request.get("state", {}), request.get("first", 0), request.get("second", 0))
+			if prepared.has("error"): return prepared
+			var prep: Dictionary = {"completed": true, "cross_fade": prepared.receipt}
+			if request.get("state") is Dictionary: prep.state = request.state.duplicate(true)
+			return prep
 		if request.kind == "render_current_map_background" and renderer != null:
 			var rendered: Dictionary = renderer.render(request.get("state", {}))
 			if rendered.has("error"): return rendered
@@ -148,6 +167,9 @@ class ReloadDriver:
 					if renderer != null:
 						var rendered: Dictionary = renderer.render(request.state)
 						if rendered.has("error"): return {"error": "reload render: " + str(rendered.error)}
+						# The composed scene page becomes G00C0: a 0x008E before
+						# any dialog capture restores this scene compose.
+						renderer.capture_page()
 						step = reload.resume(request.id, {"completed": true, "state": rendered.state})
 					else: return {"error":"test background renderer not bound"}
 				"enter_script":
@@ -256,15 +278,17 @@ func _initialize() -> void:
 		"the cold display palette is byte-identical to the admitted day variant")
 	var split: SplitDisplay = driver.enter_driver.split
 	var doubled: Array = split.doubled
-	check(doubled.has("play_midi") and doubled.has("restore_dialog_background")
-		and doubled.has("clear_effective_cross_fade"),
-		"audio, captured-page restore and crossfade remain explicit test doubles: " + str(doubled))
-	check(split.renderer.prepare_clear_cross_fade(state, 1, 2).has("error"),
-		"the actual renderer refuses an unexecuted crossfade")
-	check(split.renderer.restore_dialog_background().has("error"),
-		"a rendered map is not an actual captured-page restore")
+	check(doubled.has("play_midi"),
+		"audio remains an explicit test double: " + str(doubled))
+	var all_receipts: Array = split.renderer.receipts()
+	var fades: Array = all_receipts.filter(func(r): return r.kind == "clear_effective_cross_fade")
+	check(not fades.is_empty() and fades[0].phases > 0 and fades[0].base_page_sha256 is String,
+		"the crossfade clear prepares real renders with the recovered lane parameters: " + str(fades.size()))
+	var restores_now: Array = all_receipts.filter(func(r): return r.kind == "restore_dialog_background")
+	check(not restores_now.is_empty() and restores_now[0].from_page == true,
+		"the restore re-establishes the captured page")
 
-	var render_receipts: Array = split.renderer.receipts()
+	var render_receipts: Array = all_receipts.filter(func(r): return r.kind == "render_current_map_background")
 	check(render_receipts.size() >= 2 and render_receipts[0].map_id == 20
 		and render_receipts[0].frame_sha256 is String and render_receipts[0].frame_sha256.length() == 64,
 		"the background renders are real 320x200 frames with content hashes: "

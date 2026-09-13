@@ -32,8 +32,12 @@ func _initialize() -> void:
 	check(renderer.restore_dialog_background().has("error"), "a map render is not a captured dialogue page")
 	var count = renderer.receipts().size()
 	var fade = renderer.prepare_clear_cross_fade(state,1,2)
-	check(fade.get("completed")!=true and fade.has("error"), "crossfade without phase executor cannot complete")
-	check(renderer.receipts().size()==count, "unexecuted fade does not publish fake render receipts")
+	check(fade.get("completed")==true and fade.receipt.phases==1 and fade.receipt.pixels_per_lane==0x29AC
+		and fade.receipt.base_page_sha256 is String and fade.receipt.target_sha256 == fade.receipt.final_sha256,
+		"the crossfade preparation renders the target, captures the base page and pins the recovered lane parameters")
+	check(fade.receipt.boundary == "per-lane dissolve (adpic) not recovered; presentation pending",
+		"the per-lane dissolve stays a named presentation boundary")
+	check(renderer.receipts().size()==count+4, "the preparation publishes its two real renders, the page capture and the phase receipt")
 	var display = Display.new()
 	check(display.answer({"kind":"fade_event_pump"}).has("error"), "unbound event pump refuses instead of draining a private list")
 	check(display.answer({"kind":"fade_frame","argument":1}).has("error"), "unbound frame executor refuses instead of incrementing a counter")

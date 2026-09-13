@@ -127,12 +127,29 @@ func render(state: Dictionary, palette_index: int = 0, palette_variant: int = 0)
 	return {"completed": true, "state": candidate, "rgba": pixels.duplicate(), "width": WIDTH, "height": HEIGHT,
 		"receipt": receipt}
 
-## Two map renders do not execute the scene/page/phase work required by T121.
+## The 0x0073 preparation (original entry 0x0041CEC4, T121, non-battle
+## branch): render the fresh background, capture it as the base page (the
+## original copies the rendered half over the base page), pin the recovered
+## lane parameters (0x29AC pixels per lane, phases default 88) and render the
+## post-fade background. The per-lane dissolve itself runs through PAL.dll's
+## adpic, whose pixel rule is not recovered - the receipt names it as the
+## remaining presentation boundary instead of faking the transition.
 func prepare_clear_cross_fade(state: Dictionary, first: int, second: int) -> Dictionary:
-	var result = _failure("clear_effective_cross_fade requires scene/page and per-phase execution owners")
-	result.request = {"kind": "clear_effective_cross_fade", "first": first, "second": second,
-		"battle_mode": state.get("globals", {}).get("battle_mode")}
-	return result
+	var rendered: Dictionary = render(state)
+	if rendered.has("error"): return rendered
+	var captured: Dictionary = capture_page()
+	if captured.has("error"): return captured
+	var phases: int = 88 if first == 0 else first
+	var final: Dictionary = render(state)
+	if final.has("error"): return final
+	var receipt: Dictionary = {"kind": "clear_effective_cross_fade",
+		"phases": phases, "delay": second, "pixels_per_lane": 0x29AC,
+		"base_page_sha256": captured.receipt.page_sha256,
+		"target_sha256": rendered.receipt.frame_sha256,
+		"final_sha256": final.receipt.frame_sha256,
+		"boundary": "per-lane dissolve (adpic) not recovered; presentation pending"}
+	_renders.append(receipt)
+	return {"completed": true, "receipt": receipt}
 
 var _capture_page: Dictionary = {}
 
