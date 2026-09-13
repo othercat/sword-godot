@@ -51,6 +51,20 @@ func install_generation() -> int:
 func frame() -> int:
 	return _frame
 
+## Cold start: install the admitted day palette before any fade runs, with the
+## same receipt discipline as a fade install.
+func install_cold(rgb6: PackedByteArray) -> Dictionary:
+	if not rgb6 is PackedByteArray or rgb6.size() != LENGTH:
+		return _failure("the cold display palette requires exactly 0x300 RGB6 bytes")
+	for channel in rgb6:
+		if channel > 63:
+			return _failure("the cold display palette has an RGB6 channel above 63")
+	_installed = rgb6.duplicate()
+	_generation += 1
+	var receipt: Dictionary = {"kind": "cold_load", "byte_offset": 0, "generation": _generation}
+	_receipts.append(receipt)
+	return {"completed": true, "install": receipt.duplicate(true)}
+
 func answer(request: Dictionary) -> Dictionary:
 	if not request is Dictionary or not request.get("kind") is String:
 		return _failure("owner request shape")
