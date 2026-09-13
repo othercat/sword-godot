@@ -98,3 +98,17 @@ func render(state: Dictionary, palette_index: int = 0, palette_variant: int = 0)
 	_renders.append(receipt)
 	return {"completed": true, "rgba": frame_buffer, "width": WIDTH, "height": HEIGHT,
 		"receipt": receipt}
+
+## The 0x008E dialog-background restore: the dialog box was drawn over the
+## last flattened background, so the restore re-establishes exactly that
+## frame. With no rendered frame yet there is nothing to restore and the
+## refusal is named instead of pretended.
+func restore_dialog_background() -> Dictionary:
+	if _renders.is_empty():
+		return _failure("no rendered background exists to restore")
+	var last: Dictionary = _renders[_renders.size() - 1]
+	var receipt: Dictionary = {"kind": "restore_dialog_background",
+		"frame_sha256": last.frame_sha256, "map_id": last.map_id,
+		"map_cell": last.map_cell}
+	_renders.append(receipt)
+	return {"completed": true, "receipt": receipt}

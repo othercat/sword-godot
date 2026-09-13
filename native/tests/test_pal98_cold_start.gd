@@ -54,6 +54,12 @@ class SplitDisplay:
 			var answer: Dictionary = {"completed": true, "render": rendered.receipt}
 			if request.get("state") is Dictionary: answer.state = request.state.duplicate(true)
 			return answer
+		if request.kind == "restore_dialog_background" and renderer != null:
+			var restored: Dictionary = renderer.restore_dialog_background()
+			if restored.has("error"): return restored
+			var answer: Dictionary = {"completed": true, "restore": restored.receipt}
+			if request.get("state") is Dictionary: answer.state = request.state.duplicate(true)
+			return answer
 		doubled.append(request.kind)
 		return {"completed": true}
 
@@ -125,8 +131,9 @@ class ReloadDriver:
 	var enter_driver
 	var max_enters: int
 	var enters_seen: Array = []
-	func _init(owner, driver, enters: int) -> void:
-		reload = owner; enter_driver = driver; max_enters = enters
+	var renderer
+	func _init(owner, driver, enters: int, scene_renderer = null) -> void:
+		reload = owner; enter_driver = driver; max_enters = enters; renderer = scene_renderer
 	func start(state: Dictionary, cache) -> Dictionary:
 		var step: Dictionary = reload.start(state, cache)
 		for guard in range(32768):
@@ -135,6 +142,9 @@ class ReloadDriver:
 			var request: Dictionary = step.request
 			match request.kind:
 				"render_background":
+					if renderer != null:
+						var rendered: Dictionary = renderer.render(request.state)
+						if rendered.has("error"): return {"error": "reload render: " + str(rendered.error)}
 					step = reload.resume(request.id, {"completed": true})
 				"enter_script":
 					enters_seen.append(request.scene_id)
@@ -207,7 +217,10 @@ func _initialize() -> void:
 	var cache = Cache.new(); cache.load_source(package.pal98_graphics, package.pal98_sources)
 	var reload = Reload.new()
 	check(reload.load_source(package.pal98_sources, package.pal98_graphics), "reload binds the admitted sources")
-	var driver = ReloadDriver.new(reload, EnterDriver.new(package, day.value), 2)
+	var scene_renderer = load("res://src/native_pal98_scene_render.gd").new()
+	if not scene_renderer.bind(package.pal98_graphics.open_records()):
+		push_error(str(scene_renderer.error))
+	var driver = ReloadDriver.new(reload, EnterDriver.new(package, day.value), 2, scene_renderer)
 	var state: Dictionary = _fixture(package, palette, day.value, night.value)
 	var done: Dictionary = driver.start(state, cache)
 	check(not done.has("error") and driver.enters_seen == [1, 2],
@@ -239,8 +252,13 @@ func _initialize() -> void:
 		"the cold display palette is byte-identical to the admitted day variant")
 	var split: SplitDisplay = driver.enter_driver.split
 	var doubled: Array = split.doubled
-	check(doubled.has("restore_dialog_background"),
-		"the remaining display kinds stay a named double boundary: " + str(doubled))
+	check(doubled.has("play_midi") and not doubled.has("restore_dialog_background"),
+		"the dialog restore is real; the remaining kinds stay named doubles: " + str(doubled))
+	var restores: Array = split.renderer.receipts().filter(func(receipt): return receipt.kind == "restore_dialog_background")
+	check(not restores.is_empty()
+		and restores[0].frame_sha256 == split.renderer.receipts()[0].frame_sha256,
+		"the dialog restore re-establishes the rendered background frame: "
+			+ str(restores.size()))
 	var render_receipts: Array = split.renderer.receipts()
 	check(render_receipts.size() >= 2 and render_receipts[0].map_id == 20
 		and render_receipts[0].frame_sha256 is String and render_receipts[0].frame_sha256.length() == 64,
@@ -258,8 +276,11 @@ func _initialize() -> void:
 	var cache2 = Cache.new(); cache2.load_source(reopened.pal98_graphics, reopened.pal98_sources)
 	var reload2 = Reload.new()
 	check(reload2.load_source(reopened.pal98_sources, reopened.pal98_graphics), "reopen binds fresh owners")
+	var reopen_renderer = load("res://src/native_pal98_scene_render.gd").new()
+	if not reopen_renderer.bind(reopened.pal98_graphics.open_records()):
+		push_error(str(reopen_renderer.error))
 	var driver2 = ReloadDriver.new(reload2, EnterDriver.new(reopened,
-		reopen_records.palette(0, 0).value), 2)
+		reopen_records.palette(0, 0).value), 2, reopen_renderer)
 	var state2: Dictionary = _fixture(reopened, Palette.new(),
 		reopen_records.palette(0, 0).value, reopen_records.palette(0, 1).value)
 	var done2: Dictionary = driver2.start(state2, cache2)
