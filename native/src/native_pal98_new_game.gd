@@ -18,6 +18,7 @@ const MemberSync = preload("res://src/native_pal98_member_sync.gd")
 const CollisionProbe = preload("res://src/native_pal98_collision_probe.gd")
 const InputFrame = preload("res://src/native_pal98_input_frame.gd")
 const Random = preload("res://src/native_pal98_fixed_random.gd")
+const OpeningInit = preload("res://src/native_pal98_opening_init.gd")
 
 var error: String = ""
 var state: Dictionary = {}
@@ -131,8 +132,9 @@ func open(package) -> bool:
 func _open_fail(message: String) -> bool:
 	_failure(message); _initialized = false; return false
 
-## Until F01 supplies a recovered initializer, globals/dialogue/trail/inventory
-## are REQUIRED explicit probe inputs. Source tables and palette are real.
+## The probe path: globals/dialogue/trail/inventory are REQUIRED explicit
+## probe inputs. Source tables, palette and seed arithmetic are real. The
+## source-derived path is new_state_from_source.
 func new_state(seed: int, probe_configuration: Dictionary = {}) -> Dictionary:
 	if records == null or _initial_cache == null: return _failure("open the package first")
 	for key in ["globals", "dialogue"]:
@@ -147,6 +149,62 @@ func new_state(seed: int, probe_configuration: Dictionary = {}) -> Dictionary:
 	if candidate.equipment.has("error"): return _failure(str(candidate.equipment.error))
 	candidate.events = storage.source_state(); candidate.rng = Random.create(seed)
 	if candidate.rng.has("error"): return _failure(str(candidate.rng.error))
+	return _publish(candidate)
+
+## The source-derived opening. Base levels come from the admitted DATA3
+## backing and SubMain's 70-call experience projection runs on the seed.
+## Seed kinds: "explicit_replay" takes a known DWORD; "startup_capture"
+## samples the host wall clock once, exactly as the fixed VB startup does.
+## The still-unverified opening words (globals, dialogue, trail, inventory)
+## remain REQUIRED explicit inputs and are never renamed as recovered values.
+func new_state_from_source(seed, seed_kind: String, unverified: Dictionary) -> Dictionary:
+	if records == null or _initial_cache == null: return _failure("open the package first")
+	if seed_kind != "explicit_replay" and seed_kind != "startup_capture":
+		return _failure("seed kind must be explicit_replay or startup_capture")
+	for key in ["globals", "dialogue"]:
+		if not unverified.get(key) is Dictionary: return _failure("unverified opening input requires " + key)
+	for key in ["party_trail"]:
+		if not unverified.get(key) is Array: return _failure("unverified opening input requires " + key)
+	if not unverified.get("inventory_bytes") is PackedByteArray:
+		return _failure("unverified opening inventory required")
+	var roles: Array = [0]
+	var equipment: Dictionary = kernel.initial_state(roles)
+	if equipment.is_empty() or not (equipment.get("role_words") is Array):
+		return _failure("source role backing unavailable for the opening party")
+	var candidate: Dictionary = {
+		"globals": unverified.globals.duplicate(true),
+		"dialogue": unverified.dialogue.duplicate(true),
+		"party_trail": unverified.party_trail.duplicate(true),
+		"inventory_bytes": unverified.inventory_bytes.duplicate(),
+		"party_records": [], "events": storage.source_state(),
+		"equipment": equipment}
+	var rng: Dictionary; var receipt_seed: Dictionary
+	if seed_kind == "explicit_replay":
+		rng = Random.create(seed)
+		if rng.has("error"): return _failure(str(rng.error))
+		receipt_seed = {"kind": "explicit_replay", "seed": seed}
+	else:
+		var captured: Dictionary = Random.capture_startup()
+		if captured.has("error"): return _failure("startup seed capture: " + str(captured.error))
+		rng = captured.state
+		receipt_seed = {"kind": "startup_capture", "clock_sample": captured.clock_sample,
+			"timer_single": captured.timer_single, "seed": captured.state.live_seed}
+	var opening: Dictionary = OpeningInit.derive(candidate.equipment.role_words, rng, receipt_seed)
+	if opening.has("error"): return _failure("opening init: " + str(opening.error))
+	candidate.experience = opening.experience
+	candidate.rng = opening.rng
+	candidate.rng_source = opening.receipt
+	candidate.rng_source.data3_sha256 = kernel.source_receipt().get("data3_sha256")
+	# The opening party is role 0 at the original party-in-viewport anchor;
+	# the same carried opening-chain facts the probe configuration pinned.
+	candidate.party_records = [{"role_id": 0,
+		"x": int(candidate.globals.get("party_x", 160)),
+		"y": int(candidate.globals.get("party_y", 112)), "current_frame": 0}]
+	return _publish(candidate)
+
+## Shared publication tail: source palettes, cold display install, sprite
+## fork and the initialized hand-off state.
+func _publish(candidate: Dictionary) -> Dictionary:
 	var day: Dictionary = records.palette(0, 0); var night: Dictionary = records.palette(0, 1)
 	if day.has("error") or night.has("error"): return _failure("source day/night palette unavailable")
 	var backing := PackedByteArray(); backing.resize(Palette.BUFFER)
