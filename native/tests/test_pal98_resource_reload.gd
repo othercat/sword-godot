@@ -152,6 +152,31 @@ func _initialize() -> void:
 	check(cyclic.has("error") and cyclic.error.contains("budget") and original_cache.snapshot("party") == before_party, "cyclic EnterScript scene restarts diagnose at explicit budget without publishing candidate cache")
 	var storage = Events.new(); storage.load_source(package.pal98_sources)
 	check(storage.commit_current_events(stable.state.events,1.0).has("error") and storage.commit_current_events(stable.state.events,null).has("error"), "explicit T175 current scene refuses implicit float and Unknown")
+	# T244 may return its four state writes; unrelated fields are not its owner.
+	var draw_input = fixture(); var draw_before = draw_input.duplicate(true)
+	var draw = driver.start(draw_input, original_cache)
+	var draw_reply = draw.request.state.duplicate(true)
+	draw_reply.globals.view_offset_x = 0; draw_reply.globals.view_offset_y = 0
+	draw_reply.globals.previous_viewport_x = draw_reply.globals.viewport_x
+	draw_reply.globals.previous_viewport_y = draw_reply.globals.viewport_y
+	draw_reply.globals.midi_track = 99
+	var drawn = driver.resume(draw.request.id, {"completed":true, "state":draw_reply})
+	check(drawn.has("request") and drawn.request.state.globals.previous_viewport_x == 864
+		and drawn.request.state.globals.previous_viewport_y == 912
+		and drawn.request.state.globals.view_offset_x == 0 and drawn.request.state.globals.view_offset_y == 0,
+		"background completion carries only the verified T244 origin writes into EnterScript")
+	check(drawn.request.state.globals.midi_track == 1 and draw_input == draw_before,
+		"background cannot alter another owner's MIDI state or publish into its input")
+	driver.cancel()
+	draw = driver.start(draw_input, original_cache)
+	draw_reply = draw.request.state.duplicate(true)
+	draw_reply.globals.view_offset_x = 0; draw_reply.globals.view_offset_y = 0
+	draw_reply.globals.previous_viewport_x = 865; draw_reply.globals.previous_viewport_y = 912
+	check(driver.resume(draw.request.id, {"completed":true,"state":draw_reply}).has("error")
+		and draw_input == draw_before, "inconsistent background origin fails without publishing candidate state")
+	var restarted_draw = driver.start(draw_input, original_cache)
+	check(restarted_draw.has("request"), "background failure permits a fresh resource invocation")
+	driver.cancel()
 	finish(args[1])
 
 func finish(path: String) -> void:

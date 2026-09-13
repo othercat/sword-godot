@@ -1,12 +1,9 @@
 # SPDX-License-Identifier: MIT
 extends SceneTree
-## The real walk facing owner: the PALOLD ordinal-44 `extf` body and its
-## direction table are pinned by hash and the sign-combo mapping is checked
-## exhaustively. The suite also drives a real script walk through the command
-## owner with this facing and documents, as a named boundary, that the decoded
-## loop does not yet close for every target: the world relation behind
-## PostMoveUpdate (0x0041D2CC) is still the reviewed approximation, not a
-## recovered body, so full walk convergence stays an open recovery item.
+## PALOLD ordinal-44 extf and its table are pinned by hash. Lattice checks
+## exercise 0070/007A/007B with explicit trail/member/frame doubles. The
+## position/phase relation is recovered; the G0464 step signs remain inferred
+## until the original initializer and ordinary frame execution are verified.
 const Commands = preload("res://src/native_pal98_script_commands.gd")
 const Facing = preload("res://src/native_pal98_walk_facing.gd")
 const Package = preload("res://src/native_package.gd")
@@ -17,6 +14,11 @@ var failed: int = 0
 func check(ok: bool, label: String) -> void:
 	checks.append({"name": label, "passed": ok})
 	if not ok: failed += 1; push_error(label)
+
+## No-op dependencies are confined to this lattice test, not production.
+class EffectsDouble:
+	func answer(request: Dictionary) -> Dictionary:
+		return {"completed": true, "state": request.state.duplicate(true)}
 
 ## Pinned original identities for the recovered facing rule.
 const EXTF_BODY_SHA256 = "16be3762663cec8c24ad757b6eafdb5796b6de4cf172f039ca271faecc4e702c"
@@ -56,7 +58,7 @@ func _initialize() -> void:
 	if not package.load_package(args[0]): push_error("package rejected: " + str(package.error)); quit(2); return
 	var commands = Commands.new()
 	if not commands.load_source(package.pal98_sources): push_error("commands load failed"); quit(2); return
-	var facing = Facing.new()
+	var facing = Facing.new(); facing.bind_fallback(EffectsDouble.new())
 	check(Facing.EXTF_BODY_SHA256 == EXTF_BODY_SHA256
 		and Facing.DIRECTION_TABLE_SHA256 == DIRECTION_TABLE_SHA256,
 		"the facing owner pins the recovered PALOLD extf body and direction table")
@@ -74,7 +76,7 @@ func _initialize() -> void:
 
 	# The recovered PostMoveUpdate: U2 world relation, movement-driven phase
 	# and frame offsets, and the pre-move world into the newest trail entry.
-	var mover = Facing.new()
+	var mover = Facing.new(); mover.bind_fallback(EffectsDouble.new())
 	var mstate: Dictionary = _state()
 	mstate.globals.viewport_x = 65500
 	var request: Dictionary = {"kind": "post_move_update", "state": mstate}
@@ -87,10 +89,12 @@ func _initialize() -> void:
 		and moved.state.globals.party_frame_offset_word == 2,
 		"a movement step advances the WalkPhase and frame offsets")
 	check(moved.state.party_trail[0].x == 1024 and moved.state.party_trail[0].y == 1024,
-		"the newest trail entry carries the pre-move world")
+		"the explicit trail test double retains its input")
 	var moved2: Dictionary = mover.answer({"kind": "post_move_update", "state": moved.state})
 	check(moved2.state.globals.walk_phase_word == 2 and moved2.state.globals.leader_frame_offset_word == 0,
 		"the second movement step lands on the even phase with zero offsets")
+	moved2.state.globals.previous_x = moved2.state.globals.world_x
+	moved2.state.globals.previous_y = moved2.state.globals.world_y
 	var still: Dictionary = mover.answer({"kind": "post_move_update", "state": moved2.state})
 	check(still.state.globals.walk_phase_word == 0 and still.state.globals.leader_frame_offset_word == 0,
 		"a stationary step folds the phase back to zero")
@@ -105,7 +109,7 @@ func _initialize() -> void:
 		for arg1 in range(-4, 5):
 			for arg2 in range(0, 2):
 				for speed in [2, 4, 8]:
-					var encoded: Array = [0x0070,
+					var encoded: Array = [{2: 0x0070, 4: 0x007A, 8: 0x007B}[speed],
 						(arg0 + 65536) & 0xFFFF, (arg1 + 65536) & 0xFFFF, (arg2 + 65536) & 0xFFFF]
 					var state: Dictionary = _state()
 					var run: Dictionary = _drive(commands, facing, state, encoded)

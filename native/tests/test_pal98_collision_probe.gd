@@ -30,7 +30,7 @@ func _initialize() -> void:
 	var map_bytes: PackedByteArray = records.decoded_chunk("MAP.MKF", 20).value
 	var storage = Events.new(); storage.load_source(package.pal98_sources)
 	var events_state: Dictionary = storage.source_state()
-	storage.load_scene_events(events_state, 1)
+	events_state = storage.load_scene_events(events_state, 1).state
 	var probe = CollisionProbe.new()
 	check(probe.bind(map_bytes, events_state), "the probe binds the real map and event state")
 
@@ -40,23 +40,16 @@ func _initialize() -> void:
 		"the opening position probes as free ground: " + str(start))
 	if not start.get("accepted", false): finish(args); return
 
-	# Scan the whole map for the first blocked tile pair; probe its center.
-	var blocked_cell := ""
-	for pair in range(64 * 64):
-		var at: int = pair * 8
-		if at + 8 > map_bytes.size(): break
-		var blocked_hit: bool = false
-		for word_at in [at, at + 2, at + 4, at + 6]:
-			if (map_bytes.decode_u16(word_at) & 0x2000) != 0: blocked_hit = true
-		if blocked_hit:
-			var cell_x: int = pair % 64
-			var cell_y: int = pair / 64
-			blocked_cell = "%d,%d" % [cell_x, cell_y]
-			var refused: Dictionary = probe.probe(cell_x * 32 + 16, cell_y * 16 + 8)
-			check(refused.get("accepted") == false and refused.get("reason") == "map_blocked",
-				"a blocked tile pair refuses the probe: " + str(refused))
-			break
-	check(true, "MAP20 blocked-pair scan: %s (a map without blocked tiles is legitimate data; the probe refuses when one exists)" % (blocked_cell if not blocked_cell.is_empty() else "no blocked pairs"))
+	# Inspect only the selected lower descriptors across all 16384 half-cells.
+	# No blocking data in this map is an observation, not a collision assertion.
+	var blocked_cell := "none in MAP20"
+	for cell in range(16384):
+		if (map_bytes.decode_u16(cell * 4) & 0x2000) == 0: continue
+		var half := cell & 1; var cell_x := (cell >> 1) & 63; var cell_y := cell >> 7
+		blocked_cell = "%d,%d,%d" % [cell_x, cell_y, half]
+		var refused = probe.probe(cell_x * 32 + half * 16, cell_y * 16 + half * 8)
+		check(refused.get("accepted") == false, "the actual selected blocked half-cell refuses")
+		break
 
 	# The event proximity scan: an active event within the threshold refuses.
 	var events_state2: Dictionary = storage.source_state()
@@ -80,6 +73,7 @@ func _initialize() -> void:
 	var near: Dictionary = probe2.probe(1024, 1024)
 	check(near.get("accepted") == false and near.get("reason") == "event_proximity",
 		"an active event within abs(dx)+2*abs(dy)<16 refuses the probe: " + str(near))
+	check(probe2.probe(1024, 1024, 1).get("accepted") == true, "the excluded runtime event id does not collide with itself")
 	var far_row: PackedByteArray = row.duplicate()
 	far_row.encode_s16(2, 1024 + 40)
 	far_row.encode_s16(4, 1024 + 40)

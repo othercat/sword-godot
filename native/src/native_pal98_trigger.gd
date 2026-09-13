@@ -168,10 +168,12 @@ func _idle_jump(frame: Dictionary) -> Dictionary:
 			# scratch counter as an explicit globals word instead of an
 			# unowned slot, with the same increment/compare/reset cycle.
 			if frame.event_id != 0: return _fail(str(row.error))
-			count = _signed(_state.globals.get("entry_idle_frame_word", 0)) + 1
+			var scratch = _state.globals.get("entry_idle_frame_word", 0)
+			if not _u2(scratch): return _fail("event-zero TriggerIdleFrame requires a U2 scratch word")
+			count = _signed(scratch) + 1
 			if count > 32767: return _fail("TriggerIdleFrame I2 overflow")
 			jump = count < limit
-			_state.globals.entry_idle_frame_word = count if jump else 0
+			_state.globals.entry_idle_frame_word = (count & 65535) if jump else 0
 		else:
 			var bytes: PackedByteArray = row.value
 			count = _signed(bytes.decode_u16(24)) + 1

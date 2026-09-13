@@ -100,6 +100,20 @@ func resume(request_id: String, response: Dictionary) -> Dictionary:
 	else:
 		if response.get("completed") != true or typeof(response.get("completed")) != TYPE_BOOL:
 			return _fail("display/audio request requires explicit completion")
+		if kind == "render_background" and response.has("state"):
+			if not response.state is Dictionary: return _fail("background owner state is malformed")
+			var issue = _state_issue(response.state)
+			if not issue.is_empty(): return _fail(issue)
+			var rendered: Dictionary = response.state.globals
+			# Only T244-owned fields cross this response. A render cannot change
+			# resource flags, scene identity, event or inventory state incidentally.
+			for key in ["view_offset_x", "view_offset_y", "previous_viewport_x", "previous_viewport_y"]:
+				if typeof(rendered.get(key)) != TYPE_INT or rendered[key] < -32768 or rendered[key] > 32767:
+					return _fail("background owner lost signed coordinate " + key)
+			if rendered.view_offset_x != 0 or rendered.view_offset_y != 0 or rendered.previous_viewport_x != _state.globals.viewport_x or rendered.previous_viewport_y != _state.globals.viewport_y:
+				return _fail("background origin receipt disagrees with rendered viewport")
+			for key in ["view_offset_x", "view_offset_y", "previous_viewport_x", "previous_viewport_y"]:
+				_state.globals[key] = rendered[key]
 		_phase = "party" if kind == "render_background" else "equipment"
 	_pending = {}
 	return _advance()

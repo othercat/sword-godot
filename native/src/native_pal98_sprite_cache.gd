@@ -69,10 +69,10 @@ func _write(cache: Dictionary, word_offset: int, sprite_id: int) -> String:
 
 static func _word(cache: Dictionary, offset: int) -> Dictionary:
 	if offset < 0 or offset >= 32768: return {"error": "cache WORD address outside owned signed16 range"}
-	# The original reads its zero-initialized cache buffer: a never-written
-	# word decodes as 0 and terminates a T98 directory walk on the spot. The
-	# Native buffer starts zeroed too, so the same read is deterministic and
-	# needs no ownership refusal; resolve() still scans known bytes for T163.
+	# This Native-owned buffer is explicitly zero-filled by _empty(). T98
+	# directory scanning can read those bytes; resolve() still refuses unknown
+	# image payload. Original cold allocation/reuse parity has NOT been proved
+	# by this policy, so fixture cold-start results remain component evidence.
 	return {"value": cache.bytes.decode_s16(offset * 2)}
 
 func load_events(storage, state: Dictionary) -> Dictionary:

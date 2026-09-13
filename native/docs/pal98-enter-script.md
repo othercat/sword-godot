@@ -13,9 +13,56 @@ needs first. It changes explicit state for the implemented cases and ends the
 invocation with a named diagnostic for every other command; it never turns an
 unknown command into a silent no-op.
 
-Neither module activates an ordinary Session. There is no rendering, audio,
-save, input or map-cache work here, and `native_session.gd` keeps its
-source-only preview guard.
+Neither module activates an ordinary Session. The related components below
+do not yet supply all ordinary display, input, audio and save execution;
+`native_session.gd` keeps its source-only preview guard.
+
+## Continuous batch review (2026-09-13, baseline 84cfe3c)
+
+This section supersedes the completion claims in the historical continuous
+batch notes below. Synthetic acknowledgements and 160/160 scene returns do
+not establish a cold ordinary Session, physical input or displayed gameplay.
+
+- Collision uses exactly the addressed half-cell's lower WORD, masked to
+  16-bit byte offset. Event proximity respects `event_count`, excludes the
+  requested one-based event ID, and preserves PALOLD signed-WORD wrapping.
+  Binding validates and copies its inputs; changed events require rebinding.
+- Facing and position/phase are implemented. PostMoveUpdate preserves the
+  caller's previous coordinates and requires explicit trail rotation and
+  member-sync owners; missing frame/render owners return named errors.
+  Script walking refreshes previous coordinates on every iteration, as the
+  original loop does. G0464 signs still come from convergence inference, not
+  recovered initializer bytes. Lattice tests cover all three walking opcodes
+  but use named frame/trail/member doubles.
+- `0078` stores signed A0 into battle mode and requests T212 immediately,
+  before advancing the script. Its case is `0x004256FE..0x0042571E` (32 bytes,
+  right-exclusive), SHA256
+  `a9a4850e2c6b8460e006e946a40caac7e56aceda22128aafa32dd1aefdec0040`.
+  A nested resource owner still needs integration; an outer eventual reload
+  cannot substitute for this ordering. Event-zero idle scratch is a Native
+  policy and requires an explicit U2 value when supplied.
+- Palette installation now changes retained indexed software pixels and
+  later map renders use that same live palette. Installation requires a
+  bound surface; fade frame/event requests require an execution owner.
+  Software RGBA hashes do not prove window presentation or real elapsed time.
+- Successful background rendering returns T244's cleared view offsets and
+  previous-viewport writes. The resource owner adopts only these validated
+  writes. Failed rendering preserves the prior buffer and receipt history.
+  Dialogue restoration requires the captured composed page, and cross-fade
+  requires the complete T121 sequence; both reject unbound execution instead
+  of completing from a hash or two map renders.
+- Sprite-cache zero reads describe Native allocation only. Original cold
+  allocation/reuse remains an evidence gap; a same-process synthetic-state
+  test is not a verified cold initialization path.
+
+`test_pal98_continuous_review.gd` and `test_pal98_scene_render_review.gd`
+retain the independent failing vectors. `test_pal98_enter_script.gd` also
+checks immediate 0078 sequencing, failure/restart and stale acknowledgements.
+The cold/display/frame tests explicitly identify their remaining doubles.
+
+Next integration work should bind real trail/member/frame, nested T212,
+captured-page and transition owners, then exercise a normal source-derived
+new game. Do not remove the guard to make a component harness appear playable.
 
 ## Reviewed night-batch corrections (2026-09-13)
 

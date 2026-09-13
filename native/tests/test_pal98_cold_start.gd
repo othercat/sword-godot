@@ -1,13 +1,10 @@
 # SPDX-License-Identifier: MIT
 extends SceneTree
-## Cold start over the real resource-reload chain: the scene record's own MAP
-## identity, the real EnterScript chain with the real palette display executor,
-## the entry script's own scene travel into MAP12, named missing-resource
-## refusals and exit/reopen determinism, all from one admitted package with
-## fresh private outputs and no dev caches. The original opening loops between
-## runtime scenes 1 and 2 until a real player answers the intro; this suite
-## stops that loop by name after the second scene entry instead of waiting.
-## Audio stays unowned: the cold start keeps the MIDI bit clear.
+## Same-process replay over admitted source tables and synthetic lifecycle
+## state. Shared software rendering/palette and real script/resource owners
+## reach scene 2; clock, frame, input, transition and audio remain explicit
+## doubles or missing owners. This is not verified original cold initialization,
+## an ordinary Session, physical window presentation or process restart.
 const Reload = preload("res://src/native_pal98_resource_reload.gd")
 const Enter = preload("res://src/native_pal98_enter_script.gd")
 const EntryHost = preload("res://src/native_pal98_entry_host.gd")
@@ -32,6 +29,13 @@ func _zero(count: int) -> PackedByteArray:
 	var bytes = PackedByteArray(); bytes.resize(count); return bytes
 
 ## Explicit logical clock for the executor's fade waits.
+class ColdRuntimeDouble:
+	var frame := 0
+	func answer(request: Dictionary) -> Dictionary:
+		if request.kind == "fade_event_pump": return {"completed":true,"pumped":request.events}
+		frame += request.get("argument",0)
+		return {"completed":true,"frame":frame}
+
 class ColdClock:
 	func consume(units: int) -> Dictionary:
 		return {"consumed": units, "total": units}
@@ -52,21 +56,11 @@ class SplitDisplay:
 			var rendered: Dictionary = renderer.render(request.get("state", {}))
 			if rendered.has("error"): return rendered
 			var answer: Dictionary = {"completed": true, "render": rendered.receipt}
-			if request.get("state") is Dictionary: answer.state = request.state.duplicate(true)
+			if request.get("state") is Dictionary: answer.state = rendered.state
 			return answer
-		if request.kind == "clear_effective_cross_fade" and renderer != null:
-			var prepared: Dictionary = renderer.prepare_clear_cross_fade(
-				request.get("state", {}), request.get("first", 0), request.get("second", 0))
-			if prepared.has("error"): return prepared
-			var answer: Dictionary = {"completed": true, "cross_fade": prepared.receipt}
-			if request.get("state") is Dictionary: answer.state = request.state.duplicate(true)
-			return answer
-		if request.kind == "restore_dialog_background" and renderer != null:
-			var restored: Dictionary = renderer.restore_dialog_background()
-			if restored.has("error"): return restored
-			var answer: Dictionary = {"completed": true, "restore": restored.receipt}
-			if request.get("state") is Dictionary: answer.state = request.state.duplicate(true)
-			return answer
+		# Capture/page/phase and event/frame dependencies are explicitly doubled
+		# in this component scan; the runtime renderer rejects them by name.
+
 		doubled.append(request.kind)
 		return {"completed": true}
 
@@ -83,7 +77,7 @@ class EnterDriver:
 	var executor
 	var split: SplitDisplay
 	var terminals: Array = []
-	func _init(package, cold_rgb6: PackedByteArray) -> void:
+	func _init(package, cold_rgb6: PackedByteArray, shared_renderer) -> void:
 		enter = Enter.new()
 		if not enter.load_source(package.pal98_sources): push_error("enter load failed")
 		adapter = EntryHost.new()
@@ -95,11 +89,12 @@ class EnterDriver:
 		adapter.bind(cache, kernel, inventory, [0, 0, 0, 0, 0, 0])
 		adapter.bind_inventory(load("res://src/native_pal98_inventory.gd").new())
 		executor = Display.new()
+		executor.bind_surface(shared_renderer)
 		executor.bind_clock(ColdClock.new())
+		executor.bind_runtime(ColdRuntimeDouble.new())
 		var installed: Dictionary = executor.install_cold(cold_rgb6)
 		if installed.has("error"): push_error(str(installed.error))
-		var renderer = load("res://src/native_pal98_scene_render.gd").new()
-		if not renderer.bind(package.pal98_graphics.open_records()): push_error(str(renderer.error))
+		var renderer = shared_renderer
 		split = SplitDisplay.new(executor, renderer)
 		adapter.bind_display(split)
 		var facing = load("res://src/native_pal98_walk_facing.gd").new()
@@ -152,7 +147,8 @@ class ReloadDriver:
 					if renderer != null:
 						var rendered: Dictionary = renderer.render(request.state)
 						if rendered.has("error"): return {"error": "reload render: " + str(rendered.error)}
-					step = reload.resume(request.id, {"completed": true})
+						step = reload.resume(request.id, {"completed": true, "state": rendered.state})
+					else: return {"error":"test background renderer not bound"}
 				"enter_script":
 					enters_seen.append(request.scene_id)
 					if enters_seen.size() > max_enters:
@@ -227,7 +223,7 @@ func _initialize() -> void:
 	var scene_renderer = load("res://src/native_pal98_scene_render.gd").new()
 	if not scene_renderer.bind(package.pal98_graphics.open_records()):
 		push_error(str(scene_renderer.error))
-	var driver = ReloadDriver.new(reload, EnterDriver.new(package, day.value), 2, scene_renderer)
+	var driver = ReloadDriver.new(reload, EnterDriver.new(package, day.value, scene_renderer), 2, scene_renderer)
 	var state: Dictionary = _fixture(package, palette, day.value, night.value)
 	var done: Dictionary = driver.start(state, cache)
 	check(not done.has("error") and driver.enters_seen == [1, 2],
@@ -259,20 +255,14 @@ func _initialize() -> void:
 		"the cold display palette is byte-identical to the admitted day variant")
 	var split: SplitDisplay = driver.enter_driver.split
 	var doubled: Array = split.doubled
-	check(doubled.has("play_midi") and not doubled.has("restore_dialog_background")
-		and not doubled.has("clear_effective_cross_fade"),
-		"the dialog restore and cross-fade clear are real; the remaining kinds stay named doubles: "
-			+ str(doubled))
-	var fades: Array = split.renderer.receipts().filter(func(receipt): return receipt.kind == "clear_effective_cross_fade")
-	check(fades.size() >= 1 and fades[0].pixels_per_lane == 0x29AC and fades[0].phases > 0
-		and fades[0].post_render.get("frame_sha256") is String,
-		"the cross-fade clear prepares two real renders with the recovered lane parameters: "
-			+ str(fades.size()))
-	var restores: Array = split.renderer.receipts().filter(func(receipt): return receipt.kind == "restore_dialog_background")
-	check(not restores.is_empty()
-		and restores[0].frame_sha256 == split.renderer.receipts()[0].frame_sha256,
-		"the dialog restore re-establishes the rendered background frame: "
-			+ str(restores.size()))
+	check(doubled.has("play_midi") and doubled.has("restore_dialog_background")
+		and doubled.has("clear_effective_cross_fade"),
+		"audio, captured-page restore and crossfade remain explicit test doubles: " + str(doubled))
+	check(split.renderer.prepare_clear_cross_fade(state, 1, 2).has("error"),
+		"the actual renderer refuses an unexecuted crossfade")
+	check(split.renderer.restore_dialog_background().has("error"),
+		"a rendered map is not an actual captured-page restore")
+
 	var render_receipts: Array = split.renderer.receipts()
 	check(render_receipts.size() >= 2 and render_receipts[0].map_id == 20
 		and render_receipts[0].frame_sha256 is String and render_receipts[0].frame_sha256.length() == 64,
@@ -294,7 +284,7 @@ func _initialize() -> void:
 	if not reopen_renderer.bind(reopened.pal98_graphics.open_records()):
 		push_error(str(reopen_renderer.error))
 	var driver2 = ReloadDriver.new(reload2, EnterDriver.new(reopened,
-		reopen_records.palette(0, 0).value), 2, reopen_renderer)
+		reopen_records.palette(0, 0).value, reopen_renderer), 2, reopen_renderer)
 	var state2: Dictionary = _fixture(reopened, Palette.new(),
 		reopen_records.palette(0, 0).value, reopen_records.palette(0, 1).value)
 	var done2: Dictionary = driver2.start(state2, cache2)
@@ -310,7 +300,7 @@ func _initialize() -> void:
 	finish(args)
 
 func finish(args: Array) -> void:
-	var output: Dictionary = {"suite": "test_pal98_cold_start", "checks": checks,
+	var output: Dictionary = {"suite": "test_pal98_cold_start", "scope":"same-process synthetic-state component replay; explicit effect doubles", "checks": checks,
 		"passed": checks.size() - failed, "failed": failed}
 	var file = FileAccess.open(args[1], FileAccess.WRITE)
 	file.store_string(JSON.stringify(output, "  ") + "\n"); file.close()

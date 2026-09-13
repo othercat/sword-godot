@@ -27,6 +27,9 @@ func resolve(key_levels, logical_map: Array) -> Dictionary:
 		var mapped = logical_map[slot]
 		if mapped is bool or not mapped is int or mapped < 0 or mapped >= key_levels.size():
 			return _failure("logical key slot %d leaves the state table" % slot)
+		var value = key_levels[mapped]
+		if typeof(value) != TYPE_INT or value < 0 or value > 3:
+			return _failure("key level for logical slot %d must be 0..3" % slot)
 	var level := func(slot: int) -> int:
 		var value = key_levels[logical_map[slot]]
 		if value is bool or not value is int: return 0
@@ -67,6 +70,8 @@ const MOVE_STEP_Y = 8
 ## becomes the isometric diagonal pair, so the input walk moves along the
 ## map's tile diagonals.
 func convert_to_isometric(direction_x: int, direction_y: int) -> Dictionary:
+	if direction_x not in [-1, 0, 1] or direction_y not in [-1, 0, 1] or direction_x * direction_y != 0:
+		return _failure("Cartesian direction must be a unit on at most one axis")
 	if direction_x == 0: direction_x = -direction_y
 	if direction_y == 0: direction_y = direction_x
 	return {"direction_x": direction_x, "direction_y": direction_y}
@@ -77,11 +82,15 @@ func convert_to_isometric(direction_x: int, direction_y: int) -> Dictionary:
 ## accept it as a one-step movement with the 16/8 isometric deltas.
 func probe_and_prepare(party_pos: Dictionary, viewport: Dictionary, direction_x: int,
 		direction_y: int, probe) -> Dictionary:
-	if direction_x == 0: return {"pending_steps": 0}
+	if direction_x not in [-1, 0, 1] or direction_y not in [-1, 0, 1] or (direction_x == 0) != (direction_y == 0):
+		return _failure("movement requires an isometric unit pair or zero")
 	var pos_x = party_pos.get("x"); var pos_y = party_pos.get("y")
 	var vp_x = viewport.get("x"); var vp_y = viewport.get("y")
 	if not pos_x is int or not pos_y is int or not vp_x is int or not vp_y is int:
 		return _failure("probe and prepare requires the explicit party and viewport words")
+	for word in [pos_x, pos_y, vp_x, vp_y]:
+		if word < -32768 or word > 65535: return _failure("party and viewport value leaves WORD")
+	if direction_x == 0: return {"pending_steps": 0}
 	var candidate_y: int = ((pos_y + vp_y + 32768) & 0xFFFF) - 32768 + direction_y * MOVE_STEP_Y
 	var candidate_x: int = ((pos_x + vp_x + 32768) & 0xFFFF) - 32768 + direction_x * MOVE_STEP_X
 	if candidate_y < -32768 or candidate_y > 32767 or candidate_x < -32768 or candidate_x > 32767:

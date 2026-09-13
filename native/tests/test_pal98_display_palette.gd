@@ -1,10 +1,9 @@
 # SPDX-License-Identifier: MIT
 extends SceneTree
-## The real palette display executor: the G0150 endpoints cold load from the
-## admitted PAT day/night pair, and the 0x0080/0x008C fades run with those real
-## palette bytes through the real executor, so every receipt is an install that
-## actually happened. Covers per-round byte identity, pixel evidence, host
-## writeback, clock/queue/frame helpers and the Enter-level cancellation guard.
+## Admitted PAT bytes through palette execution and a bound software surface.
+## Clock, event-pump and frame dependencies are explicit doubles. These checks
+## cover bytes, sequencing and cancellation, not actual elapsed time, hardware
+## input or window presentation; live pixels have a separate review suite.
 const Commands = preload("res://src/native_pal98_script_commands.gd")
 const Palette = preload("res://src/native_pal98_palette.gd")
 const Display = preload("res://src/native_pal98_display_palette.gd")
@@ -34,6 +33,21 @@ class CountingClock:
 		if refuse: return {"error": "clock refused the wait"}
 		total += units
 		return {"consumed": units, "total": total}
+
+class RuntimeDouble:
+	var current_frame := 0
+	func answer(request: Dictionary) -> Dictionary:
+		if request.kind == "fade_event_pump": return {"completed":true,"pumped":request.events.duplicate(true)}
+		if request.kind == "fade_frame":
+			current_frame += request.argument
+			return {"completed":true,"frame":current_frame}
+		return {"error":"test runtime has no such kind"}
+
+func _display():
+	var executor = Display.new()
+	executor.bind_surface(load("res://src/native_pal98_scene_render.gd").new())
+	executor.bind_runtime(RuntimeDouble.new())
+	return executor
 
 func _zero(count: int) -> PackedByteArray:
 	var bytes = PackedByteArray(); bytes.resize(count); return bytes
@@ -140,7 +154,7 @@ func _initialize() -> void:
 		"a short night palette is refused")
 
 	# Executor refusals: nothing is installed unless the request is complete.
-	var executor = Display.new()
+	var executor = _display()
 	check(executor.installed_rgb6().is_empty() and executor.install_generation() == 0,
 		"nothing is installed before the first apply")
 	check(executor.answer({"kind": "palette_swap"}).has("error")
@@ -174,7 +188,7 @@ func _initialize() -> void:
 
 	# The wait consumes from the bound logical clock only.
 	var clock = CountingClock.new()
-	var wait_executor = Display.new()
+	var wait_executor = _display()
 	check(wait_executor.answer({"kind": "fade_wait", "delay": 5}).has("error")
 		and "no logical clock" in wait_executor.error, "fade_wait without a clock is refused by name")
 	check(wait_executor.bind_clock(clock) and not wait_executor.answer({"kind": "fade_wait", "delay": 5}).has("error")
@@ -198,7 +212,7 @@ func _initialize() -> void:
 	# Real 0x0080 with the real palette bytes through the real executor.
 	var commands = Commands.new()
 	if not commands.load_source(package.pal98_sources): push_error("commands load failed"); quit(2); return
-	var fade_executor = Display.new()
+	var fade_executor = _display()
 	var fade_clock = CountingClock.new()
 	fade_executor.bind_clock(fade_clock)
 	var state: Dictionary = _command_state(palette, day_bytes, night_bytes)
@@ -264,7 +278,7 @@ func _initialize() -> void:
 
 	# Real 0x008C: the fill color converges the writable block in 63 rounds.
 	var color_clock = CountingClock.new()
-	var color_executor = Display.new()
+	var color_executor = _display()
 	color_executor.bind_clock(color_clock)
 	var color_state: Dictionary = _command_state(palette, day_bytes, night_bytes)
 	var color_run: Dictionary = commands.consume(color_state, {"words": [0x008C, 0, 3, 0], "entry": 1, "event_id": 0})
@@ -292,7 +306,7 @@ func _initialize() -> void:
 
 	# The A2 swap fades the work block back toward the saved day copy.
 	var swap_clock = CountingClock.new()
-	var swap_executor = Display.new()
+	var swap_executor = _display()
 	swap_executor.bind_clock(swap_clock)
 	var swap_state: Dictionary = _command_state(palette, day_bytes, night_bytes)
 	var swap_run: Dictionary = commands.consume(swap_state, {"words": [0x008C, 0, 3, 1], "entry": 1, "event_id": 0})
@@ -319,7 +333,7 @@ func _initialize() -> void:
 		var adapter = EntryHost.new()
 		var cache = Cache.new(); cache.load_source(package.pal98_graphics, package.pal98_sources)
 		adapter.bind(cache, Equipment.new(), _zero(1536), [0, 0, 0, 0, 0, 0])
-		var cancel_executor = Display.new()
+		var cancel_executor = _display()
 		var cancel_clock = CountingClock.new()
 		cancel_executor.bind_clock(cancel_clock)
 		adapter.bind_display(cancel_executor)

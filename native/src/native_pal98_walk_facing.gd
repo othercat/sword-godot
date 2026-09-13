@@ -11,10 +11,9 @@ extends RefCounted
 const DIRECTION_TABLE = [1, 2, 2, 1, 0, 3, 0, 0, 3]
 const EXTF_BODY_SHA256 = "16be3762663cec8c24ad757b6eafdb5796b6de4cf172f039ca271faecc4e702c"
 const DIRECTION_TABLE_SHA256 = "5418a11928803f449f1bb4b4ca3fe8865c1ebf6c3c30a06d1b81ae9d1d26fdb8"
-## The per-step host kinds this owner acknowledges with the state round-trip
-## while their real owners (frame/viewport/render, member sync) stay unbound.
-const ACKED_KINDS = ["sync_members_from_trail", "start_frame_and_process_events",
-	"update_viewport_and_party_position", "render_scene_frame"]
+## This owner implements facing and the position/phase portion of post-move.
+## Trail rotation, member sync, frame processing and rendering require bound
+## execution owners. A successful no-op is never supplied for an unbound kind.
 
 var error: String = ""
 ## Every request kind this owner has answered, in order, for host evidence.
@@ -42,6 +41,8 @@ func _u2_as_i2(raw: int) -> int:
 ## The decoded extf core: returns {"direction": word} for a facing change, or
 ## {"unchanged": true} when both deltas are zero (the original writes nothing).
 func face(delta_x: int, delta_y: int) -> Dictionary:
+	if delta_x < -32768 or delta_x > 32767 or delta_y < -32768 or delta_y > 32767:
+		return _failure("extf requires signed delta words")
 	if delta_x == 0 and delta_y == 0:
 		return {"unchanged": true}
 	var index: int = 0
@@ -51,16 +52,15 @@ func face(delta_x: int, delta_y: int) -> Dictionary:
 	elif delta_x > 0: index += 2
 	return {"direction": DIRECTION_TABLE[index]}
 
-## EntryHost movement-owner entry point. face_party_toward applies the decoded
-## extf to the request's deltas; post_move_update applies the reviewed world
-## relation (world = viewport + party screen anchor) inherited from the host
-## double that preceded this owner. Other forwarded kinds are refused by name.
+## face_party_toward applies extf. Post-move updates position/phase, then
+## requires trail rotation and member sync from an explicit execution owner.
 func answer(request: Dictionary) -> Dictionary:
 	if not request is Dictionary or not request.get("kind") is String:
 		return _failure("owner request shape")
 	requests.append(request.kind)
-	var state: Dictionary = request.get("state", {})
-	if not state is Dictionary: return _failure("movement request requires the pending state")
+	if not request.get("state") is Dictionary or not request.state.get("globals") is Dictionary:
+		return _failure("movement request requires the pending state and globals")
+	var state: Dictionary = request.state
 	var moved: Dictionary = state.duplicate(true)
 	var globals: Dictionary = moved.get("globals", {})
 	match request.kind:
@@ -77,18 +77,25 @@ func answer(request: Dictionary) -> Dictionary:
 		"post_move_update":
 			# The recovered PostMoveUpdate body: world = U2(party-in-viewport +
 			# viewport) per axis, then movement detection against the previous
-			# world words drives the WalkPhase/frame-offset pair, and the newest
-			# trail entry carries the direction plus the pre-move world.
+			# world words drives the WalkPhase/frame-offset pair. Bound trail
+			# and member owners must execute the remaining original effects.
 			var world_x = globals.get("viewport_x"); var party_x = globals.get("party_x")
 			var world_y = globals.get("viewport_y"); var party_y = globals.get("party_y")
 			if not world_x is int or not party_x is int or not world_y is int or not party_y is int:
 				return _failure("post_move_update requires the explicit viewport and party words")
 			var new_x: int = _u2_as_i2(world_x + party_x)
 			var new_y: int = _u2_as_i2(world_y + party_y)
-			var previous_x = globals.get("previous_x", new_x)
-			var previous_y = globals.get("previous_y", new_y)
+			var previous_x = globals.get("previous_x")
+			var previous_y = globals.get("previous_y")
 			if not previous_x is int or not previous_y is int:
 				return _failure("post_move_update requires the explicit previous world words")
+			for word in [world_x, party_x, world_y, party_y, previous_x, previous_y]:
+				if word < -32768 or word > 65535: return _failure("post_move_update coordinate leaves WORD")
+			previous_x = _u2_as_i2(previous_x); previous_y = _u2_as_i2(previous_y)
+			for key in ["walk_phase_word", "leader_frame_offset_word", "party_frame_offset_word"]:
+				var word = globals.get(key, 0)
+				if typeof(word) != TYPE_INT or word < 0 or word > 65535:
+					return _failure("invalid phase/frame WORD: " + key)
 			var phase: int = _u2(globals.get("walk_phase_word", 0))
 			var leader_offset: int = _u2(globals.get("leader_frame_offset_word", 0))
 			var party_offset: int = _u2(globals.get("party_frame_offset_word", 0))
@@ -107,23 +114,28 @@ func answer(request: Dictionary) -> Dictionary:
 			globals.walk_phase_word = phase
 			globals.leader_frame_offset_word = leader_offset
 			globals.party_frame_offset_word = party_offset
-			# The walk body's loop head copies the world into the previous words
-			# before each step, so the next comparison sees exactly this step's
-			# delta and the trail carries the pre-move world.
-			globals.previous_x = new_x
-			globals.previous_y = new_y
-			var trail = moved.get("party_trail", [])
-			if trail is Array and trail.size() > 0 and trail[0] is Dictionary:
-				trail[0] = {"x": previous_x, "y": previous_y,
-					"direction_word": globals.get("direction_word", 0)}
-				moved.party_trail = trail
 			moved.globals = globals
+			# Previous world belongs to the caller. AdvanceMovementPhase rotates
+			# trail only on displacement; SyncMembersFromTrail always follows.
+			# Do not replace either procedure with a fabricated trail[0] write.
+			var dependencies: Array = []
+			if new_x != previous_x or new_y != previous_y: dependencies.append("rotate_party_trail")
+			dependencies.append("sync_members_from_trail")
+			for kind in dependencies:
+				var child = request.duplicate(true); child.kind = kind; child.state = moved
+				var answer = _forward(child)
+				if answer.has("error"): return answer
+				moved = answer.state
 			return {"completed": true, "state": moved}
-	if request.kind in ACKED_KINDS:
-		return {"completed": true, "state": moved}
+	return _forward(request)
+
+func _forward(request: Dictionary) -> Dictionary:
 	if _fallback != null and _fallback.has_method("answer"):
 		var forwarded: Dictionary = _fallback.answer(request)
-		if not forwarded.has("error") and not forwarded.has("state") and state is Dictionary:
-			forwarded.state = state.duplicate(true)
+		if forwarded.has("error"): return forwarded
+		if forwarded.get("completed") != true: return _failure("dependent owner did not complete " + request.kind)
+		if not forwarded.has("state"): forwarded.state = request.state.duplicate(true)
+		if not forwarded.state is Dictionary or not forwarded.state.get("globals") is Dictionary:
+			return _failure("dependent owner returned malformed state for " + request.kind)
 		return forwarded
-	return _failure("not a walk facing request: " + str(request.kind))
+	return _failure("no execution owner bound for " + str(request.kind))

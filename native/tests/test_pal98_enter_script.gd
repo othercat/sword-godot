@@ -970,10 +970,8 @@ func _coverage_checks() -> void:
 		adapter.bind_inventory(Inventory.new())
 		var display_double = DisplayDouble.new()
 		adapter.bind_display(display_double)
-		# The real walk-facing owner closes the former walk-budget double
-		# boundary: facing follows the recovered PALOLD extf table and world
-		# follows the recovered PostMoveUpdate relation, so real scene walks
-		# arrive; display kinds still fall through to the named double.
+		# Facing/position use the runtime component; trail, members, frame,
+		# display and immediate reload effects remain explicit scan doubles.
 		var facing_owner = WalkFacing.new()
 		facing_owner.bind_fallback(display_double)
 		adapter.bind_movement(facing_owner)
@@ -992,6 +990,10 @@ func _coverage_checks() -> void:
 			rows.append({"runtime_scene": raw + 1, "entry": entry, "steps": steps, "blocked": opcode,
 				"error": str(run.result.get("error", ""))})
 	coverage = {"scenes_with_entry": started, "completed": completed,
+		"scope": "synthetic initial state with explicit host acknowledgements; not original gameplay",
+		"doubled_capabilities": ["rotate_party_trail", "sync_members_from_trail", "start_frame_and_process_events",
+			"update_viewport_and_party_position", "render_scene_frame", "load_resources_if_needed",
+			"dialogue", "display", "audio", "battle", "yes_no"],
 		"average_effect_depth": (float(depth_total) / float(started)) if started > 0 else 0.0,
 		"blocking_opcodes": blocked, "rows": rows}
 	check(started >= 150, "the admitted pool exposes its scene entry scripts: " + str(started))
@@ -1342,6 +1344,40 @@ func _real_checks() -> void:
 		check(restarted.trace.has("commit_events") and restarted.trace.has("load_events"),
 			"the restart commits the previous scene's events and loads the new scene's event backing")
 
+func _until_owner(owner, result: Dictionary) -> Dictionary:
+	for unused in range(128):
+		if not result.has("request") or result.request.kind != "dialogue": return result
+		result = owner.resume(result.request.id, {"event": _dialogue_event(result.request.effect)})
+	return {"error":"control probe dialogue budget"}
+
+func _review_control_checks() -> void:
+	var source = _source([0, 2], [1, 0], [[0x0078, 5, 0, 0], [0x0001, 0, 0, 0]], [], 2)
+	var owner = _owner(source); var state = _fixture(source); var before = state.duplicate(true)
+	var run = _until_owner(owner, owner.start(state, 1, 1))
+	check(run.get("request", {}).get("kind") == "load_resources_if_needed",
+		"0078 stops the actual Trigger before its following instruction for immediate T212")
+	if not run.has("request"): return
+	check(run.request.state.globals.battle_mode == 5, "the immediate reload observes the original A0 assignment")
+	var first_id: String = run.request.id
+	var refused = owner.resume(first_id, {"error":"independent reload refusal"})
+	check(refused.has("error") and not refused.has("state") and state == before,
+		"failed immediate reload publishes no candidate and keeps caller state")
+	run = _until_owner(owner, owner.start(state, 1, 1))
+	check(run.has("request") and run.request.id != first_id, "failed immediate reload can restart on the same Enter owner")
+	if not run.has("request"): return
+	check(owner.resume(first_id, {"completed":true,"state":state}).has("error"), "old reload receipt cannot complete restarted call")
+	var loaded: Dictionary = run.request.state.duplicate(true)
+	loaded.globals.battle_mode = 0; loaded.globals.midi_track = 77
+	run = _until_owner(owner, owner.resume(run.request.id, {"completed":true,"state":loaded}))
+	check(not run.has("error") and run.get("return_entry") == 3 and run.state.globals.midi_track == 77,
+		"actual Trigger resumes after reload and retains the fresh host state")
+	var idle_source = _source([0,2], [1,0], [[0x0003,1,2,0],[0x0001,0,0,0]], [], 2)
+	for invalid in [true, 65536, -1]:
+		var idle_owner = _owner(idle_source); var idle_state = _fixture(idle_source)
+		idle_state.globals.entry_idle_frame_word = invalid
+		var idle = _drive(idle_owner, idle_owner.start(idle_state,1,1))
+		check(idle.result.has("error") and not idle.result.has("state"), "invalid event-zero scratch WORD is rejected: " + str(invalid))
+
 func _initialize() -> void:
 	var args = OS.get_cmdline_user_args()
 	if args.size() != 2 or FileAccess.file_exists(args[1]) or DirAccess.dir_exists_absolute(args[1]): quit(2); return
@@ -1351,6 +1387,7 @@ func _initialize() -> void:
 	if package.pal98_sources == null or package.pal98_graphics == null:
 		push_error("enter script needs an admitted source and graphics component"); quit(2); return
 	_synthetic_checks()
+	_review_control_checks()
 	_real_checks()
 	var file = FileAccess.open(args[1], FileAccess.WRITE)
 	file.store_string(JSON.stringify({"success": failed == 0, "failed": failed, "checks": checks,

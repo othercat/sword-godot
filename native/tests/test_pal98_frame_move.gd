@@ -1,15 +1,19 @@
 # SPDX-License-Identifier: MIT
 extends SceneTree
-## One assembled input frame of the real movement loop: the recovered
-## PollAndResolveDirection feeds the isometric conversion, the two-level
-## collision probe gates the step, the recovered extf facing orients the
-## party, and the recovered PostMoveUpdate relation moves the world. Every
-## piece is a pushed owner; this test assembles them over real MAP20 data.
+## Component assembly over admitted MAP20: input direction, iso conversion,
+## collision, facing and the position part of PostMoveUpdate. This harness
+## supplies explicit dependency doubles; it is not an ordinary frame loop.
 const DirectionInput = preload("res://src/native_pal98_direction_input.gd")
 const CollisionProbe = preload("res://src/native_pal98_collision_probe.gd")
 const Facing = preload("res://src/native_pal98_walk_facing.gd")
 const Events = preload("res://src/native_pal98_scene_events.gd")
 const Package = preload("res://src/native_package.gd")
+
+## Component-only harness: frame, trail, clamping and physical input owners
+## are not supplied. This is not a production frame-loop implementation.
+class EffectsDouble:
+	func answer(request: Dictionary) -> Dictionary:
+		return {"completed":true,"state":request.state.duplicate(true)}
 
 var checks: Array = []
 var failed: int = 0
@@ -31,10 +35,10 @@ func _initialize() -> void:
 	var input = DirectionInput.new()
 	var probe = CollisionProbe.new()
 	check(probe.bind(map_bytes, events_state), "the probe binds the real MAP20 data")
-	var facing = Facing.new()
+	var facing = Facing.new(); facing.bind_fallback(EffectsDouble.new())
 
 	var globals := {"viewport_x": 864, "viewport_y": 912, "party_x": 160, "party_y": 112,
-		"world_x": 1024, "world_y": 1024, "direction_word": 0, "walk_phase_word": 0,
+		"world_x": 1024, "world_y": 1024, "previous_x": 1024, "previous_y": 1024, "direction_word": 0, "walk_phase_word": 0,
 		"leader_frame_offset_word": 0, "party_frame_offset_word": 0}
 
 	# Frame 1: right newly pressed.
@@ -50,17 +54,18 @@ func _initialize() -> void:
 		iso.direction_x, iso.direction_y, probe)
 	check(intent.get("pending_steps") == 1 and intent.get("delta_x") == 16 and intent.get("delta_y") == 8,
 		"the probe accepts the step over free ground with 16/8 deltas")
+	var faced: Dictionary = facing.answer({"kind": "face_party_toward",
+		"state": {"globals":globals}, "delta_x": intent.delta_x, "delta_y": intent.delta_y})
+	check(not faced.has("error") and faced.state.globals.direction_word == 3,
+		"the recovered extf faces the party along the diagonal: "
+			+ str(faced.state.globals.direction_word))
+	globals = faced.state.globals
 	globals.viewport_x += intent.delta_x; globals.viewport_y += intent.delta_y
 	var post: Dictionary = facing.answer({"kind": "post_move_update", "state": {"globals": globals}})
 	check(not post.has("error") and post.state.globals.world_x == 1040
 		and post.state.globals.world_y == 1032,
 		"the recovered world relation moves the party to 1040,1032")
 	globals = post.state.globals
-	var faced: Dictionary = facing.answer({"kind": "face_party_toward",
-		"state": globals, "delta_x": intent.delta_x, "delta_y": intent.delta_y})
-	check(not faced.has("error") and faced.state.globals.direction_word == 3,
-		"the recovered extf faces the party along the diagonal: "
-			+ str(faced.state.globals.direction_word))
 
 	# Frame 2: no keys held - the loop prepares no movement.
 	var idle: Dictionary = input.resolve([0, 0, 0, 0, 0, 0, 0, 0], [0, 1, 2, 3, 4, 5, 6, 7])
@@ -74,7 +79,7 @@ func _initialize() -> void:
 	check(idle_intent.get("pending_steps") == 0,
 		"an idle frame prepares no movement regardless of the previous direction")
 
-	var output: Dictionary = {"suite": "test_pal98_frame_move", "checks": checks,
+	var output: Dictionary = {"suite": "test_pal98_frame_move", "scope":"component harness with explicit trail/frame doubles; no clamp or hardware loop", "checks": checks,
 		"passed": checks.size() - failed, "failed": failed}
 	var file = FileAccess.open(args[1], FileAccess.WRITE)
 	file.store_string(JSON.stringify(output, "  ") + "\n"); file.close()

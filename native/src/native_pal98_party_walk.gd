@@ -14,11 +14,8 @@ extends RefCounted
 ## Facing and the world/trail arithmetic stay with their owners: this module owns
 ## the target, the loop and the viewport steps, and reports every step as an
 ## explicit request.
-# G044C / G0464: the 2:1 walk steps per direction. G044C and G0464[0..1] match
-# the earlier generated-initializer reading; G0464[2..3] are corrected by the
-# recovered extf facing table (PALOLD ordinal 44): of the 24 possible sign
-# assignments, exactly one makes the original walk loop converge on every
-# isometric lattice target, and it requires G0464 = [1,-1,-1,1].
+# Direction signs inferred from extf and convergence, consistent with the
+# reviewed formation signs. Convergence is not an original initializer proof.
 const WALK_STEP_X = [-1, -1, 1, 1]
 const WALK_STEP_Y = [1, -1, -1, 1]
 const MAX_STEPS = 65536
@@ -40,6 +37,9 @@ func _failure(message: String) -> Dictionary:
 func begin(state: Dictionary, words: Array, speed: int) -> Dictionary:
 	if not state.get("globals") is Dictionary: return _failure("explicit globals required")
 	if not _i2(speed) or speed <= 0: return _failure("walk speed outside I2")
+	if words.size() != 4: return _failure("walk requires four instruction words")
+	for axis in ["world_x", "world_y"]:
+		if not _i2(state.globals.get(axis)): return _failure("walk requires explicit " + axis)
 	for word in words:
 		if typeof(word) != TYPE_INT or word < 0 or word > 65535: return _failure("walk words must be U2")
 	var arg0: int = _signed(words[1]); var arg1: int = _signed(words[2]); var arg2: int = _signed(words[3])
@@ -98,6 +98,7 @@ func advance(state: Dictionary, pending: Dictionary) -> Dictionary:
 		var viewport_y: int = globals.viewport_y + step_y
 		if not _i2(viewport_x) or not _i2(viewport_y): return _failure("walk viewport step leaves I2 range")
 		globals.previous_viewport_x = globals.viewport_x; globals.previous_viewport_y = globals.viewport_y
+		globals.previous_x = globals.world_x; globals.previous_y = globals.world_y
 		globals.viewport_x = viewport_x; globals.viewport_y = viewport_y
 		effects.append({"kind": "party_walk_step", "direction": direction, "speed": pending.speed,
 			"step_x": step_x, "step_y": step_y, "viewport_x": viewport_x, "viewport_y": viewport_y})
