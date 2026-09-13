@@ -2,6 +2,7 @@
 extends Control
 const Package = preload("res://src/native_package.gd")
 const Session = preload("res://src/native_session.gd")
+const Admission = preload("res://src/native_pal98_original_admission.gd")
 const Save = preload("res://src/native_save.gd")
 const World = preload("res://src/native_world.gd")
 const WalkInput = preload("res://src/native_walk_input.gd")
@@ -61,6 +62,8 @@ var input_profile_path: String = "user://input.json"
 var input_profile_notice: String = ""
 var status_picker: AcceptDialog
 var status_text: Label
+var admission_picker: AcceptDialog
+var admission_text: Label
 var frame_selector: OptionButton
 var _last_physics_usec: int = 0
 var _gap_frame: int = -1
@@ -226,6 +229,13 @@ func _ready() -> void:
 	status_text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	status_scroll.add_child(status_text); status_picker.add_child(status_scroll)
 	add_child(status_picker); status_picker.visibility_changed.connect(_modal_changed)
+	admission_picker = AcceptDialog.new(); admission_picker.title = "原版来源能力检查"; admission_picker.min_size = Vector2i(680, 380)
+	var admission_scroll = ScrollContainer.new(); admission_scroll.custom_minimum_size = Vector2i(660, 320)
+	admission_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	admission_text = Label.new(); admission_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	admission_text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	admission_scroll.add_child(admission_text); admission_picker.add_child(admission_scroll)
+	add_child(admission_picker); admission_picker.visibility_changed.connect(_modal_changed)
 	frame_selector.get_popup().visibility_changed.connect(_modal_changed)
 	session.changed.connect(_refresh)
 	battle_view = BattleView.new(); battle_view.display_font = font; battle_view.visible = false; viewport.add_child(battle_view)
@@ -473,6 +483,13 @@ func open_package(path: String) -> bool:
 	var candidate = Package.new()
 	if not candidate.load_package(path) or not session.activate(candidate):
 		message.text = "无法打开 MOD：" + (candidate.error if not candidate.error.is_empty() else session.error)
+		if candidate.error.is_empty() and session.error.begins_with("original_source_only:"):
+			# The formal session refused the original source; show the real
+			# capability report instead of starting any stand-in gameplay.
+			var report: Dictionary = Admission.report_for(candidate)
+			admission_text.text = Admission.summary(report) if not report.has("error") else str(report.error)
+			admission_picker.popup_centered()
+			message.text = "原版来源包已读取；正式试玩未接入，详见能力检查。"
 		if not _preview_stop_file.is_empty(): printerr("[Native preview] " + message.text)
 		return false
 	_clear_input()
