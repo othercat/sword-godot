@@ -53,6 +53,15 @@ func present() -> Dictionary:
 	last_receipt = composed
 	return composed
 
+## Republish the authoritative page without any logic tick: the last accepted
+## receipt is re-presented exactly as it was accepted (minimize/restore and
+## refocus paths). A stored page is never resurrected into a newer state.
+func republish() -> Dictionary:
+	if last_receipt.is_empty():
+		return {"error": "nothing accepted to republish yet"}
+	return {"completed": true, "frame_count": frame_count,
+		"receipt": last_receipt}
+
 ## One production iteration: the game's tick (movement, requests) followed by
 ## presentation of the resulting state. The tick's draw requests and the
 ## published frame are returned together so the caller can check that the
