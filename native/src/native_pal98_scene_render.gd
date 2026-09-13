@@ -134,7 +134,35 @@ func prepare_clear_cross_fade(state: Dictionary, first: int, second: int) -> Dic
 		"battle_mode": state.get("globals", {}).get("battle_mode")}
 	return result
 
-## G00C0 is the captured composed page, not the most recent map render.
-## The existing DialogueSurface capture/restore owner must be wired by a Session.
+var _capture_page: Dictionary = {}
+
+## G00C0: capture the composed indexed page (indices + coverage) at dialog
+## open. Later renders overwrite the screen, never the page; only a new
+## capture replaces it. Refuses while the surface is empty.
+func capture_page() -> Dictionary:
+	if _indices.is_empty():
+		return _failure("capture_page requires a rendered indexed surface")
+	_capture_page = {"indices": _indices.duplicate(), "coverage": _coverage.duplicate(),
+		"sha256": Schema.digest(_indices)}
+	var receipt: Dictionary = {"kind": "capture_dialog_background",
+		"page_sha256": _capture_page.sha256}
+	_renders.append(receipt)
+	return {"completed": true, "receipt": receipt}
+
+## G00C0 restore: copy the captured page back into the surface and recompose
+## the RGBA through the live palette. Without a captured page the refusal
+## stands: a map render receipt is not G00C0.
 func restore_dialog_background() -> Dictionary:
-	return _failure("restore_dialog_background requires the captured-page owner; a map receipt is not G00C0")
+	if _capture_page.is_empty():
+		return _failure("restore_dialog_background requires the captured-page owner; a map receipt is not G00C0")
+	_indices = _capture_page.indices.duplicate()
+	_coverage = _capture_page.coverage.duplicate()
+	var palette: PackedByteArray = _live_palette
+	var mapped = Indexed.rgba({"width": WIDTH, "height": HEIGHT, "indices": _indices, "coverage": _coverage}, palette, false)
+	if mapped.has("error"): return _failure(mapped.error)
+	_rgba = mapped.value
+	var receipt: Dictionary = {"kind": "restore_dialog_background",
+		"page_sha256": _capture_page.sha256,
+		"frame_sha256": Schema.digest(_rgba), "from_page": true}
+	_renders.append(receipt)
+	return {"completed": true, "receipt": receipt}

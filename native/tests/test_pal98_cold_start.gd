@@ -77,6 +77,7 @@ class EnterDriver:
 	var executor
 	var split: SplitDisplay
 	var terminals: Array = []
+	var captures: Array = []
 	func _init(package, cold_rgb6: PackedByteArray, shared_renderer) -> void:
 		enter = Enter.new()
 		if not enter.load_source(package.pal98_sources): push_error("enter load failed")
