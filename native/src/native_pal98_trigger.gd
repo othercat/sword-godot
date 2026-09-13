@@ -160,14 +160,25 @@ func _idle_jump(frame: Dictionary) -> Dictionary:
 	var limit: int = _signed(frame.words[2])
 	var jump: bool = limit == 0
 	if limit != 0:
+		var count: int
 		var row: Dictionary = _events.event_record(_state.events,frame.event_id)
-		if row.has("error"): return _fail(str(row.error))
-		var bytes: PackedByteArray = row.value
-		var count: int = _signed(bytes.decode_u16(24)) + 1
-		if count > 32767: return _fail("TriggerIdleFrame I2 overflow")
-		jump = count < limit
-		bytes.encode_u16(24,count & 65535 if jump else 0)
-		_state.events = _events.replace_event_record(_state.events,frame.event_id,bytes).state
+		if row.has("error"):
+			# An eventless entry script shares the zeroth event object's idle
+			# counter in the original (rgEventObject[0]); Native keeps that
+			# scratch counter as an explicit globals word instead of an
+			# unowned slot, with the same increment/compare/reset cycle.
+			if frame.event_id != 0: return _fail(str(row.error))
+			count = _signed(_state.globals.get("entry_idle_frame_word", 0)) + 1
+			if count > 32767: return _fail("TriggerIdleFrame I2 overflow")
+			jump = count < limit
+			_state.globals.entry_idle_frame_word = count if jump else 0
+		else:
+			var bytes: PackedByteArray = row.value
+			count = _signed(bytes.decode_u16(24)) + 1
+			if count > 32767: return _fail("TriggerIdleFrame I2 overflow")
+			jump = count < limit
+			bytes.encode_u16(24,count & 65535 if jump else 0)
+			_state.events = _events.replace_event_record(_state.events,frame.event_id,bytes).state
 	if jump:
 		frame.pc = frame.words[1]
 		_phase = "exit" if frame.words[0] == 2 else "fetch"

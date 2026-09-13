@@ -82,6 +82,9 @@ const CASES = {
 	0x0077: {"range": ["0x004256AC", "0x004256FE"],
 		"sha256": "679bb8101add55d44cf71111cb9a0130c1c69ca9ed28b78e10b2e40dd0ff03c2",
 		"effect": "A0 defaults to 1; a zero A1 queries the CD track, then the media stop runs and a non-battle context clears G027C"},
+	0x0078: {"range": ["0x004256FE", "0x0042571C"],
+		"sha256": "a9a4850e2c6b8460e006e946a40caac7e56aceda22128aafa32dd1aefdec0040",
+		"effect": "clears the battle mode word and zeroes the input directions; the load-resources-if-requested pass stays with the outer resource chain"},
 	0x0035: {"range": ["0x00422F16", "0x00422F52"],
 		"sha256": "873a78738f09dd6511e58f5a57a3bb27ce0b4a26c68a7b39ba9e0cf0a3532144",
 		"effect": "screen-shake count = A0 and amplitude = A1 with the original default 4"},
@@ -347,6 +350,7 @@ func consume(state: Dictionary, request: Dictionary) -> Dictionary:
 		0x0070: return _command_walk(state, request, source, 2)
 		0x0075: return _command_0075(state, request, source)
 		0x0077: return _command_0077(state, request, source)
+		0x0078: return _command_0078(state, request, source)
 		0x007A: return _command_walk(state, request, source, 4)
 		0x007B: return _command_walk(state, request, source, 8)
 		0x008E: return _command_008E(state, request, source)
@@ -1462,6 +1466,19 @@ func _fade_request(state: Dictionary, request: Dictionary, source: Dictionary, k
 	result.requests = [{"kind": kind, "original_entry": entry, "procedure": procedure,
 		"argument": argument}]
 	return result
+
+## 0x0078 clears the battle mode word and the input directions, then the
+## load-resources-if-requested pass runs; the reload itself stays with the
+## outer resource chain, which reads the same reload word after the script.
+func _command_0078(state: Dictionary, request: Dictionary, source: Dictionary) -> Dictionary:
+	if not state.get("globals") is Dictionary:
+		return _failure("globals", "0x0078 requires the explicit globals", request, source)
+	state.globals.battle_mode = 0
+	if state.globals.get("move_dx") != null: state.globals.move_dx = 0
+	if state.globals.get("move_dy") != null: state.globals.move_dy = 0
+	var reload_word = state.globals.get("resource_flags")
+	return _result(state, request, [{"kind": "battle_mode_clear",
+		"reload_word": reload_word if reload_word is int else null, "source": source}])
 
 ## 0x0077 stops the media owner's music; the field track clears outside battle.
 ## 0x006D writes a scene record's enter/leave script words, or clears the pair.

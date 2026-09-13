@@ -997,8 +997,9 @@ func _coverage_checks() -> void:
 	check(started >= 150, "the admitted pool exposes its scene entry scripts: " + str(started))
 	check(completed >= 1 and coverage.average_effect_depth > 0.0,
 		"at least one real scene entry runs to a return: " + str(completed))
-	check(blocked.has("0x003C") or blocked.has("0x0075") or blocked.size() > 0,
-		"the coverage report names the next blocking commands: " + str(blocked))
+	check(blocked.is_empty() and completed == started,
+		"every admitted scene entry runs to a return with no blocking commands: "
+			+ str(completed) + "/" + str(started) + " " + str(blocked))
 
 ## T140/T144/T152 arithmetic over explicit inventory bytes.
 func _inventory_checks() -> void:

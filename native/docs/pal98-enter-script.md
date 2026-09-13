@@ -398,10 +398,16 @@ forwards non-walk kinds to the host's display binding; the coverage scan and
 the cold-start chain bind it as the movement owner.
 
 Result: all 486 lattice/speed walks in `test_pal98_walk_facing` land exactly
-on their tile-derived targets, the scan's nine former walk-budget rows
-complete, and real-resource coverage rises to 159/160 with an average effect
-depth of 31.96 — the single remaining row blocks on the unimplemented
-`0x0003` command, which is now the next opcode blocker by name.
+on their tile-derived targets and the scan's nine former walk-budget rows
+complete. Two further local pieces closed the last row the same day: the
+`0x0003` idle-frame wait for eventless entry scripts now keeps its counter in
+an explicit globals word (the original shares `rgEventObject[0]`'s idle
+frame, and Native refuses unowned event slots by name), and the `0x0078` case
+(cases bytes `0x004256FE..0x0042571C`, SHA256 `a9a4850e…`) clears the battle
+mode word and zeroes the input directions, with the load-resources pass
+staying on the outer resource chain. Real-resource coverage is 160/160 with
+an average effect depth of 33.16 — every admitted scene entry runs to a
+return.
 
 `MAX_STEPS` (512) is a Native guard like the trigger's step budget, not original
 behaviour: with a host that only approximates facing, a real long walk can
