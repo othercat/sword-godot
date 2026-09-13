@@ -14,6 +14,14 @@ func check(ok: bool, label: String) -> void:
 	if not ok: failed += 1; push_error(label)
 
 ## Slot order 0..7: up, down, left, right, and the four alias slots 4..7.
+class AcceptProbe:
+	func probe(_x: int, _y: int) -> Dictionary:
+		return {"accepted": true}
+
+class RejectProbe:
+	func probe(_x: int, _y: int) -> Dictionary:
+		return {"accepted": false}
+
 func resolve(levels: Array) -> Dictionary:
 	var input = DirectionInput.new()
 	return input.resolve(levels, [0, 1, 2, 3, 4, 5, 6, 7])
@@ -69,6 +77,47 @@ func _initialize() -> void:
 		"the alias up slot resolves like the primary")
 	check(resolve([0, 0, 0, 0, 0, 0, 0, 3]).get("direction_x") == 1,
 		"the alias right slot resolves like the primary")
+
+	# The isometric conversion: cartesian screen directions become the tile
+	# diagonals the input walk moves along.
+	var converter = DirectionInput.new()
+	var iso = converter.convert_to_isometric(0, -1)
+	check(iso.get("direction_x") == 1 and iso.get("direction_y") == -1,
+		"cartesian up converts to the up-right isometric diagonal")
+	var iso_right = converter.convert_to_isometric(1, 0)
+	check(iso_right.get("direction_x") == 1 and iso_right.get("direction_y") == 1,
+		"cartesian right converts to the down-right isometric diagonal")
+	var iso_zero = converter.convert_to_isometric(0, 0)
+	check(iso_zero.get("direction_x") == 0 and iso_zero.get("direction_y") == 0,
+		"a zero direction converts to zero")
+
+	# The movement intent: a 16/8 step candidate through an injected probe.
+	var mover = DirectionInput.new()
+	var accepting = AcceptProbe.new()
+	var rejecting = RejectProbe.new()
+	check(mover.probe_and_prepare({}, {}, 1, 0, null).has("error"),
+		"a move intent without positions is refused by name")
+	check(mover.probe_and_prepare({"x": 160, "y": 112}, {"x": 864, "y": 912}, 0, 0, null).get("pending_steps") == 0,
+		"a zero direction prepares no movement")
+	var right_iso: Dictionary = converter.convert_to_isometric(1, 0)
+	var prepared: Dictionary = mover.probe_and_prepare(
+		{"x": 160, "y": 112}, {"x": 864, "y": 912},
+		right_iso.get("direction_x"), right_iso.get("direction_y"), accepting)
+	check(prepared.get("pending_steps") == 1 and prepared.get("delta_x") == 16
+		and prepared.get("delta_y") == 8,
+		"an accepted probe prepares the 16/8 isometric step: "
+			+ str(prepared.get("delta_x")) + "," + str(prepared.get("delta_y")))
+	var blocked: Dictionary = mover.probe_and_prepare(
+		{"x": 160, "y": 112}, {"x": 864, "y": 912},
+		right_iso.get("direction_x"), right_iso.get("direction_y"), rejecting)
+	check(blocked.get("pending_steps") == 0,
+		"a rejected probe prepares no movement")
+	var up_iso: Dictionary = converter.convert_to_isometric(0, -1)
+	var blocked_up: Dictionary = mover.probe_and_prepare(
+		{"x": 160, "y": 112}, {"x": 864, "y": 912},
+		up_iso.get("direction_x"), up_iso.get("direction_y"), rejecting)
+	check(blocked_up.get("pending_steps") == 0,
+		"a rejected probe with a converted diagonal prepares no movement")
 
 	# Malformed tables are refused by name.
 	var input = DirectionInput.new()

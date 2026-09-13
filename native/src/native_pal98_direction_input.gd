@@ -59,3 +59,38 @@ func resolve(key_levels, logical_map: Array) -> Dictionary:
 	if positive_y == 0 and direction_y == 1: direction_y = 0
 	if negative_y == 0 and direction_y == -1: direction_y = 0
 	return {"direction_x": direction_x, "direction_y": direction_y}
+
+const MOVE_STEP_X = 16
+const MOVE_STEP_Y = 8
+
+## The SubMain inline (0x0041B1BA..0x0041B1EA): a cartesian screen direction
+## becomes the isometric diagonal pair, so the input walk moves along the
+## map's tile diagonals.
+func convert_to_isometric(direction_x: int, direction_y: int) -> Dictionary:
+	if direction_x == 0: direction_x = -direction_y
+	if direction_y == 0: direction_y = direction_x
+	return {"direction_x": direction_x, "direction_y": direction_y}
+
+## The SubMain inline ProbeAndPrepareMove (0x0041B1F0..0x0041B27A): build the
+## step candidate from the party-in-viewport and viewport words, run the
+## two-level collision probe (the exgm1/exgm2 externals stay injected), and
+## accept it as a one-step movement with the 16/8 isometric deltas.
+func probe_and_prepare(party_pos: Dictionary, viewport: Dictionary, direction_x: int,
+		direction_y: int, probe) -> Dictionary:
+	if direction_x == 0: return {"pending_steps": 0}
+	var pos_x = party_pos.get("x"); var pos_y = party_pos.get("y")
+	var vp_x = viewport.get("x"); var vp_y = viewport.get("y")
+	if not pos_x is int or not pos_y is int or not vp_x is int or not vp_y is int:
+		return _failure("probe and prepare requires the explicit party and viewport words")
+	var candidate_y: int = ((pos_y + vp_y + 32768) & 0xFFFF) - 32768 + direction_y * MOVE_STEP_Y
+	var candidate_x: int = ((pos_x + vp_x + 32768) & 0xFFFF) - 32768 + direction_x * MOVE_STEP_X
+	if candidate_y < -32768 or candidate_y > 32767 or candidate_x < -32768 or candidate_x > 32767:
+		return _failure("move candidate leaves I2")
+	if probe == null or not probe.has_method("probe"):
+		return _failure("the collision probe owner is required")
+	var accepted: Dictionary = probe.probe(candidate_x, candidate_y)
+	if accepted.has("error"): return accepted
+	if not accepted.get("accepted", false):
+		return {"pending_steps": 0}
+	return {"pending_steps": 1, "delta_x": direction_x * MOVE_STEP_X,
+		"delta_y": direction_y * MOVE_STEP_Y}
