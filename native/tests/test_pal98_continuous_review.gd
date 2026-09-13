@@ -25,6 +25,8 @@ class EffectsDouble:
 	var kinds: Array = []
 	func answer(r: Dictionary) -> Dictionary:
 		kinds.append(r.kind)
+		if r.kind == "sync_party_formation_and_frames":
+			return {"completed": true, "party_records": r.state.party_records.duplicate(true)}
 		return {"completed": true, "state": r.state.duplicate(true)}
 func state() -> Dictionary:
 	return {"globals": {"viewport_x": 880, "viewport_y": 920, "party_x": 160, "party_y": 112,
@@ -34,8 +36,8 @@ func state() -> Dictionary:
 		"party_trail": [{"x": 1010, "y": 1000, "direction_word": 2},
 			{"x": 1000, "y": 992, "direction_word": 3}, {"x": 990, "y": 984, "direction_word": 3},
 			{"x": 980, "y": 976, "direction_word": 3}, {"x": 970, "y": 968, "direction_word": 3}],
-		"party_records": [{"role_id": 0, "screen_x": 160, "screen_y": 112},
-			{"role_id": 1, "screen_x": 172, "screen_y": 98}]}
+		"party_records": [{"role_id": 0, "x": 160, "y": 112, "current_frame": 3},
+			{"role_id": 1, "x": 172, "y": 98, "current_frame": 3}]}
 func _initialize() -> void:
 	var args = OS.get_cmdline_user_args()
 	if args.size() != 2 or FileAccess.file_exists(args[1]): quit(2); return
@@ -66,13 +68,13 @@ func _initialize() -> void:
 	var facing = Facing.new()
 	for kind in ["start_frame_and_process_events", "update_viewport_and_party_position", "render_scene_frame"]:
 		check(facing.answer({"kind": kind,"state": state()}).has("error"), "unbound " + kind + " cannot acknowledge work")
-	check(facing.answer({"kind": "sync_members_from_trail","state": state()}).get("completed") == true,
-		"the sync dependent executes for real instead of acknowledging")
+	check(facing.answer({"kind": "sync_members_from_trail","state": state()}).has("error"),
+		"unbound formation/frame work cannot acknowledge member sync")
 	var source = state(); var before = source.duplicate(true)
 	var first_run: Dictionary = facing.answer({"kind":"post_move_update","state":source})
-	check(not first_run.has("error") and source == before, "post-move succeeds through its real dependent owners and preserves the caller's input")
+	check(first_run.has("error") and source == before, "post-move refuses unbound member work without publishing partial trail or globals")
 	check(facing.answer({"kind":"face_party_toward","state":source.globals,"delta_x":16,"delta_y":8}).has("error"), "flat globals are not a source state")
-	var effects = EffectsDouble.new(); facing.bind_fallback(effects)
+	var effects = EffectsDouble.new(); facing.bind_fallback(effects); facing.bind_member_sync(effects)
 	facing.executed.clear()
 	var moved = facing.answer({"kind":"post_move_update","state":source})
 	check(not moved.has("error") and moved.state.globals.previous_x == 1024, "post-move does not overwrite caller-owned previous world")

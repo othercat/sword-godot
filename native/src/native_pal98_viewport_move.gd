@@ -143,19 +143,20 @@ func _advance(state: Dictionary, pending: Dictionary) -> Dictionary:
 		return _failure("member count exceeds the explicit party records")
 	var leader: Dictionary = _member(state, 0)
 	if leader.is_empty(): return _failure("party record 0 shape")
-	leader.screen_x = anchor_x; leader.screen_y = anchor_y
+	if not _i2(leader.get("x")) or not _i2(leader.get("y")): return _failure("leader screen position missing or outside I2")
+	leader.x = anchor_x; leader.y = anchor_y
 	var shifted: int = 0
 	for slot in range(1, int(globals.member_last) + 1):
 		var member: Dictionary = _member(state, slot)
 		if member.is_empty(): return _failure("member record shape at slot " + str(slot))
-		if not _i2(member.get("screen_x")) or not _i2(member.get("screen_y")):
+		if not _i2(member.get("x")) or not _i2(member.get("y")):
 			return _failure("member screen position missing")
 		var dx: int = anchor_x - int(pending.saved_anchor_x)
 		var dy: int = anchor_y - int(pending.saved_anchor_y)
 		if not _i2(dx) or not _i2(dy): return _failure("member anchor delta leaves I2 range")
-		var x: int = member.screen_x + dx; var y: int = member.screen_y + dy
+		var x: int = member.x + dx; var y: int = member.y + dy
 		if not _i2(x) or not _i2(y): return _failure("member screen position leaves I2 range")
-		member.screen_x = x; member.screen_y = y
+		member.x = x; member.y = y
 		shifted += 1
 	effects.append({"kind": "viewport_move", "mode": pending.mode, "round": pending.next,
 		"viewport_x": globals.viewport_x, "viewport_y": globals.viewport_y,

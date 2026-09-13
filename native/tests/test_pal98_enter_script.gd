@@ -28,6 +28,8 @@ class DisplayDouble:
 	var requests: Array = []
 	func answer(request: Dictionary) -> Dictionary:
 		requests.append(request.kind)
+		if request.kind == "sync_party_formation_and_frames":
+			return {"completed": true, "party_records": request.state.party_records.duplicate(true)}
 		return {"completed": true}
 
 ## Movement owner double: it faces the party by the delta quadrant (the external
@@ -133,11 +135,11 @@ func _fixture(source, scene_id: int = 1) -> Dictionary:
 		"palette_bytes": _zero(0xC00),
 		# The fixed G04AC projection: five slots, of which the active count is
 		# carried by globals.member_last and the equipment role projection.
-		"party_records": [{"role_id": 0, "screen_x": 160, "screen_y": 112, "current_frame": 3},
-			{"role_id": 1, "screen_x": 176, "screen_y": 104, "current_frame": 3},
-			{"role_id": 3, "screen_x": 192, "screen_y": 96, "current_frame": 3},
-			{"role_id": 0, "screen_x": 208, "screen_y": 88, "current_frame": 3},
-			{"role_id": 0, "screen_x": 224, "screen_y": 80, "current_frame": 3}],
+		"party_records": [{"role_id": 0, "x": 160, "y": 112, "current_frame": 3},
+			{"role_id": 1, "x": 176, "y": 104, "current_frame": 3},
+			{"role_id": 3, "x": 192, "y": 96, "current_frame": 3},
+			{"role_id": 0, "x": 208, "y": 88, "current_frame": 3},
+			{"role_id": 0, "x": 224, "y": 80, "current_frame": 3}],
 		"party_trail": [{"x": 0, "y": 0, "direction_word": 0}, {"x": 0, "y": 0, "direction_word": 0},
 			{"x": 0, "y": 0, "direction_word": 0}, {"x": 0, "y": 0, "direction_word": 0},
 			{"x": 0, "y": 0, "direction_word": 0}]}
@@ -231,12 +233,12 @@ func _synthetic_checks() -> void:
 	var map_owner = _owner(map_source)
 	var map_state = _fixture(map_source)
 	while map_state.party_records.size() < 5:
-		map_state.party_records.append({"role_id": 0, "screen_x": 0, "screen_y": 0, "current_frame": 3})
+		map_state.party_records.append({"role_id": 0, "x": 0, "y": 0, "current_frame": 3})
 	# Five map records do not imply five active equipment roles or condition slots.
 	var map_run = _drive(map_owner, map_owner.start(map_state, 1, 1))
 	check(not map_run.result.has("error"), "0x0046 completes with five backed slots: " + str(map_run.result.get("error", "")))
-	check(map_run.result.state.party_records[0].screen_x == 160 and map_run.result.state.party_records[0].screen_y == 112
-		and map_run.result.state.party_records[1].screen_x == 176 and map_run.result.state.party_records[1].screen_y == 104,
+	check(map_run.result.state.party_records[0].x == 160 and map_run.result.state.party_records[0].y == 112
+		and map_run.result.state.party_records[1].x == 176 and map_run.result.state.party_records[1].y == 104,
 		"0x0046 steps the member screen positions with the direction-0 formation table")
 	check(map_run.result.state.party_records[4].current_frame == 3
 		and map_run.result.state.party_records[2].current_frame == 3,
@@ -628,8 +630,8 @@ func _synthetic_checks() -> void:
 		and move_effects[1].anchor_x == 156 and move_effects[1].anchor_y == 106,
 		"the second round continues from the written-back viewport and recomputes the anchor")
 	check(move_effects[0].members_shifted == 2 and move_effects[1].members_shifted == 2
-		and move_run.result.state.party_records[1].screen_x == 172
-		and move_run.result.state.party_records[1].screen_y == 98,
+		and move_run.result.state.party_records[1].x == 172
+		and move_run.result.state.party_records[1].y == 98,
 		"the member records 1..member_last shift by the anchor delta")
 	check(move_run.requests.map(func(request): return request.kind).count("render_scene_frame") == 2
 		and move_run.requests.map(func(request): return request.kind).count("update_viewport_and_party_position") == 2
@@ -692,6 +694,7 @@ func _synthetic_checks() -> void:
 	walk_adapter.bind_display(walk_display)
 	var walk_facing = WalkFacing.new()
 	walk_facing.bind_fallback(walk_display)
+	walk_facing.bind_member_sync(walk_display)
 	walk_adapter.bind_movement(walk_facing)
 	var walk_run = _drive_with_host(walk_owner, walk_owner.start(walk_state, 1, 1), walk_adapter)
 	var walk_effects: Array = walk_run.result.get("effects", [])
@@ -854,7 +857,7 @@ func _synthetic_checks() -> void:
 	var multi_owner = _owner(multi_source)
 	var multi_state = _fixture(multi_source)
 	while multi_state.party_records.size() < 3:
-		multi_state.party_records.append({"role_id": 0, "screen_x": 160, "screen_y": 112, "current_frame": 0})
+		multi_state.party_records.append({"role_id": 0, "x": 160, "y": 112, "current_frame": 0})
 	var multi_fields: Array = []
 	for slot in range(3): multi_fields.append(multi_state.equipment.party_fields[0].duplicate(true))
 	multi_state.equipment.party_fields = multi_fields
@@ -974,6 +977,7 @@ func _coverage_checks() -> void:
 		# display and immediate reload effects remain explicit scan doubles.
 		var facing_owner = WalkFacing.new()
 		facing_owner.bind_fallback(display_double)
+		facing_owner.bind_member_sync(display_double)
 		adapter.bind_movement(facing_owner)
 		var dialogue_host = DialogueHost.new(); dialogue_host.bind(package.pal98_sources)
 		var run = _drive_with_host(owner, owner.start(state, raw + 1, entry), adapter, dialogue_host)

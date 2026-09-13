@@ -30,6 +30,7 @@ func bind(records) -> bool:
 	if records == null:
 		error = "pal98-scene-render: addressed graphics reader required"; return false
 	_records = records; _renders = []; _indices.clear(); _coverage.clear(); _rgba.clear(); _live_palette.clear()
+	_capture_page.clear()
 	error = ""; return true
 
 func current_rgba() -> PackedByteArray:
@@ -127,29 +128,69 @@ func render(state: Dictionary, palette_index: int = 0, palette_variant: int = 0)
 	return {"completed": true, "state": candidate, "rgba": pixels.duplicate(), "width": WIDTH, "height": HEIGHT,
 		"receipt": receipt}
 
-## The 0x0073 preparation (original entry 0x0041CEC4, T121, non-battle
-## branch): render the fresh background, capture it as the base page (the
-## original copies the rendered half over the base page), pin the recovered
-## lane parameters (0x29AC pixels per lane, phases default 88) and render the
-## post-fade background. The per-lane dissolve itself runs through PAL.dll's
-## adpic, whose pixel rule is not recovered - the receipt names it as the
-## remaining presentation boundary instead of faking the transition.
+## Non-battle T121 preparation only: G01B0 is the new target while pushscr
+## captures the OLD displayed page into G00C0. Build an isolated candidate;
+## neither the current page nor the dialogue capture changes here. T121's
+## lane execution, timing and final presentation are still unbound, so this
+## preparation must never acknowledge the full host command as completed.
 func prepare_clear_cross_fade(state: Dictionary, first: int, second: int) -> Dictionary:
-	var rendered: Dictionary = render(state)
+	if _records == null or _indices.is_empty(): return _failure("cross-fade requires a bound current indexed page")
+	if not state.get("globals") is Dictionary or typeof(state.globals.get("battle_mode")) != TYPE_INT:
+		return _failure("cross-fade requires explicit battle mode")
+	if state.globals.battle_mode != 0: return _failure("T121 battle target preparation owner not bound")
+	if first < -32768 or first > 32767 or second < -32768 or second > 32767:
+		return _failure("T121 arguments outside I2")
+	var target = get_script().new()
+	target.bind(_records)
+	if not _live_palette.is_empty():
+		var installed: Dictionary = target.install_palette(_live_palette)
+		if installed.has("error"): return installed
+	var rendered: Dictionary = target.render(state)
 	if rendered.has("error"): return rendered
-	var captured: Dictionary = capture_page()
-	if captured.has("error"): return captured
-	var phases: int = 88 if first == 0 else first
-	var final: Dictionary = render(state)
-	if final.has("error"): return final
 	var receipt: Dictionary = {"kind": "clear_effective_cross_fade",
-		"phases": phases, "delay": second, "pixels_per_lane": 0x29AC,
-		"base_page_sha256": captured.receipt.page_sha256,
+		"first": first, "second": second, "pixels_per_lane": 0x29AC,
+		"base_page_sha256": Schema.digest(_indices),
+		"base_rgba_sha256": Schema.digest(_rgba),
 		"target_sha256": rendered.receipt.frame_sha256,
-		"final_sha256": final.receipt.frame_sha256,
-		"boundary": "per-lane dissolve (adpic) not recovered; presentation pending"}
-	_renders.append(receipt)
-	return {"completed": true, "receipt": receipt}
+		"boundary": "T121 lane execution (adpic), timing and final presentation not implemented"}
+	return {"completed": false, "prepared": true, "receipt": receipt,
+		"candidate_state": rendered.state, "target_rgba": rendered.rgba,
+		"base_page": {"indices": _indices.duplicate(), "coverage": _coverage.duplicate()},
+		"target_page": {"indices": target._indices.duplicate(), "coverage": target._coverage.duplicate()}}
+
+## Production host adapter: preparation alone never releases a script waiter.
+func answer(request: Dictionary) -> Dictionary:
+	var result: Dictionary
+	match request.get("kind"):
+		"render_current_map_background":
+			if not request.get("state") is Dictionary: return _failure("render host requires pending state")
+			return render(request.state)
+		"capture_dialog_background": result = capture_page()
+		"restore_dialog_background": result = restore_dialog_background()
+		"clear_effective_cross_fade":
+			if not request.get("state") is Dictionary: return _failure("cross-fade host requires pending state")
+			for key in ["first", "second"]:
+				if typeof(request.get(key)) != TYPE_INT: return _failure("cross-fade requires explicit " + key)
+			var prepared = prepare_clear_cross_fade(request.state, request.first, request.second)
+			if prepared.has("error"): return prepared
+			return _failure(prepared.receipt.boundary)
+		_: return _failure("unhandled scene-page request " + str(request.get("kind")))
+	if not result.has("error") and request.get("state") is Dictionary:
+		result.state = request.state.duplicate(true)
+	return result
+
+## DialogueCaller uses these names, not the display family's command names.
+func answer_dialogue(request: Dictionary) -> Dictionary:
+	var result: Dictionary
+	var event: String
+	match request.get("kind"):
+		"capture_background": result = capture_page(); event = "captured"
+		"restore_background": result = restore_dialog_background(); event = "restored"
+		_: return _failure("unhandled dialogue-page request " + str(request.get("kind")))
+	if result.has("error"): return result
+	# DialogueCaller validates the event's exact shape. Pixel evidence remains
+	# in receipts(), not in extra event fields that invalidate the signal.
+	return {"kind": event}
 
 var _capture_page: Dictionary = {}
 
@@ -172,12 +213,12 @@ func capture_page() -> Dictionary:
 func restore_dialog_background() -> Dictionary:
 	if _capture_page.is_empty():
 		return _failure("restore_dialog_background requires the captured-page owner; a map receipt is not G00C0")
-	_indices = _capture_page.indices.duplicate()
-	_coverage = _capture_page.coverage.duplicate()
+	var indices: PackedByteArray = _capture_page.indices.duplicate()
+	var coverage: PackedByteArray = _capture_page.coverage.duplicate()
 	var palette: PackedByteArray = _live_palette
-	var mapped = Indexed.rgba({"width": WIDTH, "height": HEIGHT, "indices": _indices, "coverage": _coverage}, palette, false)
+	var mapped = Indexed.rgba({"width": WIDTH, "height": HEIGHT, "indices": indices, "coverage": coverage}, palette, false)
 	if mapped.has("error"): return _failure(mapped.error)
-	_rgba = mapped.value
+	_indices = indices; _coverage = coverage; _rgba = mapped.value
 	var receipt: Dictionary = {"kind": "restore_dialog_background",
 		"page_sha256": _capture_page.sha256,
 		"frame_sha256": Schema.digest(_rgba), "from_page": true}

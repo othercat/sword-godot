@@ -18,6 +18,8 @@ func check(ok: bool, label: String) -> void:
 ## No-op dependencies are confined to this lattice test, not production.
 class EffectsDouble:
 	func answer(request: Dictionary) -> Dictionary:
+		if request.kind == "sync_party_formation_and_frames":
+			return {"completed": true, "party_records": request.state.party_records.duplicate(true)}
 		return {"completed": true, "state": request.state.duplicate(true)}
 
 ## Pinned original identities for the recovered facing rule.
@@ -32,6 +34,7 @@ func _state() -> Dictionary:
 		"party_x": 160, "party_y": 112, "viewport_x": 864, "viewport_y": 912,
 		"world_x": 1024, "world_y": 1024, "previous_x": 1024, "previous_y": 1024,
 		"previous_viewport_x": 864, "previous_viewport_y": 912, "direction_word": 0},
+		"party_records": [{"role_id": 0, "x": 160, "y": 112, "current_frame": 3}],
 		"party_trail": [{"x": 1024, "y": 1024, "direction_word": 0},
 			{"x": 1024, "y": 1024, "direction_word": 0}, {"x": 1024, "y": 1024, "direction_word": 0},
 			{"x": 1024, "y": 1024, "direction_word": 0}, {"x": 1024, "y": 1024, "direction_word": 0}]}
@@ -58,7 +61,7 @@ func _initialize() -> void:
 	if not package.load_package(args[0]): push_error("package rejected: " + str(package.error)); quit(2); return
 	var commands = Commands.new()
 	if not commands.load_source(package.pal98_sources): push_error("commands load failed"); quit(2); return
-	var facing = Facing.new(); facing.bind_fallback(EffectsDouble.new())
+	var facing = Facing.new(); facing.bind_fallback(EffectsDouble.new()); facing.bind_member_sync(EffectsDouble.new())
 	check(Facing.EXTF_BODY_SHA256 == EXTF_BODY_SHA256
 		and Facing.DIRECTION_TABLE_SHA256 == DIRECTION_TABLE_SHA256,
 		"the facing owner pins the recovered PALOLD extf body and direction table")
@@ -76,7 +79,7 @@ func _initialize() -> void:
 
 	# The recovered PostMoveUpdate: U2 world relation, movement-driven phase
 	# and frame offsets, and the pre-move world into the newest trail entry.
-	var mover = Facing.new(); mover.bind_fallback(EffectsDouble.new())
+	var mover = Facing.new(); mover.bind_fallback(EffectsDouble.new()); mover.bind_member_sync(EffectsDouble.new())
 	var mstate: Dictionary = _state()
 	mstate.globals.viewport_x = 65500
 	var request: Dictionary = {"kind": "post_move_update", "state": mstate}

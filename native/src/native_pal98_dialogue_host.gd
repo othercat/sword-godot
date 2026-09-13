@@ -4,9 +4,9 @@ extends RefCounted
 ## real text decoding: draw/capture/restore requests are recorded, `poll_input`
 ## follows a declared input policy and `wait` advances an explicit tick counter.
 ##
-## It renders nothing, polls no device and reads no wall clock, so the caller
-## stays responsible for pixels, physical input and timing. Every receipt keeps
-## the decoded text next to the source byte receipt it came from.
+## Glyphs, device input and timing remain recording/scripted policies. Capture
+## and restore can be delegated to an explicitly bound real page owner. Every
+## text receipt retains the decoded text and its source byte receipt.
 const Codec = preload("res://src/native_pal98_text_codec.gd")
 
 var error: String = ""
@@ -15,6 +15,15 @@ var _actions: Array = []
 var _default_action: int = 2
 var _ticks: int = 0
 var _receipts: Array = []
+var _page_owner = null
+
+## Optional real page consumer. Without it this class remains the documented
+## recording double. Binding it does not make glyphs/input/timing real.
+func bind_page_owner(owner) -> bool:
+	if owner == null or not owner.has_method("answer_dialogue"):
+		error = "pal98-dialogue-host: dialogue page owner required"; return false
+	_page_owner = owner
+	return true
 
 func bind(source) -> bool:
 	if source == null or source.metadata().is_empty():
@@ -52,6 +61,13 @@ func _failure(message: String) -> Dictionary:
 func answer(request: Dictionary) -> Dictionary:
 	if not request.get("kind") is String: return _failure("request shape")
 	var receipt: Dictionary = {"kind": request.kind}
+	if request.kind in ["capture_background", "restore_background"] and _page_owner != null:
+		var page: Dictionary = _page_owner.answer_dialogue(request)
+		if page.has("error"): return _failure(str(page.error))
+		var expected = "captured" if request.kind == "capture_background" else "restored"
+		if page.get("kind") != expected: return _failure("page owner did not complete " + request.kind)
+		receipt.page = page.duplicate(true); _receipts.append(receipt)
+		return page
 	match request.kind:
 		"capture_background":
 			_receipts.append(receipt); return {"kind": "captured"}

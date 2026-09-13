@@ -24,7 +24,7 @@ func _state(kernel) -> Dictionary:
 		"previous_viewport_x": 864, "previous_viewport_y": 912}
 	var records: Array = []
 	for slot in range(5):
-		records.append({"role_id": 0, "screen_x": 160 + slot * 16, "screen_y": 112 - slot * 8,
+		records.append({"role_id": 0, "x": 160 + slot * 16, "y": 112 - slot * 8,
 			"current_frame": 3})
 	return {"globals": globals, "equipment": kernel.initial_state([0, 1, 3]),
 		"party_records": records}
@@ -98,7 +98,7 @@ func _initialize() -> void:
 	var absolute_first = _consume(commands, absolute_state, [0x007F, 30, 60, 0xFFFE])
 	check(not absolute_first.has("error") and absolute_first.get("effects", []).is_empty()
 		and absolute_first.requests.map(func(r): return r.kind) == ["render_current_map_background"]
-		and absolute_state.globals.party_x == 160 and absolute_state.party_records[0].screen_x == 160,
+		and absolute_state.globals.party_x == 160 and absolute_state.party_records[0].x == 160,
 		"absolute mode suspends at background rendering before changing the anchor or members")
 	var absolute = _finish(commands, absolute_state, absolute_first)
 	check(not absolute.has("error") and absolute.effects.size() == 1
@@ -166,7 +166,7 @@ func _initialize() -> void:
 		"the shift loop covers members 1..member_last: " + str(narrow_moved.effects[0].members_shifted))
 
 	var bad_member: Dictionary = _state(kernel)
-	bad_member.party_records[2].screen_x = 40000
+	bad_member.party_records[2].x = 40000
 	var bad_before: Dictionary = bad_member.duplicate(true)
 	var rejected = _consume(commands, bad_member, [0x007F, 2, 0, 1])
 	check(rejected.has("error") and bad_member == bad_before,

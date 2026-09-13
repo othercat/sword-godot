@@ -46,7 +46,7 @@ func _fixture(source) -> Dictionary:
 			"day_night_word": 0, "fade_gate_word": 0},
 		"events": storage.source_state(), "dialogue": _context(), "rng": Random.create(0x12345),
 		"equipment": equipment.initial_state([0]), "inventory_bytes": inventory,
-		"party_records": [{"role_id": 0, "screen_x": 160, "screen_y": 112, "current_frame": 0}],
+		"party_records": [{"role_id": 0, "x": 160, "y": 112, "current_frame": 0}],
 		"party_trail": [{"x": 0, "y": 0, "direction_word": 0}, {"x": 0, "y": 0, "direction_word": 0},
 			{"x": 0, "y": 0, "direction_word": 0}, {"x": 0, "y": 0, "direction_word": 0},
 			{"x": 0, "y": 0, "direction_word": 0}]}

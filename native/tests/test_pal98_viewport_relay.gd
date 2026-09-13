@@ -70,15 +70,15 @@ func _initialize() -> void:
 		"the special restore returns without any host helper")
 	var written_back = _run_viewport([0x007F, 30, 60, 0xFFFE], {"viewport_x": 900})
 	check(not written_back.result.has("error") and written_back.result.state.globals.party_x == 124
-		and written_back.result.state.party_records[0].screen_x == 124
-		and written_back.result.state.party_records[2].screen_x == 156,
+		and written_back.result.state.party_records[0].x == 124
+		and written_back.result.state.party_records[2].x == 156,
 		"the background's viewport 900 drives the later anchor and member shifts")
 	check(written_back.requests.size() == 3 and written_back.requests[0].state.globals.party_x == 160
 		and written_back.requests[1].state.globals.party_x == 124,
 		"the background sees the old anchor; the following frame sees its dependent recomputation")
 	var reanchor = _run_viewport([0x007F, 0, 0, 0], {"viewport_x": 900, "party_x": 200})
 	check(not reanchor.result.has("error") and reanchor.result.state.globals.party_x == 200
-		and reanchor.result.state.party_records[2].screen_x == 232
+		and reanchor.result.state.party_records[2].x == 232
 		and not reanchor.requests.map(func(r): return r.kind).has("update_viewport_and_party_position"),
 		"re-anchor keeps the host-written anchor and then writes A2=-1 without recomputing it")
 	_failure_recovery()

@@ -114,7 +114,7 @@ func _fixture(source, palette, day: PackedByteArray, night: PackedByteArray) -> 
 			"colours": [79, 45, 26, 141], "timer_counter": 0},
 		"equipment": equipment.initial_state([0]), "inventory_bytes": _zero(1536),
 		"palette_bytes": _cold_backing(palette, day, night),
-		"party_records": [{"role_id": 0, "screen_x": 160, "screen_y": 112, "current_frame": 3}],
+		"party_records": [{"role_id": 0, "x": 160, "y": 112, "current_frame": 3}],
 		"party_trail": [{"x": 0, "y": 0, "direction_word": 0}, {"x": 0, "y": 0, "direction_word": 0},
 			{"x": 0, "y": 0, "direction_word": 0}, {"x": 0, "y": 0, "direction_word": 0},
 			{"x": 0, "y": 0, "direction_word": 0}]}

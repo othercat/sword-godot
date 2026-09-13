@@ -1,11 +1,16 @@
 # SPDX-License-Identifier: MIT
 extends SceneTree
-## The real trail rotation and member sync: the five-entry trail shifts with
-## the newest entry carrying the direction plus the pre-move world position,
-## the leader and followers adopt their trail positions relative to the
-## viewport, and members use the original's probe-rejected fallback while the
-## formation-offset candidate stays unrecovered (named in the receipt).
+## Rotation and position projection; formation and frame selection are an
+## explicit test double. Unbound production sync must refuse completion.
 const Facing = preload("res://src/native_pal98_walk_facing.gd")
+
+class FormationFrameDouble:
+	func answer(request: Dictionary) -> Dictionary:
+		var rows: Array = request.state.party_records.duplicate(true)
+		# This double chooses a rejected-probe result for this vector only.
+		rows[1].x = 160; rows[1].y = 112
+		for row in rows: row.current_frame = 7
+		return {"completed": true, "party_records": rows}
 
 var checks: Array = []
 var failed: int = 0
@@ -25,9 +30,9 @@ func _state() -> Dictionary:
 			{"x": 976, "y": 1000, "direction_word": 3},
 			{"x": 960, "y": 992, "direction_word": 3}],
 		"party_records": [
-			{"role_id": 0, "screen_x": 160, "screen_y": 112},
-			{"role_id": 1, "screen_x": 172, "screen_y": 98},
-			{"role_id": 3, "screen_x": 188, "screen_y": 84}]}
+			{"role_id": 0, "x": 160, "y": 112, "current_frame": 3},
+			{"role_id": 1, "x": 172, "y": 98, "current_frame": 3},
+			{"role_id": 3, "x": 188, "y": 84, "current_frame": 3}]}
 
 func _initialize() -> void:
 	var args = OS.get_cmdline_user_args()
@@ -53,15 +58,18 @@ func _initialize() -> void:
 		"a wrong-shaped trail is refused by name")
 
 	# sync_members_from_trail: leader, member fallback and follower positions.
+	check(facing.answer({"kind": "sync_members_from_trail", "state": rotated.state}).has("error"),
+		"unbound formation/frame work refuses instead of assuming rejected probes")
+	facing.bind_member_sync(FormationFrameDouble.new())
 	var synced: Dictionary = facing.answer({"kind": "sync_members_from_trail", "state": rotated.state})
-	check(not synced.has("error"), "sync completes: " + str(synced.get("error", "")))
+	check(not synced.has("error"), "sync completes with explicit formation/frame double: " + str(synced.get("error", "")))
 	var records: Array = synced.state.party_records
-	check(records[0].screen_x == 160 and records[0].screen_y == 112,
+	check(records[0].x == 160 and records[0].y == 112,
 		"the leader adopts the party-in-viewport position")
-	check(records[1].screen_x == 160 and records[1].screen_y == 112,
-		"the member falls back to the raw trail-relative position: %d,%d" % [records[1].screen_x, records[1].screen_y])
-	check(records[2].screen_x == 128 and records[2].screen_y == 96,
-		"the follower adopts trail[3] relative to the viewport: %d,%d" % [records[2].screen_x, records[2].screen_y])
+	check(records[1].x == 160 and records[1].y == 112,
+		"the member falls back to the raw trail-relative position: %d,%d" % [records[1].x, records[1].y])
+	check(records[2].x == 128 and records[2].y == 96,
+		"the follower adopts trail[3] relative to the viewport: %d,%d" % [records[2].x, records[2].y])
 
 	# Missing counters are refused by name.
 	var no_counters: Dictionary = _state()

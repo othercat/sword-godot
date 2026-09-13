@@ -1637,7 +1637,7 @@ func _command_0046(state: Dictionary, request: Dictionary, source: Dictionary) -
 	for slot in range(TRAIL_SLOTS):
 		if slot < state.party_records.size():
 			var record = state.party_records[slot]
-			if not record is Dictionary or not _i2(record.get("screen_x")) or not _i2(record.get("screen_y")):
+			if not record is Dictionary or not _i2(record.get("x")) or not _i2(record.get("y")):
 				return _failure("party_backing", "0x0046 requires explicit member screen positions", request, source)
 		if not state.party_trail[slot] is Dictionary:
 			return _failure("party_trail", "0x0046 requires explicit trail entries", request, source)
@@ -1659,8 +1659,8 @@ func _command_0046(state: Dictionary, request: Dictionary, source: Dictionary) -
 	for slot in range(TRAIL_SLOTS):
 		if slot < state.party_records.size():
 			var record = state.party_records[slot]
-			record.screen_x = slot_member_x[slot]
-			record.screen_y = slot_member_y[slot]
+			record.x = slot_member_x[slot]
+			record.y = slot_member_y[slot]
 			record.current_frame = leader.current_frame
 			written += 1
 		else:

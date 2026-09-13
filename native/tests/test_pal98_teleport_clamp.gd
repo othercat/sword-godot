@@ -19,7 +19,7 @@ func _state() -> Dictionary:
 	var globals: Dictionary = {"current_scene": 1, "party_x": 160, "party_y": 112, "direction_word": 0,
 		"battle_mode": 0, "ffxy_max_x": 1696, "ffxy_max_y": 1840, "trigger_success_word": 0}
 	var records: Array = []
-	for slot in range(5): records.append({"role_id": 0, "screen_x": 0, "screen_y": 0, "current_frame": 3})
+	for slot in range(5): records.append({"role_id": 0, "x": 0, "y": 0, "current_frame": 3})
 	var trail: Array = []
 	for slot in range(5): trail.append({"x": 0, "y": 0, "direction_word": 0})
 	return {"globals": globals, "party_records": records, "party_trail": trail}
@@ -136,7 +136,7 @@ func _initialize() -> void:
 	check(stepped.get("diagnostic", {}).get("code") == "checked_i2"
 		and str(stepped.error).contains("formation step"),
 		"a formation step overflow is refused: " + str(stepped.get("error", "")))
-	check(crowded.party_records[0].screen_x == 0 and crowded.party_trail[0].x == 0,
+	check(crowded.party_records[0].x == 0 and crowded.party_trail[0].x == 0,
 		"the refused member walk applied no slot")
 
 	var output: Dictionary = {"suite": "test_pal98_teleport_clamp", "checks": results,

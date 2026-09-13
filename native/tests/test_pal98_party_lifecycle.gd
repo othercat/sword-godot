@@ -44,7 +44,7 @@ func _initialize() -> void:
 	var globals: Dictionary = {"current_scene": 1, "battle_mode": 0, "member_last": 2, "follower_count": 0}
 	var party_records: Array = []
 	for slot in range(5):
-		party_records.append({"role_id": 0, "screen_x": 160 + slot * 16, "screen_y": 112, "current_frame": 3})
+		party_records.append({"role_id": 0, "x": 160 + slot * 16, "y": 112, "current_frame": 3})
 	var state: Dictionary = {"globals": globals, "equipment": kernel.initial_state([0, 1, 3]),
 		"party_records": party_records, "inventory_bytes": bag}
 
@@ -98,7 +98,7 @@ func _initialize() -> void:
 	# leaves the applied composition untouched.
 	var thin: Dictionary = {"globals": {"current_scene": 1, "battle_mode": 0, "member_last": 0, "follower_count": 0},
 		"equipment": kernel.initial_state([0]),
-		"party_records": [{"role_id": 0, "screen_x": 160, "screen_y": 112, "current_frame": 3}],
+		"party_records": [{"role_id": 0, "x": 160, "y": 112, "current_frame": 3}],
 		"inventory_bytes": _zero(1536)}
 	var refused = commands.consume(thin, {"words": [0x0075, 2, 3, 0], "entry": 1, "event_id": 0})
 	check(refused.has("error") and str(refused.error).contains("records"),

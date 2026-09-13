@@ -13,6 +13,8 @@ const Package = preload("res://src/native_package.gd")
 ## are not supplied. This is not a production frame-loop implementation.
 class EffectsDouble:
 	func answer(request: Dictionary) -> Dictionary:
+		if request.kind == "sync_party_formation_and_frames":
+			return {"completed": true, "party_records": request.state.party_records.duplicate(true)}
 		return {"completed":true,"state":request.state.duplicate(true)}
 
 var checks: Array = []
@@ -35,7 +37,7 @@ func _initialize() -> void:
 	var input = DirectionInput.new()
 	var probe = CollisionProbe.new()
 	check(probe.bind(map_bytes, events_state), "the probe binds the real MAP20 data")
-	var facing = Facing.new(); facing.bind_fallback(EffectsDouble.new())
+	var facing = Facing.new(); facing.bind_fallback(EffectsDouble.new()); facing.bind_member_sync(EffectsDouble.new())
 
 	var globals := {"viewport_x": 864, "viewport_y": 912, "party_x": 160, "party_y": 112,
 		"world_x": 1024, "world_y": 1024, "previous_x": 1024, "previous_y": 1024, "direction_word": 0, "walk_phase_word": 0,
@@ -45,7 +47,7 @@ func _initialize() -> void:
 		"party_trail": [{"x": 1024, "y": 1024, "direction_word": 0},
 			{"x": 1024, "y": 1024, "direction_word": 0}, {"x": 1024, "y": 1024, "direction_word": 0},
 			{"x": 1024, "y": 1024, "direction_word": 0}, {"x": 1024, "y": 1024, "direction_word": 0}],
-		"party_records": [{"role_id": 0, "screen_x": 160, "screen_y": 112}]}
+		"party_records": [{"role_id": 0, "x": 160, "y": 112, "current_frame": 3}]}
 
 	# Frame 1: right newly pressed.
 	var direction: Dictionary = input.resolve([0, 0, 0, 2, 0, 0, 0, 0], [0, 1, 2, 3, 4, 5, 6, 7])

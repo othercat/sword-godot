@@ -86,9 +86,9 @@ func _initialize() -> void:
 	var party: Dictionary = {"globals": {"current_scene": 1, "battle_mode": 0, "member_last": 0,
 			"follower_count": 0, "trigger_success_word": 0},
 		"equipment": kernel.initial_state([0]),
-		"party_records": [{"role_id": 0, "screen_x": 160, "screen_y": 112, "current_frame": 3},
-			{"role_id": 0, "screen_x": 160, "screen_y": 112, "current_frame": 3},
-			{"role_id": 0, "screen_x": 160, "screen_y": 112, "current_frame": 3}],
+		"party_records": [{"role_id": 0, "x": 160, "y": 112, "current_frame": 3},
+			{"role_id": 0, "x": 160, "y": 112, "current_frame": 3},
+			{"role_id": 0, "x": 160, "y": 112, "current_frame": 3}],
 		"inventory_bytes": _zero(1536)}
 	party.equipment.party_poisons[0].encode_u16(0, 44)
 	var grown: Dictionary = commands.consume(party, {"words": [0x0075, 1, 2, 3], "entry": 1, "event_id": 0})

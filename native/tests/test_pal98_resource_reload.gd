@@ -24,7 +24,7 @@ func fixture() -> Dictionary:
 		"loaded_map_id":0,"member_last":0,"follower_count":0,"viewport_x":864,"viewport_y":912,
 		"wave_phase":7,"wave_amplitude":8,"midi_track":1,"save_slot":2},
 		"events":events.source_state(), "equipment":equipment.initial_state([0]),
-		"party_records":[{"role_id":0,"screen_x":160,"screen_y":112,"current_frame":0}],
+		"party_records":[{"role_id":0,"x":160,"y":112,"current_frame":0}],
 		"inventory_bytes":inventory}
 
 func owner():
