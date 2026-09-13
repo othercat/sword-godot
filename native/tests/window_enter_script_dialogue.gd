@@ -43,6 +43,7 @@ func _fixture(source) -> Dictionary:
 	return {"globals": {"current_scene": 1, "requested_scene": 1, "party_x": 160, "party_y": 112,
 			"viewport_x": 0, "viewport_y": 0, "resource_flags": 0, "direction_word": 0, "loaded_map_id": 0,
 			"member_last": 0, "follower_count": 0, "battle_mode": 0, "midi_track": 0, "battle_music_track": 0,
+			"ffxy_max_x": 1696, "ffxy_max_y": 1840,
 			"day_night_word": 0, "fade_gate_word": 0},
 		"events": storage.source_state(), "dialogue": _context(), "rng": Random.create(0x12345),
 		"equipment": equipment.initial_state([0]), "inventory_bytes": inventory,
