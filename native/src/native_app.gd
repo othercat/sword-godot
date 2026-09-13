@@ -64,6 +64,8 @@ var status_picker: AcceptDialog
 var status_text: Label
 var admission_picker: AcceptDialog
 var admission_text: Label
+var load_error_picker: AcceptDialog
+var load_error_text: Label
 var frame_selector: OptionButton
 var _last_physics_usec: int = 0
 var _gap_frame: int = -1
@@ -236,6 +238,16 @@ func _ready() -> void:
 	admission_text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	admission_scroll.add_child(admission_text); admission_picker.add_child(admission_scroll)
 	add_child(admission_picker); admission_picker.visibility_changed.connect(_modal_changed)
+	load_error_picker = AcceptDialog.new(); load_error_picker.title = "包加载失败"; load_error_picker.min_size = Vector2i(620, 260)
+	var load_error_scroll = ScrollContainer.new(); load_error_scroll.custom_minimum_size = Vector2i(600, 200)
+	load_error_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	load_error_text = Label.new(); load_error_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	load_error_text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	load_error_scroll.add_child(load_error_text); load_error_picker.add_child(load_error_scroll)
+	load_error_picker.add_button("重新选择包", true, "reselect")
+	load_error_picker.custom_action.connect(_load_error_action)
+	load_error_picker.get_ok_button().text = "关闭"
+	add_child(load_error_picker); load_error_picker.visibility_changed.connect(_modal_changed)
 	frame_selector.get_popup().visibility_changed.connect(_modal_changed)
 	session.changed.connect(_refresh)
 	battle_view = BattleView.new(); battle_view.display_font = font; battle_view.visible = false; viewport.add_child(battle_view)
@@ -482,7 +494,8 @@ func _battle_target_detail(target: Dictionary) -> String:
 func open_package(path: String) -> bool:
 	var candidate = Package.new()
 	if not candidate.load_package(path) or not session.activate(candidate):
-		message.text = "无法打开 MOD：" + (candidate.error if not candidate.error.is_empty() else session.error)
+		var detail: String = candidate.error if not candidate.error.is_empty() else session.error
+		message.text = "无法打开 MOD：" + detail
 		if candidate.error.is_empty() and session.error.begins_with("original_source_only:"):
 			# The formal session refused the original source; show the real
 			# capability report instead of starting any stand-in gameplay.
@@ -490,6 +503,11 @@ func open_package(path: String) -> bool:
 			admission_text.text = Admission.summary(report) if not report.has("error") else str(report.error)
 			admission_picker.popup_centered()
 			message.text = "原版来源包已读取；正式试玩未接入，详见能力检查。"
+		else:
+			# A real load or bind failure: show the actual error and offer
+			# reselect or dismiss; the live session stays untouched.
+			_show_load_error("包路径：" + path + "
+实际错误：" + detail)
 		if not _preview_stop_file.is_empty(): printerr("[Native preview] " + message.text)
 		return false
 	_clear_input()
@@ -505,6 +523,15 @@ func open_package(path: String) -> bool:
 	message.text = "已打开内容包" + (" · " + input_profile_notice if not input_profile_notice.is_empty() else "")
 	if not _preview_stop_file.is_empty(): print("[Native preview] package loaded: " + candidate.manifest.package_id + " node=" + session.state.cursor.node_id)
 	return true
+
+func _load_error_action(action: String) -> void:
+	if action == "reselect":
+		load_error_picker.hide()
+		picker.popup()
+
+func _show_load_error(detail: String) -> void:
+	load_error_text.text = detail
+	load_error_picker.popup_centered()
 
 func _fit_world() -> void:
 	if session.state.is_empty(): return
