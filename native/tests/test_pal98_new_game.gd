@@ -1,19 +1,11 @@
 # SPDX-License-Identifier: MIT
 extends SceneTree
-## The ordinary new-game owner: the opening state derives from the same
-## admitted package sources, the real reload/enter chain rests on the entry's
-## own next scene, a real input tick then moves or is refused through the real
-## collision probe, and a fresh-owner reopen repeats the intro exactly.
-## Audio, the unfinished transition and the replay clock are host-bound named
-## doubles; every other effect runs through the real owners.
+## Coordinator replay with explicit probe initialization, nominal timers and
+## injected skip/confirm presses; it is not ordinary new-game acceptance.
+## Glyph, audio, T121, RGM, event movement and frame helpers remain explicit doubles.
+const ProbeConfig = preload("res://tests/fixtures/pal98_new_game_probe.gd")
 const NewGame = preload("res://src/native_pal98_new_game.gd")
 const Package = preload("res://src/native_package.gd")
-
-class NamedDouble:
-	var seen: Array = []
-	func answer(request: Dictionary) -> Dictionary:
-		seen.append(request.kind)
-		return {"completed": true}
 
 class ReplayClock:
 	var frame := 0
@@ -36,30 +28,11 @@ func check(ok: bool, label: String) -> void:
 
 func _assembly(package):
 	var game = NewGame.new()
-	var audio = NamedDouble.new(); var crossfade = NamedDouble.new(); var initial_page = NamedDouble.new()
-	var upper_dialog = NamedDouble.new()
-	var frame_family = NamedDouble.new()
-	var catcher = NamedDouble.new()
-	check(game.open(package), "the new-game owner binds the admitted package: " + str(game.error))
-	# Host-bound named doubles for the documented product gaps: audio, the
-	# unfinished T121 transition, the unproved initial capture page, the
-	# undecoded RGM upper-dialog layout, and the walk-loop frame family whose
-	# real owners (frame processor, viewport/party update, scene-frame render)
-	# are unbuilt - each occurrence stays recorded for disclosure.
-	game.bind_named_double("play_midi", audio)
-	game.bind_named_double("play_sound_effect", audio)
-	game.bind_named_double("clear_effective_cross_fade", crossfade)
-	game.bind_named_double("restore_dialog_background_without_initial_page", initial_page)
-	game.bind_named_double("upper_dialog_layout", upper_dialog)
-	game.bind_named_double("start_frame_and_process_events", frame_family)
-	game.bind_named_double("update_viewport_and_party_position", frame_family)
-	game.bind_named_double("render_scene_frame", frame_family)
+	check(game.open(package), "package binds: " + game.error)
+	ProbeConfig.bind_gaps(game)
 	game.bind_clock(ReplayClock.new())
-	# The explicit catch-all covers the remaining unowned intro kinds the way
-	# the verified cold chain did, recording every fall-through for disclosure.
-	game.bind_named_double("*", catcher)
-	game.bind_key_map([0, 1, 2, 3, 4, 5, 6, 7], 0)
 	game.bind_runtime(ReplayRuntime.new())
+	game.bind_key_map([0,1,2,3,4,5,6,7,8],0,8)
 	return game
 
 func _initialize() -> void:
@@ -71,11 +44,11 @@ func _initialize() -> void:
 	var game = _assembly(package)
 	var begun: Dictionary = {}
 	if game.error.is_empty():
-		var fresh: Dictionary = game.new_state(0x12345)
-		check(not fresh.has("error"), "the source-derived new-game state prepares: " + str(fresh.get("error", "")))
+		var fresh: Dictionary = game.new_state(0x12345, ProbeConfig.configuration())
+		check(not fresh.has("error"), "the explicit probe initial state prepares: " + str(fresh.get("error", "")))
 		if fresh.has("error"): finish(args); return
 		check(fresh.globals.requested_scene == 1 and fresh.globals.resource_flags == 29,
-			"the opening scene and the new-game load mask derive from the admitted chain")
+			"the opening scene and the new-game load mask are explicit probe inputs")
 		check(fresh.globals.ffxy_max_x == 1696 and fresh.globals.ffxy_max_y == 1840,
 			"the MAP20 viewport limit pair carries the original bounds")
 		check(fresh.party_records.size() == 1 and fresh.party_records[0].role_id == 0
@@ -91,11 +64,12 @@ func _initialize() -> void:
 		check(game.executor.installed_rgb6() == day,
 			"the cold display palette installs byte-identical to the admitted day variant")
 
-		begun = game.begin()
+		begun = ProbeConfig.run(game)
 		check(not begun.has("error") and begun.enters == [1, 2],
 			"the intro chains scene 1 into its own scene 2 and rests: "
 				+ str(begun.get("error", "")) + str(begun.get("enters", [])))
-		if begun.has("error"): finish(args); return
+		if begun.has("error"):
+			finish(args); return
 		check("load_map_gop:20" in begun.trace and "load_map_gop:12" in begun.trace,
 			"the chain loads both scenes' own map identities: " + str(begun.trace))
 		var resting: Dictionary = begun.state.globals
@@ -113,7 +87,7 @@ func _initialize() -> void:
 
 		# One real input tick on the resting state: the outcome must agree with
 		# the real collision probe, and the draw requests must carry the state.
-		var right: PackedInt32Array = PackedInt32Array([0, 0, 0, 2, 0, 0, 0, 0])
+		var right: PackedInt32Array = PackedInt32Array([0, 0, 0, 2, 0, 0, 0, 0, 0])
 		var world_x: int = resting.world_x; var world_y: int = resting.world_y
 		var free: Dictionary = game.probe.probe(world_x + 16, world_y + 8)
 		check(not free.has("error"), "the candidate probe answers: " + str(free.get("error", "")))
@@ -125,7 +99,7 @@ func _initialize() -> void:
 		var party_requests: Array = ticked.requests.filter(func(r): return r.kind == "party")
 		check(party_requests.size() == 1 and party_requests[0].get("screen_x") == ticked.state.party_records[0].x,
 			"the tick publishes the T209 request from the ticked state")
-		var still: Dictionary = game.tick(PackedInt32Array([0, 0, 0, 0, 0, 0, 0, 0]))
+		var still: Dictionary = game.tick(PackedInt32Array([0, 0, 0, 0, 0, 0, 0, 0, 0]))
 		check(not still.has("error") and still.input_move == false
 			and still.state.globals.viewport_x == ticked.state.globals.viewport_x,
 			"an empty-input tick stays put and still publishes the frame")
@@ -136,8 +110,8 @@ func _initialize() -> void:
 	var reopened = Package.new()
 	if not reopened.load_package(args[0]): push_error("reopen rejected"); quit(2); return
 	var game2 = _assembly(reopened)
-	game2.new_state(0x12345)
-	var begun2: Dictionary = game2.begin()
+	game2.new_state(0x12345, ProbeConfig.configuration())
+	var begun2: Dictionary = ProbeConfig.run(game2)
 	check(not begun2.has("error") and begun2.enters == [1, 2]
 		and begun2.trace == begun.trace,
 		"the fresh-owner reopen repeats the intro trace exactly")
@@ -151,7 +125,7 @@ func _initialize() -> void:
 
 func finish(args: Array) -> void:
 	var output: Dictionary = {"suite": "test_pal98_new_game",
-		"scope": "ordinary new-game owner; audio/T121/replay-clock are host-bound named doubles",
+		"scope": "internal coordinator; synthetic initializer and nominal clock; glyph/audio/T121/frame policies are doubles",
 		"checks": checks, "passed": checks.size() - failed, "failed": failed}
 	var file = FileAccess.open(args[1], FileAccess.WRITE)
 	file.store_string(JSON.stringify(output, "  ") + "\n"); file.close()

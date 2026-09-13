@@ -1,185 +1,158 @@
 # SPDX-License-Identifier: MIT
 extends SceneTree
-## Windowed ordinary new-game entry probe: the production new-game owner runs
-## the real intro to scene 2, the composed software frame uploads to a real
-## Godot window, injected logical right-presses walk the party through the
-## production input tick, and the window is captured before and after.
-##
-## Run this script twice in separate processes; equal captures and state are
-## the ordinary close-reopen smoke. Injected key levels drive the production
-## tick - physical keyboard mapping is not claimed here. Audio, the T121
-## transition and the other documented gaps stay host-bound named doubles.
-const NewGame = preload("res://src/native_pal98_new_game.gd")
+## GPU/window probe of the corrected coordinator's current caches and states.
+## Explicit probe initialization, scripted nominal ticks/presses and named gaps
+## remain visible; this script does not enable ordinary Session or physical input.
+const Game = preload("res://src/native_pal98_new_game.gd")
 const Package = preload("res://src/native_package.gd")
-
-class NamedDouble:
-	var seen: Array = []
+const Config = preload("res://tests/fixtures/pal98_new_game_probe.gd")
+const Composition = preload("res://src/native_pal98_scene_composition.gd")
+const DialogueHost = preload("res://src/native_pal98_dialogue_host.gd")
+const Surface = preload("res://src/native_pal98_dialogue_surface.gd")
+const FontOwner = preload("res://src/native_ui_font.gd")
+const Schema = preload("res://src/native_schema.gd")
+class Clock:
+	func consume(units: int) -> Dictionary: return {"consumed":units}
+class Runtime:
 	func answer(request: Dictionary) -> Dictionary:
-		seen.append(request.kind)
-		return {"completed": true}
-
-class ReplayClock:
-	var frame := 0
-	func consume(units: int) -> Dictionary:
-		frame += units
-		return {"consumed": units, "total": frame}
-
-class ReplayRuntime:
+		return {"completed":true,"pumped":request.get("events",[])}
+class DialogueRecorder extends DialogueHost:
+	var draws: Array = []
 	func answer(request: Dictionary) -> Dictionary:
-		if request.kind == "fade_event_pump": return {"completed": true, "pumped": request.events}
-		return {"completed": true}
+		if request.get("kind") in ["draw_string","draw_glyph"]: draws.append(request.duplicate(true))
+		return super.answer(request)
 
 var checks: Array = []
-var failed: int = 0
-
-func check(ok: bool, label: String) -> void:
-	checks.append({"name": label, "passed": ok})
-	if not ok: failed += 1; push_error(label)
-
-func _rgba_image(rgba: PackedByteArray) -> Image:
-	return Image.create_from_data(320, 200, false, Image.FORMAT_RGBA8, rgba)
+var details: Dictionary = {}
+var stage: SubViewport
+var frame_view: TextureRect
+var args: PackedStringArray
+func check(ok: bool, name: String) -> void:
+	checks.append({"name":name,"passed":ok})
+	if not ok: push_error(name)
 
 func _initialize() -> void:
-	var args = OS.get_cmdline_user_args()
-	if args.size() != 4: quit(2); return
-	create_timer(240).timeout.connect(func(): check(false, "ordinary entry watchdog"); finish(args))
-	var package = Package.new()
-	if not package.load_package(args[0]):
-		push_error("package rejected: " + str(package.error)); quit(2); return
-	var game = NewGame.new()
-	game.bind_named_double("play_midi", NamedDouble.new())
-	game.bind_named_double("play_sound_effect", NamedDouble.new())
-	game.bind_named_double("clear_effective_cross_fade", NamedDouble.new())
-	game.bind_named_double("restore_dialog_background_without_initial_page", NamedDouble.new())
-	game.bind_named_double("upper_dialog_layout", NamedDouble.new())
-	game.bind_named_double("start_frame_and_process_events", NamedDouble.new())
-	game.bind_named_double("update_viewport_and_party_position", NamedDouble.new())
-	game.bind_named_double("render_scene_frame", NamedDouble.new())
-	game.bind_named_double("*", NamedDouble.new())
-	check(game.open(package), "the ordinary entry binds the package: " + str(game.error))
-	if not game.error.is_empty(): finish(args); return
-	game.bind_clock(ReplayClock.new())
-	game.bind_runtime(ReplayRuntime.new())
-	game.bind_key_map([0, 1, 2, 3, 4, 5, 6, 7, 8], 0, 8)
-	var begun: Dictionary = game.new_state(0x12345)
-	if begun.has("error"): check(false, str(begun.error)); finish(args); return
-	begun = game.begin(true)
-	check(not begun.has("error") and begun.get("awaiting_confirm") == true
-		and begun.get("enters", []) == [1],
-		"the gated intro parks on its first dialogue page: " + str(begun.get("error", begun)))
-	if not begun.get("awaiting_confirm", false): finish(args); return
-	# Every player confirm is a new press on the bound confirm slot delivered
-	# through the production input tick; each one advances one real dialogue
-	# page through the dialogue host until the intro rests on scene 2.
-	var confirm_press: PackedInt32Array = PackedInt32Array([0, 0, 0, 0, 0, 0, 0, 0, 2])
-	var advances := 0
-	var done: Dictionary = {}
-	for press in range(128):
-		var ticked: Dictionary = game.tick(confirm_press)
-		if ticked.has("error"): check(false, "confirm tick failed: " + str(ticked.error)); finish(args); return
-		if ticked.get("confirm_advanced", false): advances += 1
-		if not ticked.get("awaiting_confirm", true):
-			done = ticked
-			break
-	check(advances > 0 and not done.is_empty(),
-		"player confirms advanced %d real dialogue pages through the production tick" % advances)
-	_confirm_advances = advances
-	check(done.get("state", {}).get("globals", {}).get("current_scene") == 2
-		and done.state.globals.loaded_map_id == 12,
-		"the confirmed intro rests on scene 2 with MAP12 loaded")
-	var resting: Dictionary = done.state.globals
+	args=OS.get_cmdline_user_args()
+	if args.size()!=4 or DisplayServer.get_name()=="headless": quit(2); return
+	call_deferred("_run")
 
-	var root = Window.new(); root.size = Vector2i(560, 400)
-	root.title = "PAL Wanxiang | ordinary original new game (probe)"
-	get_root().add_child(root)
-	var frame_view = TextureRect.new()
-	frame_view.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	frame_view.size = Vector2(320, 200); frame_view.position = Vector2(120, 100)
-	frame_view.stretch_mode = TextureRect.STRETCH_SCALE
-	root.add_child(frame_view)
-
-	var before_image := _rgba_image(game.renderer.current_rgba())
-	frame_view.texture = ImageTexture.create_from_image(before_image)
-	check(before_image.get_size() == Vector2i(320, 200), "the composed frame uploads at 320x200")
+func _compose(game, hide_party := false, hide_events := false) -> Dictionary:
+	var g: Dictionary = game.state.globals
+	var events: Dictionary = game.state.events.duplicate(true)
+	if hide_events: events.event_count=0
+	var caller := {"map_id":g.loaded_map_id,"palette_index":0,"palette_variant":0,
+		"map_mode":0,"clip_bottom":200,"viewport_x":g.viewport_x,"viewport_y":g.viewport_y,
+		"member_last":-1 if hide_party else g.member_last,"follower_count":0 if hide_party else g.follower_count,
+		"team_layer":g.party_layer_word,"party_records":game.state.party_records}
+	var composed: Dictionary = Composition.build("render_scene_frame",game.records,game.storage,events,game.cache,caller)
+	if composed.has("error"): return composed
+	for child in stage.get_children():
+		stage.remove_child(child); child.free()
+	stage.add_child(composed.value)
 	await process_frame
 	await RenderingServer.frame_post_draw
-	check(before_image.save_png(args[1]) == OK, "the resting frame is captured")
+	var pixels: Image = stage.get_texture().get_image()
+	pixels.convert(Image.FORMAT_RGBA8)
+	return {"image":pixels,"requests":composed.requests,"sprite_rows":composed.sprite_rows}
 
-	var right: PackedInt32Array = PackedInt32Array([0, 0, 0, 2, 0, 0, 0, 0])
-	var start_x: int = resting.world_x; var start_y: int = resting.world_y
-	var moved := 0; var refused := 0
-	var last_tick: Dictionary = {}
-	for step in range(12):
-		var free: Dictionary = game.probe.probe(game.state.globals.world_x + 16, game.state.globals.world_y + 8)
-		if free.has("error") or not free.get("accepted", false):
-			refused += 1
-			var stationary: Dictionary = game.tick(PackedInt32Array([0, 0, 0, 0, 0, 0, 0, 0]))
-			if stationary.has("error"): check(false, "stationary tick failed: " + str(stationary.error)); break
-			last_tick = stationary
-			continue
-		var ticked: Dictionary = game.tick(right)
-		if ticked.has("error"): check(false, "walk tick failed: " + str(ticked.error)); break
-		if ticked.input_move: moved += 1
-		last_tick = ticked
-	check(moved + refused == 12, "twelve logical ticks drove the production chain: %d moved, %d refused" % [moved, refused])
-	check(moved > 0, "the ordinary entry walks: %d accepted steps from (%d,%d)" % [moved, start_x, start_y])
-	check(game.state.globals.world_x != start_x or game.state.globals.world_y != start_y,
-		"the party world position followed the input ticks")
-	# The walked frame composes through the production scene-composition owner:
-	# the re-rendered MAP12 background at the new viewport plus the loaded
-	# party and event sprites, uploaded as a real texture.
-	const SceneComposition = preload("res://src/native_pal98_scene_composition.gd")
-	var globals: Dictionary = game.state.globals
-	var caller: Dictionary = {"map_id": globals.loaded_map_id, "palette_index": 0, "palette_variant": 0,
-		"map_mode": 0, "clip_bottom": 200, "viewport_x": globals.viewport_x, "viewport_y": globals.viewport_y,
-		"member_last": globals.member_last, "follower_count": globals.follower_count,
-		"team_layer": globals.get("party_layer_word", 0), "party_records": game.state.party_records}
-	var composed: Dictionary = SceneComposition.build("render_scene_frame", game.records, game.storage,
-		game.state.events, game.cache, caller)
-	var composition_gap := ""
-	var after_image: Image
-	if composed.has("error"):
-		# MAP12's own event sprites carry zeroed paksize bytes, so the sprite
-		# cache refuses them by name (the documented source-data boundary).
-		# The walked state keeps the last composed page; the gap is recorded.
-		composition_gap = str(composed.error)
-		after_image = _rgba_image(game.renderer.current_rgba())
-		check(after_image.save_png(args[2]) == OK,
-			"the walked state keeps the last composed page; composition refused: " + composition_gap)
-	else:
-		var stage_viewport = SubViewport.new()
-		stage_viewport.size = Vector2i(320, 200)
-		stage_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
-		stage_viewport.canvas_item_default_texture_filter = Viewport.DEFAULT_CANVAS_ITEM_TEXTURE_FILTER_NEAREST
-		root.add_child(stage_viewport)
-		stage_viewport.add_child(composed.value)
-		await process_frame
-		await RenderingServer.frame_post_draw
-		after_image = stage_viewport.get_texture().get_image()
-		after_image.convert(Image.FORMAT_RGBA8)
-		check(after_image.get_size() == Vector2i(320, 200), "the composed walked frame is the 320x200 target")
-		check(after_image.save_png(args[2]) == OK, "the composed walked frame is captured")
-	_composition_gap = composition_gap
-	check(last_tick.get("requests", []).size() >= 1, "the final tick published draw requests: "
-		+ str(last_tick.get("requests", []).size()))
-	_world = {"x": game.state.globals.world_x, "y": game.state.globals.world_y}
-	finish(args)
+func _window_pixels() -> Image:
+	await process_frame
+	await RenderingServer.frame_post_draw
+	var pixels: Image = get_root().get_texture().get_image()
+	pixels.convert(Image.FORMAT_RGBA8)
+	return pixels
 
-func finish(args: Array) -> void:
-	var file = FileAccess.open(args[3], FileAccess.WRITE)
-	file.store_string(JSON.stringify({"success": failed == 0, "failed": failed, "checks": checks,
-		"original_gameplay": false, "window_probe": true, "injected_logical_input": true,
-		"composition_gap": _composition_gap, "confirm_advances": _confirm_advances,
-		"world_x": game_state_world_x(), "world_y": game_state_world_y()}, "\t")); file.close()
-	print("Ordinary entry window probe: ", checks.size(), " checks, ", failed, " failed")
-	quit(0 if failed == 0 else 1)
+func _run() -> void:
+	get_root().title="PAL Wanxiang | reviewed source probe (not ordinary Session)"
+	get_root().size=Vector2i(640,400)
+	get_root().content_scale_size=Vector2i(640,400)
+	var package = Package.new()
+	check(package.load_package(args[0]),"admitted original input")
+	if not package.error.is_empty(): finish(); return
+	var game=Game.new()
+	check(game.open(package),"coordinator assembled")
+	if not game.error.is_empty(): finish(); return
+	var gaps=Config.bind_gaps(game)
+	game.bind_clock(Clock.new());game.bind_runtime(Runtime.new());game.bind_key_map([0,1,2,3,4,5,6,7,8],0,8)
+	var dialogue=DialogueRecorder.new()
+	dialogue.bind(package.pal98_sources);dialogue.bind_page_owner(game.renderer)
+	game.dialogue_host=dialogue
+	var initial: Dictionary=game.new_state(0x12345,Config.configuration())
+	if initial.has("error"): check(false,str(initial.error));finish();return
+	var begun: Dictionary=Config.run(game)
+	check(not begun.has("error") and begun.get("completed"),"replay reaches real reload terminal")
+	if begun.has("error") or not begun.get("completed"): finish();return
+	check(game.state.globals.loaded_map_id==12,"source MAP12 selected")
+	check(game.executor.installed_rgb6()==game.records.palette(0,0).value,"selected GPU palette equals active palette")
+	if not checks.back().passed:finish();return
+	stage=SubViewport.new();stage.size=Vector2i(320,200)
+	stage.render_target_update_mode=SubViewport.UPDATE_ALWAYS
+	stage.canvas_item_default_texture_filter=Viewport.DEFAULT_CANVAS_ITEM_TEXTURE_FILTER_NEAREST
+	get_root().add_child(stage)
+	frame_view=TextureRect.new();frame_view.size=Vector2(640,400);frame_view.texture_filter=CanvasItem.TEXTURE_FILTER_NEAREST
+	frame_view.texture=stage.get_texture();get_root().add_child(frame_view)
+	var empty: Dictionary=await _compose(game,true,true)
+	var party_only: Dictionary=await _compose(game,false,true)
+	if empty.has("error") or party_only.has("error"):check(false,"party composition failed");finish();return
+	check(empty.image.get_data()!=party_only.image.get_data(),"actual party pixels differ from map with no sprites")
+	var before: Dictionary=await _compose(game)
+	if before.has("error"):check(false,"composition failed: "+str(before.error));finish();return
+	check(before.requests.filter(func(r):return r.kind=="event").size()==2,"both actual event sprites resolve")
+	check(before.image.get_data()!=party_only.image.get_data(),"actual event pixels are presented")
+	var before_window: Image=await _window_pixels()
+	check(before_window.get_size()==Vector2i(640,400),"actual window render target captured")
+	check(before_window.save_png(args[1])==OK,"before window PNG saved")
+	details.before_sha256=Schema.digest(before_window.get_data())
+	# Render actual recorded source draw requests into the displayed target.
+	# This replayed surface probe is separate from the still-pending F03 host.
+	var surface=Surface.new();get_root().add_child(surface)
+	var colours:=PackedColorArray()
+	var palette:PackedByteArray=game.executor.installed_rgb6()
+	for index in range(256):colours.append(Color8(palette[index*3]*4,palette[index*3+1]*4,palette[index*3+2]*4))
+	check(surface.configure(FontOwner.create(),colours,before.image),"dialogue GPU target configured")
+	frame_view.texture=surface.get_texture()
+	var draw_count:=0;var start_text:=false
+	for request in dialogue.draws:
+		if request.kind=="draw_string":start_text=true
+		if not start_text:continue
+		var drawn:Dictionary=await surface.apply_request(request,package.pal98_sources.metadata().text_encoding)
+		if drawn.has("error"):check(false,str(drawn.error));finish();return
+		draw_count+=1
+		if draw_count>=8:break
+	var text_window:Image=await _window_pixels()
+	check(draw_count>1 and surface.text_snapshot().size()==draw_count and text_window.get_data()!=before_window.get_data(),"real source text draws change actual window")
+	check(text_window.save_png(args[1].get_basename()+"-dialogue.png")==OK,"dialogue window PNG saved")
+	details.text_draws=draw_count
+	frame_view.texture=stage.get_texture()
+	var start_world:Vector2i=Vector2i(game.state.globals.world_x,game.state.globals.world_y)
+	var moved:=0
+	for step in range(5):
+		var tick:Dictionary=game.tick(PackedInt32Array([0,0,0,2,0,0,0,0,0]))
+		if tick.has("error"):check(false,str(tick.error));finish();return
+		if tick.input_move:moved+=1
+	var after:Dictionary=await _compose(game)
+	if after.has("error"):check(false,"walk composition failed: "+str(after.error));finish();return
+	var after_window:Image=await _window_pixels()
+	check(moved>0 and Vector2i(game.state.globals.world_x,game.state.globals.world_y)!=start_world,"production input changes current world")
+	check(after.image.get_data()!=before.image.get_data() and after_window.get_data()!=before_window.get_data(),"moving changes composed pixels AND actual window")
+	check(after_window.save_png(args[2])==OK,"after window PNG saved")
+	details.after_sha256=Schema.digest(after_window.get_data())
+	details.world=[game.state.globals.world_x,game.state.globals.world_y];details.moved=moved
+	details.named_gaps=gaps.seen
+	# Negative control: current composition errors cannot be turned into an old-frame pass.
+	game.state.party_records[0].current_frame=32767
+	var refused:Dictionary=Composition.build("render_scene_frame",game.records,game.storage,game.state.events,game.cache,
+		{"map_id":12,"palette_index":0,"palette_variant":0,"map_mode":0,"clip_bottom":200,
+		"viewport_x":game.state.globals.viewport_x,"viewport_y":game.state.globals.viewport_y,
+		"member_last":0,"follower_count":0,"team_layer":0,"party_records":game.state.party_records})
+	check(refused.has("error"),"invalid current sprite frame is an error, never old-frame success")
+	game.cancel()
+	finish()
 
-func game_state_world_x() -> int:
-	return int(_world.get("x", -1))
-
-func game_state_world_y() -> int:
-	return int(_world.get("y", -1))
-
-var _world: Dictionary = {}
-var _composition_gap: String = ""
-var _confirm_advances: int = 0
+func finish() -> void:
+	var failed:int=checks.filter(func(row):return not row.passed).size()
+	var file=FileAccess.open(args[3],FileAccess.WRITE)
+	file.store_string(JSON.stringify({"checks":checks,"passed":checks.size()-failed,"failed":failed,
+		"success":failed==0,"details":details,"original_gameplay":false,"injected_logical_input":true,
+		"scope":"actual GPU and window probe; synthetic initializer/clock; text replay; named gaps retained"},"  "))
+	file.close();quit(1 if failed else 0)

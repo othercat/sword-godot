@@ -1,44 +1,26 @@
-# The Ordinary New-Game Owner
+# Internal original-source new-game coordination
 
-`native_pal98_new_game.gd` is the production entry for starting the original
-from the admitted package. `open(package)` binds the real owners — resource
-reload, enter script, entry host, dialogue host with the shared page owner,
-equipment kernel, sprite cache, scene-event storage, palette owner, display
-executor, scene renderer, the movement owner with the real member executor
-(`native_pal98_member_sync.gd`) and the production input frame.
+This owner coordinates Reload, EnterScript, current state/cache leases and explicit hosts. It does not open the source-only ordinary Session gate.
 
-- `new_state(seed)` derives the opening state from the package: runtime scene
-  1, the new-game load mask 29, the original party anchor (160,112), the
-  MAP20 viewport limit pair 1696/1840 (`0x41B120..0x41B14A`), the day/night
-  palettes, the empty inventory backing, the kernel-derived opening party and
-  a cold-installed display palette. The RNG seed is a required argument (the
-  original new-game seed is unobserved); the zeroed trail is the named Native
-  representation of the original's uninitialized walk trail.
-- `begin(confirm_gated)` runs the real reload/enter chain. Non-gated (the
-  default), the intro auto-answers its dialogues through the real host. With
-  `confirm_gated` the intro parks on each page-text draw (`draw_string`);
-  a player confirm — a new press on the bound confirm slot delivered through
-  `tick` — advances that one real dialogue through the dialogue host and the
-  chain continues to the next page. The capture/restore/box/glyph sub-effects
-  and waits are not player pages. Gating the page on its text draw is a named
-  Native reading: the original confirm gate point is not decoded. A further
-  scene entry stops the intro by name instead of inventing player input.
-  Display routing is real: palette family through the display executor,
-  capture/restore through the shared indexed page owner, map backgrounds
-  through the renderer.
-- `bind_key_map(map, layer_base)` forwards the host input configuration to
-  the input frame; `tick(key_levels)` rebinds the collision probe to the
-  current map/events and runs one production logic tick.
-- Effects this project has not built — audio (play_midi, play_sound_effect),
-  the unfinished T121 transition, the unproved initial capture page, the
-  undecoded RGM upper-dialog layout, the walk-loop frame family (frame
-  processor, viewport/party update, scene-frame render) and the replay
-  clock/runtime — execute only through `bind_named_double`, including an
-  explicit host-opted catch-all that records every fall-through. Unbound
-  kinds refuse by name.
+`open(package)` checks source and all bindings. `new_state(seed, probe_configuration)` requires explicit globals, dialogue, role selection, party/trail and inventory inputs. These unproved initializer fields have moved to `tests/fixtures/pal98_new_game_probe.gd`. Source event/equipment tables and palette remain real. The recovered startup RNG/experience initializer is a separate next-stage capability; a seed argument and synthetic trail do not establish original initialization.
 
-Known named gaps carried by this owner: the frame-processing owner, the
-walk-loop viewport/party update and scene-frame render owners, the RGM
-container decode, T121's lane dissolve, audio backends and the original
-key-map default. The source-only guard adjustment for the ordinary entry is
-a separate app-layer package.
+`begin()` follows actual reload requests without a scene-count completion shortcut. A request and its final result carry the same candidate sprite cache and map cache; EnterHost mutations use that cache. State, cache identity, map backing and collision binding are validated before adoption. A binding failure cannot reuse an older probe.
+
+Dialogue:
+- Draw requests are processed immediately by the explicitly bound host. `draw_string` is not a page-confirmation gate.
+- Actual `poll_input` and `wait` requests park the chain with its current pending state.
+- `tick(keys, timer_tick=false)` polls input without moving the map while dialogue is pending. A supplied nominal timer event advances at most one wait continuation; merely calling the method is not elapsed time.
+- Ordinary poll accepts action 0 and can accept action 2 for character skip. Only `until_nonzero` denotes an indefinite input wait; `bounded_clear` can finish by its own timer sequence.
+- `resume_dialogue(id,event)` forwards the exact input/tick contract. One input cannot release a series of later requests. Old IDs cannot write or cancel a newer generation.
+
+Cancellation or host failure releases both Reload and Enter continuations, clears pending requests, terminal records and captured pages, and allows the same owner to restart. No generic state-bearing request receives an automatic ACK; test policies must bind each missing kind by name. Wildcard hosts are refused.
+
+The recording dialogue host is still a glyph policy, not a physical display. Audio, RGM upper layout, T121 transition, event/frame helpers and physical input remain named dependencies. The production nested-T212 coordinator and formal application entry remain separate work packages.
+
+The exact input used for current probes is an **edited original-source author sample**, ZIP SHA256
+`8d946e34f202487353c12e7b50fe1c3df9159945453e616be712a5ff3c07f2fb`.
+Its message 2 already contains “对白编辑技术验证：保留原包与其他记录。”; it is not the untouched original message stream.
+
+`test_pal98_new_game.gd` uses explicit synthetic initialization, nominal timing and skip/confirm input. Frame, audio, RGM and transition gaps are named test doubles. The current MAP12 event sprites decode correctly from the adopted cache; the earlier zero-source-data explanation is withdrawn.
+
+`window_ordinary_new_game.gd` is a bounded GPU/window probe: it checks real party/event pixels, replays actual source text requests onto a displayed surface, and verifies both composed and window pixels change after movement. Composition errors fail the check, never save an old frame as success. Text replay in this probe does not complete live dialogue integration or ordinary new-game acceptance.

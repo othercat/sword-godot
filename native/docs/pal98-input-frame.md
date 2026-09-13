@@ -1,52 +1,24 @@
-# Input Frame Tick and the Member Formation/Frame Executor
+# Input frame and current member state
 
-## `native_pal98_input_frame.gd` — the production logic tick
+One `tick(state, key_levels)` is a supplied nominal map tick, not a physical keyboard or timing implementation.
 
-One `tick(state, key_levels)` call is one logic tick of the ordinary-map loop,
-assembled from the real owners instead of a test fixture:
+1. Resolve eight mapped directional slots, convert to the isometric pair and probe the current world candidate.
+2. Apply extf facing, preserving caller-owned pre-step world derived from viewport + party anchor.
+3. A pending step uses checked I2 viewport addition, explicit ffxy limits and whole-step rollback if either clamped axis stayed unchanged.
+4. A pending step calls PostMoveUpdate. No pending step rebuilds standing frames only; it never shifts the trail or replays a walking frame on key release.
+5. Return current T209 party and, when bound, T213 event requests. T213 receives `state.events`, not the outer state.
 
-1. `PollAndResolveDirection` (0x0041CCE4 port) resolves at most one axis from
-   the eight logical key slots and the bound G0854-style slot map.
-2. The SubMain inline (0x0041B1BA) converts the cartesian direction to the
-   isometric diagonal pair; `ProbeAndPrepareMove` (0x0041B1F0) builds the
-   candidate from party-in-viewport + viewport and probes it through the
-   two-level collision owner (map bit 0x2000, then event proximity).
-3. A accepted step faces the party through the real extf owner, refreshes the
-   previous-position words (this owner is PostMoveUpdate's caller on the
-   input path, exactly like the reviewed walk loop), and applies the 16/8
-   viewport step.
-4. `PostMoveUpdate` (0x0041D2CC) runs every tick — moving or stationary — so
-   the world words, walk phase and the trail/member sync always execute.
-5. The T209 party requests (and T213 event requests when a scene-events
-   storage is bound) are computed from the resulting state by
-   `native_pal98_scene_sprite_requests.gd` and returned with it.
+`poll(key_levels)` validates the same input mapping without moving the map. Optional confirm is exactly level 2; level 3 is held. Mapping indices and values 0..3 are validated. This host mapping is explicit; the original physical key map is still not supplied.
 
-Boundaries: the tick publishes nothing on a refused or failed step; the
-caller's own state is never mutated; a blocked candidate is a normal
-stationary tick (phase settles through `(phase & 2) ^ 2`, draw requests still
-publish); the scene-events storage must be rebound when the scene or its
-events change; previous_x/y are refreshed only when the tick moves.
+The recovered member body is 0x00411580..0x0041196E, end exclusive, SHA256
+`884404deeae08e638b7e577b57429c8951701ed3d4a101aa0deec418876aecb0`.
+The fixed original PAL.EXE identity is
+`75d612b9cbd9c1f0884f18c9a6d2ee522b227f2f6b3da92495bae8f73161c450`.
 
-## `native_pal98_member_sync.gd` — the member half of SyncMembersFromTrail
+- Both ordinary members form from trail[1]. Member 1 subtracts G041C/G0434; member 2 adds 8 to Y and adds/subtracts 16 to X by trail direction parity. Probe world sums; a blocked formation uses the base trail position.
+- Both ordinary member frame directions use trail[2]. Current request `equipment.role_words[field*6+role]` owns DATA3 field64. Four-frame roles use walk_phase; other moving roles use the three-frame leader/party offsets.
+- Followers use trail[follower+2] and fixed three-frame selection, without role-table lookups. Relative coordinate arithmetic is checked I2 after WORD signed readback.
+- Stationary selection uses field64 when nonzero, otherwise three frames, and zero offset. It does not reposition members or change the trail. The stationary phase toggle does not require clearing stored movement offsets.
+- Internal party position is x/y; screen_x/screen_y belong to draw requests only. Malformed or duplicate ordinary role identities, incomplete current backing and arithmetic overflow refuse without publishing state.
 
-The executor `bind_member_sync` requires. For every active slot it selects
-the sprite frame as `direction * frames_per_direction + frame_offset`, where
-the per-direction count comes from that slot's own sprite source through the
-bound provider (DATA3 field64: 4 takes the ×4 path, anything else ×3 — the
-`0x411594` decode). Leader uses `leader_frame_offset_word`, every other slot
-`party_frame_offset_word`, both from the recovered PostMoveUpdate.
-
-Members (slots 1..member_last) take their screen position from the probed
-trail candidate `trail[slot+1] - viewport`; a rejected probe falls back to
-the generated formation tables `G041C=[-16,-16,16,16]`/`G0434=[8,-8,-8,8]` subtracted
-from the running position — a named Native adaptation of the decoded march
-step. The executor may only change active slots' `current_frame` and member
-slots' `x/y`; the movement owner verifies exactly that shape and refuses
-anything wider.
-
-Named evidence gaps, not silently closed: the 0x0041D2E4 byte body is not
-decoded, so the member trail stride `slot+1` (against the reviewed follower
-stride `follower+2`) is the Native reading that keeps the entries distinct,
-and the formation-fallback application inside the arrival sync is an
-adaptation. Frames-per-direction is read from the slot's source per slot;
-the owner never guesses a count and refuses unknown ones by name.
+Compile and focused tests: test_pal98_input_frame, test_pal98_member_sync_review, test_pal98_execution03_review. Collision/formation, software requests, GPU probes and ordinary gameplay are separate evidence classes.

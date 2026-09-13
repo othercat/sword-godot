@@ -20,11 +20,12 @@ func check(ok: bool, label: String) -> void:
 	if not ok: failed += 1; push_error(label)
 
 func _state() -> Dictionary:
-	return {"globals": {"viewport_x": 864, "viewport_y": 912, "party_x": 160, "party_y": 112,
+	var words: Array = []; words.resize(450); words.fill(0)
+	return {"equipment": {"role_words": words}, "globals": {"viewport_x": 864, "viewport_y": 912, "party_x": 160, "party_y": 112,
 			"world_x": 1024, "world_y": 1024, "previous_x": 1024, "previous_y": 1024,
 			"direction_word": 0, "walk_phase_word": 0,
 			"leader_frame_offset_word": 0, "party_frame_offset_word": 0,
-			"member_last": 1, "follower_count": 1},
+			"member_last": 1, "follower_count": 1, "ffxy_max_x": 1696, "ffxy_max_y": 1840},
 		"party_trail": [
 			{"x": 1024, "y": 1024, "direction_word": 0},
 			{"x": 1008, "y": 1016, "direction_word": 0},
@@ -60,7 +61,6 @@ func _assembly(block_world: Dictionary, events: Dictionary):
 	var probe = CollisionProbe.new()
 	probe.bind(_map(block_world), events)
 	member.bind_probe(probe)
-	member.bind_frame_counts(func(_slot: int) -> int: return 3)
 	check(member._probe != null, "the member executor binds its collision probe")
 	facing.bind_member_sync(member)
 	var frame = InputFrame.new()
@@ -102,7 +102,7 @@ func _initialize() -> void:
 		"the walk phase advanced once with the recovered offset pair")
 	check(ticked.state.party_trail[0].x == 1024 and ticked.state.party_trail[0].direction_word == 3,
 		"the trail rotated: the newest entry holds the pre-move world and direction")
-	check(ticked.state.party_records[1].x == 128 and ticked.state.party_records[1].y == 96,
+	check(ticked.state.party_records[1].x == 160 and ticked.state.party_records[1].y == 96,
 		"the member adopted the probed trail position: %d,%d" % [ticked.state.party_records[1].x, ticked.state.party_records[1].y])
 	check(ticked.state.party_records[2].x == 112 and ticked.state.party_records[2].y == 88,
 		"the follower adopted trail[3] relative to the new viewport")
@@ -112,7 +112,7 @@ func _initialize() -> void:
 		check(requests[0].get("screen_x") == 160 and requests[0].get("screen_y") == 112
 			and requests[0].get("frame_offset") == 10 and requests[0].get("follower") == false,
 			"the leader request carries the new screen position and phase frame")
-		check(requests[1].get("screen_x") == 128 and requests[1].get("screen_y") == 96
+		check(requests[1].get("screen_x") == 160 and requests[1].get("screen_y") == 96
 			and requests[1].get("frame_offset") == 2,
 			"the member request carries the probed position and its offset frame")
 		check(requests[2].get("screen_x") == 112 and requests[2].get("screen_y") == 88
@@ -130,7 +130,7 @@ func _initialize() -> void:
 		"the blocked tick left the viewport and world in place")
 	check(parked.state.globals.walk_phase_word == 2 and parked.state.globals.leader_frame_offset_word == 0,
 		"the stationary branch settled the phase and cleared the offsets")
-	check(parked.requests.size() == 3 and parked.requests[0].get("frame_offset") == 0
+	check(parked.requests.size() == 3 and parked.requests[0].get("frame_offset") == 9
 		and parked.requests[0].get("screen_x") == 160,
 		"the stationary frame still publishes the draw requests")
 

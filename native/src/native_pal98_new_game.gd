@@ -1,29 +1,7 @@
 # SPDX-License-Identifier: MIT
 extends RefCounted
-## The ordinary new-game owner: derives the opening state from the same
-## admitted package sources and drives the real resource/enter chain until the
-## original's scene loop rests awaiting a real player. Nothing here copies a
-## test fixture; every state field comes from one of these provenance groups:
-##
-## - Source-derived: the opening runtime scene 1 with entry word 4, both
-##   scenes' map words, the day/night palettes, the event storage, the
-##   equipment kernel tables and the sprite cache all come from the package
-##   reads below.
-## - Original pinned facts: the party-in-viewport anchor (160,112), the
-##   MAP20 viewport limit pair 1696/1840 from the original 0x41B120..0x41B14A
-##   bounds, and the new-game load mask 29 (events + party sprites + entry
-##   script + midi request bits) that the reload state machine consumes.
-## - Named Native representations: the zeroed five-entry walk trail and the
-##   explicit RNG seed argument stand for the original's uninitialized trail
-##   and its unobserved new-game seed; the seed is required, never defaulted.
-##   The dialog window words are the admitted context the verified chain
-##   already consumes; their original initializer is not decoded.
-##
-## Display routing is real (palette family through the display executor,
-## capture/restore/render through the shared page owner). Effects this
-## project has not built — audio, the unfinished T121 transition, the replay
-## clock — stay named: they execute only through `bind_named_double`, and an
-## unbound kind refuses by name instead of acknowledging.
+## Internal new-game coordinator. Initializer and device presentation remain
+## explicit dependencies; a probe configuration does not open ordinary Session.
 const Reload = preload("res://src/native_pal98_resource_reload.gd")
 const Enter = preload("res://src/native_pal98_enter_script.gd")
 const EntryHost = preload("res://src/native_pal98_entry_host.gd")
@@ -51,6 +29,7 @@ var dialogue_host
 var executor
 var renderer
 var cache
+var map_cache: Dictionary = {}
 var kernel
 var storage
 var facing
@@ -61,160 +40,172 @@ var enters_seen: Array = []
 var terminals: Array = []
 var awaiting_player := false
 var awaiting_confirm := false
-var _confirm_gated := false
 var _pending_dialogue: Dictionary = {}
 var _active_enter_request: Dictionary = {}
-var _palette: Palette
+var _palette = Palette.new()
 var _doubles: Dictionary = {}
-var _roles_snapshot: Array = []
+var _initial_cache
+var _start_state: Dictionary = {}
+var _start_cache
+var _start_map: Dictionary = {}
+var _initialized := false
+var _running := false
 
 class DisplayRouter:
 	var game
-	func _init(owner) -> void: game = owner
+	func _init(owner) -> void: game = weakref(owner)
 	func answer(request: Dictionary) -> Dictionary:
-		return game._route_display(request)
+		var owner = game.get_ref()
+		return owner._route_display(request) if owner != null else {"error": "new-game host released"}
+
+## Cancellation invalidates both continuation generations and captured pages.
+## It does not manufacture a terminal result or erase the caller's diagnostic.
+func cancel() -> void:
+	if reload != null: reload.cancel()
+	if enter != null: enter.cancel()
+	_pending_dialogue = {}; _active_enter_request = {}
+	awaiting_confirm = false; awaiting_player = false; _running = false
+	terminals = []; enters_seen = []
+	if renderer != null and records != null: renderer.bind(records)
 
 func _failure(message: String) -> Dictionary:
+	var diagnostic := {"enters": enters_seen.duplicate(), "pending": _pending_dialogue.duplicate(true)}
+	cancel()
+	if not _start_state.is_empty():
+		state = _start_state.duplicate(true); cache = _start_cache; map_cache = _start_map.duplicate(true)
 	error = "pal98-new-game: " + message
-	return {"error": error}
+	return {"error": error, "diagnostic": diagnostic}
 
-## A host-bound explicit double for one named product gap (audio, the
-## unfinished transition, the replay clock). Never a silent default: the kind
-## stays refused when nothing is bound.
 func bind_named_double(kind: String, owner) -> bool:
-	if kind.is_empty() or owner == null:
-		error = "pal98-new-game: a named double requires a kind and an owner"; return false
+	if kind.is_empty() or kind == "*" or owner == null or not owner.has_method("answer"):
+		error = "pal98-new-game: an explicit named owner is required (no wildcard)"; return false
 	_doubles[kind] = owner; error = ""; return true
 
-## The replay clock and runtime event pump are host responsibilities on a real
-## frame loop; the suite binds counting doubles under their own names.
-func bind_clock(clock) -> bool:
-	return executor.bind_clock(clock)
+func bind_clock(clock) -> bool: return executor.bind_clock(clock)
+func bind_runtime(runtime) -> bool: return executor.bind_runtime(runtime)
 
-func bind_runtime(runtime) -> bool:
-	return executor.bind_runtime(runtime)
-
-## The eight-slot G0854-style logical key map and the T209 layer base word
-## come from the host input configuration; the original default map is not
-## decoded yet, so the host must pass one explicitly. confirm_slot: the
-## optional logical slot whose new press confirms a parked dialogue page.
 func bind_key_map(logical_map: Array, layer_base: int, confirm_slot: int = -1) -> bool:
 	if input == null:
-		error = "pal98-new-game: the input frame is not assembled"; return false
-	return input.bind(facing, probe, logical_map, layer_base, confirm_slot)
+		error = "pal98-new-game: input owner not assembled"; return false
+	var bound: bool = input.bind(facing, probe, logical_map, layer_base, confirm_slot)
+	if not bound: error = input.error
+	return bound
 
 func open(package) -> bool:
+	cancel(); state = {}; map_cache = {}; _start_state = {}; _initialized = false
 	if package == null or package.pal98_sources == null or package.pal98_graphics == null:
-		return _open_fail("the admitted package with sources and graphics is required")
+		return _open_fail("admitted package sources and graphics required")
 	records = package.pal98_graphics.open_records()
+	if records == null: return _open_fail("graphics records unavailable")
 	storage = Events.new()
-	if not storage.load_source(package.pal98_sources): return _open_fail(str(storage.error))
-	cache = Cache.new(); cache.load_source(package.pal98_graphics, package.pal98_sources)
+	if not storage.load_source(package.pal98_sources): return _open_fail(storage.error)
+	cache = Cache.new()
+	if not cache.load_source(package.pal98_graphics, package.pal98_sources): return _open_fail(cache.error)
+	_initial_cache = cache
 	kernel = Equipment.new()
-	kernel.read_tables(package.pal98_sources.copy_chunk("data", 3),
-		package.pal98_sources.copy_chunk("sss", 2), package.pal98_sources.copy_chunk("sss", 4))
-	var inventory: PackedByteArray = PackedByteArray(); inventory.resize(1536)
-	adapter = EntryHost.new()
-	if not adapter.bind(cache, kernel, inventory, [0, 0, 0, 0, 0, 0]): return _open_fail(str(adapter.error))
-	adapter.bind_inventory(Inventory.new())
+	if not kernel.read_tables(package.pal98_sources.copy_chunk("data", 3),
+			package.pal98_sources.copy_chunk("sss", 2), package.pal98_sources.copy_chunk("sss", 4)):
+		return _open_fail(kernel.error)
 	renderer = SceneRender.new()
-	if not renderer.bind(records): return _open_fail(str(renderer.error))
+	if not renderer.bind(records): return _open_fail(renderer.error)
 	executor = Display.new()
-	executor.bind_surface(renderer)
-	var router := DisplayRouter.new(self)
-	adapter.bind_display(router)
+	if not executor.bind_surface(renderer): return _open_fail(executor.error)
+	adapter = EntryHost.new()
+	adapter.bind_inventory(Inventory.new())
+	adapter.bind_display(DisplayRouter.new(self))
 	reload = Reload.new()
-	if not reload.load_source(package.pal98_sources, package.pal98_graphics): return _open_fail(str(reload.error))
+	if not reload.load_source(package.pal98_sources, package.pal98_graphics): return _open_fail(reload.error)
 	enter = Enter.new()
-	if not enter.load_source(package.pal98_sources): return _open_fail(str(enter.error))
+	if not enter.load_source(package.pal98_sources): return _open_fail(enter.error)
 	dialogue_host = DialogueHost.new()
-	dialogue_host.bind(package.pal98_sources)
-	dialogue_host.bind_page_owner(renderer)
-	facing = Facing.new()
-	member = MemberSync.new()
-	probe = CollisionProbe.new()
-	if not member.bind_probe(probe): return _open_fail(str(member.error))
-	var role_source: Dictionary = kernel.initial_state([0])
-	var roles := self
-	member.bind_frame_counts(func(slot: int) -> int:
-		var role: int = roles._roles_snapshot[slot] if slot < roles._roles_snapshot.size() else -1
-		if role < 0 or role >= 6: return 0
-		var field64: int = ((int(role_source.role_words[64 * 6 + role]) + 32768) & 65535) - 32768
-		return 4 if field64 == 4 else 3)
-	facing.bind_member_sync(member)
-	facing.bind_fallback(router)
+	if not dialogue_host.bind(package.pal98_sources): return _open_fail(dialogue_host.error)
+	if not dialogue_host.bind_page_owner(renderer): return _open_fail(dialogue_host.error)
+	facing = Facing.new(); member = MemberSync.new(); probe = CollisionProbe.new()
+	if not member.bind_probe(probe): return _open_fail(member.error)
+	facing.bind_member_sync(member); facing.bind_fallback(DisplayRouter.new(self))
 	adapter.bind_movement(facing)
 	input = InputFrame.new()
-	_palette = Palette.new()
+	if not input.bind_events(storage): return _open_fail(input.error)
 	error = ""; return true
 
 func _open_fail(message: String) -> bool:
-	_failure(message); return false
+	_failure(message); _initialized = false; return false
 
-## The source-derived new-game state. `seed` is required: the original
-## new-game RNG seed is unobserved, so the host must pass one explicitly.
-func new_state(seed: int) -> Dictionary:
-	error = ""
-	var day: Dictionary = records.palette(0, 0)
-	var night: Dictionary = records.palette(0, 1)
-	if day.has("error"): return _failure("day palette: " + str(day.error))
-	if night.has("error"): return _failure("night palette: " + str(night.error))
-	var backing: PackedByteArray = PackedByteArray(); backing.resize(Palette.BUFFER)
+## Until F01 supplies a recovered initializer, globals/dialogue/trail/inventory
+## are REQUIRED explicit probe inputs. Source tables and palette are real.
+func new_state(seed: int, probe_configuration: Dictionary = {}) -> Dictionary:
+	if records == null or _initial_cache == null: return _failure("open the package first")
+	for key in ["globals", "dialogue"]:
+		if not probe_configuration.get(key) is Dictionary: return _failure("explicit probe configuration requires " + key)
+	for key in ["roles", "party_records", "party_trail"]:
+		if not probe_configuration.get(key) is Array: return _failure("explicit probe configuration requires " + key)
+	if not probe_configuration.get("inventory_bytes") is PackedByteArray:
+		return _failure("explicit probe inventory required")
+	var candidate: Dictionary = probe_configuration.duplicate(true)
+	candidate.equipment = kernel.initial_state(candidate.roles)
+	candidate.erase("roles")
+	if candidate.equipment.has("error"): return _failure(str(candidate.equipment.error))
+	candidate.events = storage.source_state(); candidate.rng = Random.create(seed)
+	if candidate.rng.has("error"): return _failure(str(candidate.rng.error))
+	var day: Dictionary = records.palette(0, 0); var night: Dictionary = records.palette(0, 1)
+	if day.has("error") or night.has("error"): return _failure("source day/night palette unavailable")
+	var backing := PackedByteArray(); backing.resize(Palette.BUFFER)
 	var loaded: Dictionary = _palette.load_day_night(backing, day.value, night.value)
 	if loaded.has("error"): return _failure(str(loaded.error))
-	var cold: Dictionary = executor.install_cold(day.value)
-	if cold.has("error"): return _failure(str(cold.error))
-	var inventory: PackedByteArray = PackedByteArray(); inventory.resize(1536)
-	var opening := {"current_scene": 0, "requested_scene": 1, "resource_flags": 29,
-		"party_x": 160, "party_y": 112, "viewport_x": 0, "viewport_y": 0,
-		"world_x": 0, "world_y": 0, "previous_x": 0, "previous_y": 0,
-		"previous_viewport_x": 0, "previous_viewport_y": 0,
-		"loaded_map_id": 0, "member_last": 0, "follower_count": 0, "battle_mode": 0,
-		"midi_track": 0, "battle_music_track": 0, "day_night_word": 0, "fade_gate_word": 0,
-		"direction_word": 0, "party_layer_word": 0, "fbp_mode_word": 0,
-		"ffxy_max_x": 1696, "ffxy_max_y": 1840,
-		"view_offset_x": 0, "view_offset_y": 0, "transition_cadence": 0, "transition_progress": 0,
-		"wave_phase": 0, "wave_amplitude": 0, "trigger_success_word": 0}
-	state = {"globals": opening,
-		"events": storage.source_state(), "rng": Random.create(seed),
-		"dialogue": {"local_x": 101, "local_y": 102, "title_x": 12, "title_y": 8, "origin_x": 44,
-			"origin_y": 26, "mode": 1, "line_count": 0, "boxed_count": 0, "draw_x": 201, "draw_y": 202,
-			"icon": 2, "skip_word": 0, "delay_units": 1, "input_action": 99, "capture_gate": 1,
-			"restore_gate": 0, "colours": [79, 45, 26, 141], "timer_counter": 0},
-		"equipment": kernel.initial_state([0]),
-		"inventory_bytes": inventory,
-		"palette_bytes": backing,
-		"party_records": [{"role_id": 0, "x": 160, "y": 112, "current_frame": 0}],
-		"party_trail": [{"x": 0, "y": 0, "direction_word": 0}, {"x": 0, "y": 0, "direction_word": 0},
-			{"x": 0, "y": 0, "direction_word": 0}, {"x": 0, "y": 0, "direction_word": 0},
-			{"x": 0, "y": 0, "direction_word": 0}]}
-	_roles_snapshot = [0]
+	candidate.palette_bytes = backing
+	cancel(); _start_state = {}
+	var installed: Dictionary = executor.install_cold(day.value)
+	if installed.has("error"): return _failure(str(installed.error))
+	cache = _initial_cache.fork_for_reload(); map_cache = {}
+	if cache == null: return _failure("initial sprite fork unavailable")
+	state = candidate; _initialized = true; error = ""
 	return state.duplicate(true)
 
-## Runs the real reload/enter chain until it rests on the entry's own next
-## scene; a further scene entry stops the intro as awaiting_player instead of
-## inventing player input. With `confirm_gated` the intro's dialogue requests
-## park instead of auto-advancing: each player confirm (a new press on the
-## bound confirm slot, delivered through `tick`) advances one real dialogue
-## through the dialogue host and the chain continues to the next page.
-func begin(confirm_gated := false) -> Dictionary:
-	error = ""; awaiting_player = false; awaiting_confirm = false
-	_confirm_gated = confirm_gated
-	_pending_dialogue = {}; _active_enter_request = {}
-	enters_seen = []
-	var step: Dictionary = reload.start(state, cache)
-	return _drive_reload(step)
+func begin() -> Dictionary:
+	if not _initialized: return _failure("explicit initial state required")
+	if _running: return {"error": "pal98-new-game: owner already active"}
+	cancel()
+	var installed: Dictionary = executor.install_cold(executor.installed_rgb6())
+	if installed.has("error"): return _failure(str(installed.error))
+	_start_state = state.duplicate(true); _start_cache = cache; _start_map = map_cache.duplicate(true)
+	error = ""; _running = true
+	return _drive_reload(reload.start(state, cache, map_cache))
+
+## Adopt a state/cache/map lease as one binding. Validation precedes publication.
+func _adopt(candidate: Dictionary, sprites, maps: Dictionary) -> Dictionary:
+	if sprites == null or sprites.source() != _initial_cache.source(): return _failure("cache source identity mismatch")
+	var issue: String = storage.validate_state(candidate.get("events", {}))
+	if not issue.is_empty(): return _failure(issue)
+	issue = kernel.validate_state(candidate.get("equipment", {}))
+	if not issue.is_empty(): return _failure(issue)
+	var map_id = candidate.get("globals", {}).get("loaded_map_id")
+	if typeof(map_id) != TYPE_INT or map_id < 0 or maps.get("map_id") != map_id:
+		return _failure("state and MAP cache identity mismatch")
+	if maps.get("graphics_fingerprint") != sprites.source().get("graphics_fingerprint"):
+		return _failure("MAP cache graphics identity mismatch")
+	if not maps.get("map_bytes") is PackedByteArray or not maps.get("gop_bytes") is PackedByteArray or maps.gop_bytes.size() < 2:
+		return _failure("MAP/GOP cache backing missing")
+	var check_probe = CollisionProbe.new()
+	if not check_probe.bind(maps.map_bytes, candidate.events): return _failure(check_probe.error)
+	var ids: Array = []
+	for role in range(6): ids.append(candidate.equipment.role_words[2 * 6 + role])
+	if not candidate.get("inventory_bytes") is PackedByteArray: return _failure("inventory backing unavailable")
+	if not adapter.bind(sprites, kernel, candidate.inventory_bytes, ids): return _failure(adapter.error)
+	# Same stable probe instance is bound by both the input and member owners.
+	if not probe.bind(maps.map_bytes, candidate.events): return _failure(probe.error)
+	state = candidate.duplicate(true); cache = sprites; map_cache = maps.duplicate(true)
+	return {"completed": true}
 
 func _drive_reload(step: Dictionary) -> Dictionary:
 	for guard in range(32768):
 		if step.has("error"): return _failure(str(step.error))
 		if step.get("state") is Dictionary:
-			state = step.state
-			_refresh_roles(); _rebind_probe()
+			var adopted: Dictionary = _adopt(step.state, step.get("cache"), step.get("map_cache", {}))
+			if adopted.has("error"): return adopted
+			awaiting_player = true; _running = false
 			return {"completed": true, "state": state.duplicate(true), "trace": step.get("trace", []),
-				"enters": enters_seen.duplicate(), "awaiting_player": awaiting_player,
-				"awaiting_confirm": false}
-		if not step.has("request"): return _failure("reload stopped without a terminal state")
+				"enters": enters_seen.duplicate(), "awaiting_player": true, "awaiting_confirm": false}
+		if not step.has("request"): return _failure("reload stopped without terminal state")
 		var request: Dictionary = step.request
 		match request.kind:
 			"render_background":
@@ -222,112 +213,97 @@ func _drive_reload(step: Dictionary) -> Dictionary:
 				if rendered.has("error"): return _failure("reload render: " + str(rendered.error))
 				step = reload.resume(request.id, {"completed": true, "state": rendered.state})
 			"enter_script":
-				enters_seen.append(request.scene_id)
-				if enters_seen.size() > 2:
-					awaiting_player = true
-					return _await_player(step, request)
-				_active_enter_request = request
-				var run: Dictionary = _drive_entry(enter.start(request.state, request.scene_id,
-					request.entry, request.event_id))
-				if run.has("error"): return _failure("reload enter: " + str(run.error))
-				if run.get("parked"):
-					return {"completed": false, "awaiting_confirm": true, "advanced": false,
-						"state": state.duplicate(true), "enters": enters_seen.duplicate(),
-						"pending_effect": str(_pending_dialogue.get("effect", {}).get("kind", ""))}
-				step = reload.resume(request.id, {"state": run.state,
-					"return_entry": run.get("return_entry", 0)})
+				var adopted: Dictionary = _adopt(request.state, request.get("cache"), request.get("map_cache", {}))
+				if adopted.has("error"): return adopted
+				enters_seen.append(request.scene_id); _active_enter_request = request
+				var run: Dictionary = _drive_entry(enter.start(request.state, request.scene_id, request.entry, request.event_id))
+				if run.has("error"): return _failure(str(run.error))
+				if run.get("parked"): return _parked()
+				step = reload.resume(request.id, {"state": run.state, "return_entry": run.get("return_entry", 0)})
 			"play_midi":
-				var answered: Dictionary = _named(request.kind, request)
-				if answered.has("error"): return _failure(str(answered.error))
-				step = reload.resume(request.id, {"completed": true})
-			"load_save":
-				return _failure("a new game must not request a save load")
+				var answer: Dictionary = _named(request.kind, request)
+				if answer.has("error"): return _failure(str(answer.error))
+				step = reload.resume(request.id, answer)
 			_:
-				return _failure("the new-game chain does not own: " + str(request.kind))
-	return _failure("new-game chain budget exceeded")
+				return _failure("unowned reload request: " + str(request.kind))
+	return _failure("reload coordination budget exceeded")
 
-func _await_player(step: Dictionary, request: Dictionary) -> Dictionary:
-	# The intro has finished; the original now waits for a real player. Answer
-	# the pending enter request with the named stop and rest on the last state.
-	var rested: Dictionary = reload.resume(request.id,
-		{"error": "the intro completes here; further scene entries belong to the player"})
-	state = step.request.state if step.request.get("state") is Dictionary else state
-	_refresh_roles(); _rebind_probe()
-	return {"completed": true, "state": state.duplicate(true), "awaiting_player": true,
-		"enters": enters_seen.duplicate(), "stopped_request": request.kind}
+func _parked() -> Dictionary:
+	return {"completed": false, "awaiting_confirm": awaiting_confirm, "awaiting_effect": true,
+		"state": state.duplicate(true), "enters": enters_seen.duplicate(), "input_move": false,
+		"pending_effect": _pending_dialogue.get("effect", {}).duplicate(true),
+		"pending_id": _pending_dialogue.get("id", "")}
 
-## One player input tick on the resting state through the production input
-## frame; the collision probe rebinds to the current map and events first. A
-## confirm press on the bound slot advances a parked intro dialogue through
-## the real dialogue host — the production input tick is the only path.
-func tick(key_levels) -> Dictionary:
-	_rebind_probe()
+## timer_tick is one explicit nominal timer event from the caller. A function
+## call is not elapsed time. Each invocation consumes at most ONE input or
+## timer event, so one press cannot release several subsequent waits.
+func tick(key_levels, timer_tick: bool = false) -> Dictionary:
+	var polled: Dictionary = input.poll(key_levels)
+	if polled.has("error"): return _failure(str(polled.error))
+	if not _pending_dialogue.is_empty():
+		var effect: Dictionary = _pending_dialogue.effect
+		if effect.kind == "wait" and not timer_tick: return _parked()
+		var event: Dictionary = {"kind": "tick"} if effect.kind == "wait" else {"kind": "input", "action": 2 if polled.confirm else 0}
+		return resume_dialogue(_pending_dialogue.id, event)
+	if not awaiting_player: return _failure("no resting map or dialogue request")
+	var rebound: Dictionary = _adopt(state, cache, map_cache)
+	if rebound.has("error"): return rebound
 	var ticked: Dictionary = input.tick(state, key_levels)
 	if ticked.has("error"): return _failure(str(ticked.error))
 	state = ticked.state
-	var out: Dictionary = ticked
-	if ticked.get("confirm", false) and awaiting_confirm:
-		var advanced: Dictionary = _confirm_advance()
-		if advanced.has("error"): return _failure(str(advanced.error))
-		out["confirm_advanced"] = true
-		out["state"] = state
-	out["awaiting_confirm"] = awaiting_confirm
-	return out
+	return ticked
 
-func _confirm_advance() -> Dictionary:
+## Internal explicit-host continuation. Stale receipts cannot cancel or write
+## a newer pending generation. Non-dialogue commands never receive generic ACKs.
+func resume_dialogue(request_id: String, event: Dictionary) -> Dictionary:
+	if _pending_dialogue.is_empty() or request_id != _pending_dialogue.id:
+		return {"error": "pal98-new-game: stale dialogue completion"}
 	var pending: Dictionary = _pending_dialogue
 	_pending_dialogue = {}; awaiting_confirm = false
-	var event: Dictionary = dialogue_host.answer(pending.effect)
-	if event.has("error"): return _failure("dialogue host: " + str(event.error))
-	var result: Dictionary = enter.resume(pending.id, {"event": event})
-	var run: Dictionary = _drive_entry(result)
+	var run: Dictionary = _drive_entry(enter.resume(pending.id, {"event": event}))
 	if run.has("error"): return _failure(str(run.error))
-	if run.get("parked"):
-		return {"completed": true, "awaiting_confirm": true}
-	var step: Dictionary = reload.resume(_active_enter_request.id,
-		{"state": run.state, "return_entry": run.get("return_entry", 0)})
-	var done: Dictionary = _drive_reload(step)
-	return done
+	if run.get("parked"): return _parked()
+	return _drive_reload(reload.resume(_active_enter_request.id,
+		{"state": run.state, "return_entry": run.get("return_entry", 0)}))
 
 func _drive_entry(result: Dictionary) -> Dictionary:
 	for guard in range(16384):
-		if result.has("error"): return {"error": str(result.error)}
+		if result.has("error"): return result
 		if not result.has("request"):
-			terminals.append(result)
+			if not result.get("state") is Dictionary: return {"error": "entry terminal lacks state"}
+			terminals.append(result.duplicate(true))
 			return {"state": result.state, "return_entry": result.get("return_entry", 0)}
 		var pending: Dictionary = result.request
 		if pending.kind == "dialogue":
-			if _confirm_gated and pending.get("effect", {}).get("kind") == "draw_string":
-				# Park: the page advances only on a player confirm through tick.
-				# The gate sits on the page-text draw; the capture/restore/box/
-				# glyph sub-effects and the waits are not player pages. Gating
-				# the page on its text draw is a named Native reading — the
-				# original confirm gate point is not decoded.
-				_pending_dialogue = pending
-				awaiting_confirm = true
+			if pending.get("effect", {}).get("kind") in ["poll_input", "wait"]:
+				var adopted: Dictionary = _adopt(pending.state, cache, map_cache)
+				if adopted.has("error"): return adopted
+				_pending_dialogue = pending.duplicate(true)
+				awaiting_confirm = pending.effect.kind == "poll_input" and pending.effect.get("model") == "until_nonzero"
 				return {"parked": true}
 			var event: Dictionary = dialogue_host.answer(pending.effect)
 			if event.has("error"): return {"error": "dialogue host: " + str(event.error)}
 			result = enter.resume(pending.id, {"event": event})
 		elif pending.has("original_entry"):
+			# Scene/event state may have changed since the last wait.
+			var rebound: Dictionary = _adopt(pending.state, cache, map_cache)
+			if rebound.has("error"): return rebound
 			var answer: Dictionary = adapter.answer(pending)
 			if answer.has("error"): return {"error": "enter host: " + str(answer.error)}
 			result = enter.resume(pending.id, answer)
-		elif pending.kind == "yes_no" or pending.kind == "battle":
-			var decided: Dictionary = _named(pending.kind, pending)
-			if decided.has("error"): return {"error": str(decided.error)}
-			result = enter.resume(pending.id, decided)
-		elif pending.has("state"):
-			result = enter.resume(pending.id, {"state": pending.state, "completed": true})
+		elif pending.kind == "restore_background":
+			var page_request: Dictionary = pending.duplicate(true); page_request.kind = "restore_dialog_background"
+			var answer: Dictionary = _route_display(page_request)
+			if answer.has("error"): return answer
+			result = enter.resume(pending.id, answer)
 		else:
-			var other: Dictionary = _named(pending.kind, pending)
-			if other.has("error"): return {"error": str(other.error)}
-			result = enter.resume(pending.id, other)
-	return {"error": "entry driver budget exceeded"}
+			var answer: Dictionary = _named(pending.kind, pending)
+			if answer.has("error"): return answer
+			result = enter.resume(pending.id, answer)
+	return {"error": "entry coordination budget exceeded"}
 
 func _named(kind: String, request: Dictionary) -> Dictionary:
 	if _doubles.has(kind): return _doubles[kind].answer(request)
-	if _doubles.has("*"): return _doubles["*"].answer(request)
 	return {"error": "no execution owner bound for " + kind}
 
 func _route_display(request: Dictionary) -> Dictionary:
@@ -360,18 +336,4 @@ func _route_display(request: Dictionary) -> Dictionary:
 			return answer
 	if _doubles.has(kind):
 		return _doubles[kind].answer(request)
-	if _doubles.has("*"):
-		return _doubles["*"].answer(request)
 	return {"error": "no execution owner bound for " + kind}
-
-func _refresh_roles() -> void:
-	_roles_snapshot = []
-	for row in state.get("party_records", []):
-		_roles_snapshot.append(int(row.role_id) if row.get("role_id") is int else -1)
-
-func _rebind_probe() -> void:
-	var map_id = state.get("globals", {}).get("loaded_map_id")
-	if not map_id is int or map_id <= 0: return
-	var map: Dictionary = records.decoded_chunk("MAP.MKF", map_id)
-	if map.has("error"): return
-	probe.bind(map.value, state.get("events", {}))

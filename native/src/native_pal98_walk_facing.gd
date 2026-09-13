@@ -166,6 +166,22 @@ func answer(request: Dictionary) -> Dictionary:
 			return _rotate_party_trail(moved)
 		"sync_members_from_trail":
 			return _sync_members_from_trail(moved)
+		"rebuild_no_move_frames":
+			if _member_sync == null: return _failure("standing frame owner not bound")
+			var answer: Dictionary = _member_sync.answer({"kind": request.kind, "state": moved})
+			if answer.has("error"): return _failure(str(answer.error))
+			if answer.get("completed") != true: return _failure("standing frames not completed")
+			var rows = answer.get("party_records")
+			if not rows is Array or rows.size() != moved.party_records.size(): return _failure("standing frame backing changed")
+			for slot in range(rows.size()):
+				var expected: Dictionary = moved.party_records[slot].duplicate(true)
+				if slot <= globals.member_last + globals.follower_count:
+					if not _i2(rows[slot].get("current_frame")): return _failure("standing frame leaves I2")
+					expected.current_frame = rows[slot].current_frame
+				if expected != rows[slot]: return _failure("standing frame owner changed unrelated state")
+			moved.party_records = rows.duplicate(true)
+			globals.walk_phase_word = (globals.walk_phase_word & 2) ^ 2
+			return {"completed": true, "state": moved}
 	return _forward(request)
 
 ## The recovered ShiftPartyTrailAndStorePreviousPosition: the five trail
@@ -211,8 +227,11 @@ func _sync_members_from_trail(moved: Dictionary) -> Dictionary:
 	for follower in range(1, follower_count + 1):
 		var slot: int = member_last + follower
 		var trail_index: int = follower + 2
-		records[slot].x = _u2_as_i2(trail[trail_index].x - viewport_x)
-		records[slot].y = _u2_as_i2(trail[trail_index].y - viewport_y)
+		var relative_x: int = _u2_as_i2(trail[trail_index].x) - _u2_as_i2(viewport_x)
+		var relative_y: int = _u2_as_i2(trail[trail_index].y) - _u2_as_i2(viewport_y)
+		if not _i2(relative_x) or not _i2(relative_y): return _failure("follower position leaves I2")
+		records[slot].x = relative_x
+		records[slot].y = relative_y
 	moved.party_records = records
 	var answer: Dictionary = _member_sync.answer({"kind": "sync_party_formation_and_frames", "state": moved.duplicate(true)})
 	if answer.has("error"): return _failure(str(answer.error))
@@ -232,6 +251,9 @@ func _sync_members_from_trail(moved: Dictionary) -> Dictionary:
 				expected.x = updated[slot].x; expected.y = updated[slot].y
 		if expected != updated[slot]: return _failure("member owner changed unrelated party fields at slot " + str(slot))
 	moved.party_records = updated.duplicate(true)
+	for key in ["previous_x", "previous_y"]:
+		if not _word(globals.get(key)): return _failure("sync requires " + key)
+	moved.party_trail[0] = {"x": globals.previous_x, "y": globals.previous_y, "direction_word": globals.direction_word}
 	return {"completed": true, "state": moved}
 
 

@@ -78,6 +78,10 @@ func _request(kind: String, details: Dictionary = {}) -> Dictionary:
 	_pending = {"id": str(get_instance_id()) + ":" + str(_generation) + ":" + str(_serial), "kind": kind}
 	var request = _pending.duplicate(true); request.merge(details, false)
 	request.state = _state.duplicate(true)
+	# Internal resource lease: child Enter/host work must use this fork, then
+	# the terminal state and these same caches are adopted together.
+	request.cache = _cache
+	request.map_cache = _map.duplicate(true)
 	return {"request": request, "trace": _trace.duplicate(true)}
 
 func resume(request_id: String, response: Dictionary) -> Dictionary:
