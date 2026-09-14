@@ -1,11 +1,8 @@
 # SPDX-License-Identifier: MIT
 extends RefCounted
-## The formal app's pal98 original scene display path: one real new-game
-## coordinator, scene display and production window host per admitted
-## original-source package. The opening runs on the real startup-capture
-## seed with explicit unverified inputs from the named production provider.
-## Unowned named requests park the chain with the loaded state adopted and
-## are reported by name; no stand-in owner or probe double ever enters here.
+## Opt-in experimental original preview, separate from ordinary admission.
+## OpeningInputs are provisional probe inputs, not recovered original defaults.
+## Unowned requests remain named failures/parks, never completion receipts.
 const Game = preload("res://src/native_pal98_new_game.gd")
 const Display = preload("res://src/native_pal98_scene_display.gd")
 const Host = preload("res://src/native_pal98_scene_window.gd")
@@ -24,9 +21,7 @@ class LogicClock:
 ## machines themselves stay real in the executor.
 class EventPump:
 	func answer(request: Dictionary) -> Dictionary:
-		if request.kind == "fade_event_pump":
-			return {"completed": true, "pumped": request.get("events", [])}
-		return {"completed": true}
+		return {"error": "experimental preview has no event executor for " + str(request.get("kind", "unknown"))}
 
 var error := ""
 var game
@@ -37,6 +32,8 @@ var _runtime := EventPump.new()
 var _timer_accumulator := 0.0
 var _timer_interval := 1.0 / 60.0
 var _present_generation := -1
+var _generation := 0
+var _ticking := false
 
 func active() -> bool:
 	return game != null and not game.state.is_empty()
@@ -58,8 +55,10 @@ func describe() -> Dictionary:
 		"seed": game.state.get("rng_source", {}).get("seed", {}).get("seed"),
 		"inputs": OpeningInputs.provenance()}
 
-func start(package, host_window: Window, content_parent: Node) -> bool:
+func start(package, host_window: Window, content_parent: Node, experimental_inputs: bool = false) -> bool:
 	stop(); error = ""
+	if not experimental_inputs:
+		error = "provisional opening inputs require explicit experimental preview opt-in"; return false
 	if package == null or host_window == null or content_parent == null \
 			or not host_window.is_inside_tree() or not content_parent.is_inside_tree():
 		error = "pal98 scene session requires an in-tree window and content parent"; return false
@@ -87,6 +86,7 @@ func start(package, host_window: Window, content_parent: Node) -> bool:
 	return true
 
 func stop() -> void:
+	_generation += 1; _ticking = false; clock = LogicClock.new()
 	if host != null: host.unbind()
 	if game != null: game.cancel()
 	game = null; display = null; host = null
@@ -98,17 +98,23 @@ func stop() -> void:
 ## the parked opening. Nothing here fakes a completed chain.
 func tick(delta: float, key_levels: PackedInt32Array) -> Dictionary:
 	if not active(): return {"error": "the pal98 scene session is not active"}
+	if _ticking: return {"pending": true, "completed": false, "owner": "experimental_frame"}
+	if not is_finite(delta) or delta < 0: return {"error": "experimental frame delta must be finite and nonnegative"}
 	_timer_accumulator += delta
 	var timer_due := false
 	while _timer_accumulator >= _timer_interval:
 		_timer_accumulator -= _timer_interval; timer_due = true
-	if game.has_pending_presentation() or game.is_dialogue_parked():
+	if (game.has_pending_presentation() or game.is_dialogue_parked()) and display.surface == null:
 		var shown: Dictionary = _repaint()
 		if shown.has("error"): return {"error": str(shown.error)}
 		return {"parked": game.pending_kind(), "owner": "dialogue_page",
 			"completed": false, "timer_due": timer_due,
 			"current_scene": game.state.globals.get("current_scene")}
-	var ticked: Dictionary = display.tick_presented(key_levels, timer_due)
+	var generation := _generation
+	_ticking = true
+	var ticked: Dictionary = await host.tick_frame(key_levels, timer_due)
+	if generation != _generation: return {"error": "stale experimental frame completion"}
+	_ticking = false
 	if ticked.has("error"): return {"error": str(ticked.error)}
 	return {"completed": ticked.get("completed", false),
 		"input_move": ticked.get("input_move", false),

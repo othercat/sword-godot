@@ -29,6 +29,10 @@ var render_surface: TextureRect
 var _classic_context: String = ""
 var session = Session.new()
 var pal98
+var _experimental_package
+var _experimental_window: Window
+var _experimental_generation := 0
+var _experimental_ticking := false
 var saves = Save.new()
 var world_view
 var map_ui = preload("res://src/native_map_ui_view.gd").new()
@@ -204,6 +208,7 @@ func _ready() -> void:
 	message.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	message.add_theme_font_size_override("font_size", 16)
 	message.text = "本地试玩 · 存档独立保存"
+	message.clip_text = true; message.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	footer.add_child(message)
 	fps_label = Label.new()
 	fps_label.add_theme_font_size_override("font_size", 16)
@@ -241,6 +246,9 @@ func _ready() -> void:
 	admission_text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	admission_scroll.add_child(admission_text); admission_picker.add_child(admission_scroll)
 	add_child(admission_picker); admission_picker.visibility_changed.connect(_modal_changed)
+	admission_picker.add_button("实验预览（暂定初值）", true, "experimental")
+	admission_picker.custom_action.connect(func(action):
+		if action == "experimental": start_original_experiment())
 	load_error_picker = AcceptDialog.new(); load_error_picker.title = "包加载失败"; load_error_picker.min_size = Vector2i(620, 260)
 	var load_error_scroll = ScrollContainer.new(); load_error_scroll.custom_minimum_size = Vector2i(600, 200)
 	load_error_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -500,17 +508,12 @@ func open_package(path: String) -> bool:
 		var detail: String = candidate.error if not candidate.error.is_empty() else session.error
 		message.text = "无法打开 MOD：" + detail
 		if candidate.error.is_empty() and session.error.begins_with("original_source_only:"):
-			# The formal session refused the original source; show the real
-			# capability report and start the production pal98 display path
-			# instead of any stand-in gameplay.
+			# Ordinary admission stays guarded. Only an explicit action may
+			# use provisional inputs in a separate, closable preview window.
+			_experimental_package = candidate
 			var report: Dictionary = Admission.report_for(candidate)
 			admission_text.text = Admission.summary(report) if not report.has("error") else str(report.error)
 			admission_picker.popup_centered()
-			if pal98 == null: pal98 = Pal98Scene.new()
-			if pal98.start(candidate, get_window(), stage):
-				message.text = "原版开场显示已接入（开场初值未证实）；停靠在「" + pal98.pending_kind() + "」，等待生产对白页面。"
-			else:
-				message.text = "原版开场显示启动失败：" + pal98.error
 		else:
 			# A real load or bind failure: show the actual error and offer
 			# reselect or dismiss; the live session stays untouched.
@@ -520,6 +523,7 @@ func open_package(path: String) -> bool:
 		return false
 	_clear_input()
 	_stop_pal98()
+	_experimental_package = null
 	saves.envelope_extensions = {}
 	saves.source_origin = "normal"
 	saves.migrations = []
@@ -737,11 +741,13 @@ func _pause() -> void:
 	session.set_pause(not session.paused)
 
 func _save() -> void:
+	if pal98 != null and pal98.active(): message.text = "实验预览不写存档。"; return
 	if session.state.is_empty(): return
 	session.account_time(Time.get_ticks_usec())
 	message.text = "已保存 · 保留所有历史存档" if saves.save(session) else saves.error
 
 func _show_saves() -> void:
+	if pal98 != null and pal98.active(): message.text = "实验预览不读写普通存档。"; return
 	if session.state.is_empty(): return
 	_clear_input()
 	for child in save_list.get_children():
@@ -763,15 +769,50 @@ func _show_saves() -> void:
 	save_picker.popup_centered()
 
 func _input(event: InputEvent) -> void:
+	if pal98 != null and pal98.active(): return
 	input_router.handle(self,event)
 
 func _unhandled_key_input(event: InputEvent) -> void:
+	if pal98 != null and pal98.active(): return
 	# Also usable by diagnostic harnesses. A routed event is already consumed by
 	# _input in the real viewport; the held-key guard prevents a duplicate call.
 	input_router.handle(self,event)
 
 func _stop_pal98() -> void:
+	_experimental_generation += 1; _experimental_ticking = false
 	if pal98 != null: pal98.stop()
+	if is_instance_valid(_experimental_window):
+		_experimental_window.hide(); _experimental_window.queue_free()
+	_experimental_window = null
+	_clear_input()
+
+func start_original_experiment() -> bool:
+	if _experimental_package == null:
+		message.text = "请先打开原版来源包并查看能力说明。"; return false
+	_stop_pal98()
+	admission_picker.hide()
+	_experimental_window = Window.new()
+	_experimental_window.hide()
+	_experimental_window.force_native = true
+	_experimental_window.transient = true
+	_experimental_window.exclusive = true
+	_experimental_window.title = "原版实验预览 · 暂定初值 · 不写存档"
+	_experimental_window.size = Vector2i(960, 600)
+	_experimental_window.min_size = Vector2i(320, 200)
+	add_child(_experimental_window)
+	_experimental_window.close_requested.connect(_stop_pal98)
+	_experimental_window.window_input.connect(func(event):
+		if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE: _stop_pal98())
+	_experimental_window.focus_entered.connect(func(): session.set_focus(true))
+	_experimental_window.focus_exited.connect(func(): _clear_input(); session.set_focus(false))
+	_experimental_window.popup_centered()
+	pal98 = Pal98Scene.new()
+	if not pal98.start(_experimental_package, _experimental_window, _experimental_window, true):
+		var issue: String = pal98.error; _stop_pal98()
+		message.text = "实验预览未启动：" + issue; return false
+	admission_picker.hide()
+	message.text = "实验预览：初值未证实；当前停靠「" + pal98.pending_kind() + "」。关闭实验窗口可返回。"
+	return true
 
 func _pal98_levels() -> PackedInt32Array:
 	# Held levels only: edge-accurate physical mapping is a named later
@@ -787,9 +828,13 @@ func _pal98_levels() -> PackedInt32Array:
 
 func _physics_process(_delta: float) -> void:
 	if pal98 != null and pal98.active():
-		if not session.modal and session.focused:
-			var shown: Dictionary = pal98.tick(_delta, _pal98_levels())
-			if shown.has("error"): message.text = "原版显示：" + str(shown.error)
+		if not _experimental_ticking and not session.modal and session.focused:
+			var generation := _experimental_generation
+			_experimental_ticking = true
+			var shown: Dictionary = await pal98.tick(_delta, _pal98_levels())
+			if generation != _experimental_generation: return
+			_experimental_ticking = false
+			if shown.has("error"): message.text = "实验预览：" + str(shown.error)
 		return
 	if session.modal: return
 	var was_performance: bool = session.performance_open()
@@ -815,7 +860,7 @@ func movement_frame_allowed(now: int, render_frame: int) -> bool:
 	return _gap_frame != render_frame and (session.movement_rule() != "pal.walk.v1" or _movement_frame != render_frame)
 
 func _process(delta: float) -> void:
-	if not session.state.is_empty():
+	if not session.state.is_empty() and not (pal98 != null and pal98.active()):
 		if _camera_map != session.state.cursor.scene_id: _fit_world()
 		else: _follow_world()
 	# Explicit Studio preview only: an empty local marker asks this child to exit.
@@ -827,7 +872,7 @@ func _process(delta: float) -> void:
 			if FileAccess.file_exists(_preview_stop_file):
 				print("[Native preview] stop requested")
 				get_tree().quit()
-	session.account_time(Time.get_ticks_usec())
+	if not (pal98 != null and pal98.active()): session.account_time(Time.get_ticks_usec())
 	_stats_elapsed += delta
 	if _stats_elapsed >= 0.5:
 		_stats_elapsed = 0.0

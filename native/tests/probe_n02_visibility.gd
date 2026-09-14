@@ -17,6 +17,7 @@ func _run(package_path: String, png_path: String) -> void:
 	await process_frame
 	app.session.set_focus(true)
 	app.open_package(package_path)
+	app.start_original_experiment()
 	await process_frame
 	# Dismiss the capability report so the hosted scene is unobstructed.
 	app.admission_picker.hide()
@@ -33,7 +34,7 @@ func _run(package_path: String, png_path: String) -> void:
 		out.view_global_rect = [view.global_position.x, view.global_position.y, view.size.x, view.size.y]
 		out.view_in_stage = [view.position.x, view.position.y]
 		out.host_fit = host.fit
-		var image: Image = get_root().get_texture().get_image()
+		var image: Image = host.window.get_texture().get_image()
 		image.convert(Image.FORMAT_RGBA8)
 		out.save_ok = image.save_png(png_path) == OK
 		# Sample the visible scene region for non-uniform content.

@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 extends RefCounted
-## The explicit unverified opening words that production callers must supply
-## until the original cold-start initializer is recovered. T156 proves only
+## Explicit unverified opening words for the opt-in experimental preview only.
+## Ordinary original-game admission cannot use these defaults. T156 proves only
 ## the reload-tail InUse clear, never zero ItemId/Amount; globals, dialogue,
 ## trail and inventory therefore stay explicit caller inputs and are never
 ## renamed as recovered values.
