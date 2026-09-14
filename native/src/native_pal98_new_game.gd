@@ -201,8 +201,13 @@ func new_state(seed: int, probe_configuration: Dictionary = {}) -> Dictionary:
 ## backing and SubMain's 70-call experience projection runs on the seed.
 ## Seed kinds: "explicit_replay" takes a known DWORD; "startup_capture"
 ## samples the host wall clock once, exactly as the fixed VB startup does.
-## The still-unverified opening words (globals, dialogue, trail, inventory)
-## remain REQUIRED explicit inputs and are never renamed as recovered values.
+## The opening inventory is derived, not an unverified caller input: T156
+## clears the in-use word of all 256 six-byte records at the
+## LoadResourcesIfNeeded tail, so the new-game state starts fully cleared.
+## An explicit inventory is accepted only when it is already T156-consistent
+## (right shape, every in-use word zero). The still-unverified opening words
+## (globals, dialogue, trail) remain REQUIRED explicit inputs and are never
+## renamed as recovered values.
 func new_state_from_source(seed, seed_kind: String, unverified: Dictionary) -> Dictionary:
 	if records == null or _initial_cache == null: return _failure("open the package first")
 	if seed_kind != "explicit_replay" and seed_kind != "startup_capture":
@@ -211,8 +216,16 @@ func new_state_from_source(seed, seed_kind: String, unverified: Dictionary) -> D
 		if not unverified.get(key) is Dictionary: return _failure("unverified opening input requires " + key)
 	for key in ["party_trail"]:
 		if not unverified.get(key) is Array: return _failure("unverified opening input requires " + key)
-	if not unverified.get("inventory_bytes") is PackedByteArray:
-		return _failure("unverified opening inventory required")
+	var explicit_inventory = unverified.get("inventory_bytes")
+	if explicit_inventory != null:
+		if not explicit_inventory is PackedByteArray or explicit_inventory.size() != Inventory.SLOTS * Inventory.RECORD_BYTES:
+			return _failure("an explicit opening inventory requires %d six-byte records" % (Inventory.SLOTS * Inventory.RECORD_BYTES))
+		for slot in range(Inventory.SLOTS):
+			if explicit_inventory.decode_u16(slot * Inventory.RECORD_BYTES + 4) != 0:
+				return _failure("opening inventory in-use word at slot %d contradicts the T156-cleared initial state" % slot)
+	var inventory := PackedByteArray()
+	if explicit_inventory != null: inventory = explicit_inventory.duplicate()
+	else: inventory.resize(Inventory.SLOTS * Inventory.RECORD_BYTES)
 	var roles: Array = [0]
 	var equipment: Dictionary = kernel.initial_state(roles)
 	if equipment.is_empty() or not (equipment.get("role_words") is Array):
@@ -221,7 +234,7 @@ func new_state_from_source(seed, seed_kind: String, unverified: Dictionary) -> D
 		"globals": unverified.globals.duplicate(true),
 		"dialogue": unverified.dialogue.duplicate(true),
 		"party_trail": unverified.party_trail.duplicate(true),
-		"inventory_bytes": unverified.inventory_bytes.duplicate(),
+		"inventory_bytes": inventory,
 		"party_records": [], "events": storage.source_state(),
 		"equipment": equipment}
 	var rng: Dictionary; var receipt_seed: Dictionary
