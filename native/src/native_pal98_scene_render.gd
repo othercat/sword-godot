@@ -36,6 +36,31 @@ func bind(records) -> bool:
 func current_rgba() -> PackedByteArray:
 	return _rgba.duplicate()
 
+## Internal rollback of an accepted script invocation. No capture is invented:
+## the checkpoint keeps the existing current and captured pages separately.
+func checkpoint() -> Dictionary:
+	return {"owner": get_instance_id(), "records": _records,
+		"indices": _indices.duplicate(), "coverage": _coverage.duplicate(),
+		"rgba": _rgba.duplicate(), "palette": _live_palette.duplicate(),
+		"capture": _capture_page.duplicate(true), "receipts": _renders.duplicate(true)}
+
+func restore_checkpoint(saved: Dictionary) -> Dictionary:
+	if saved.get("owner") != get_instance_id() or saved.get("records") != _records:
+		return _failure("render checkpoint belongs to another source or owner")
+	for field in ["indices", "coverage", "rgba", "palette"]:
+		if not saved.get(field) is PackedByteArray: return _failure("render checkpoint lacks " + field)
+	if saved.indices.size() not in [0, WIDTH * HEIGHT] or saved.coverage.size() != saved.indices.size() or saved.rgba.size() != saved.indices.size() * 4:
+		return _failure("render checkpoint has invalid page backing")
+	if not saved.capture is Dictionary or not saved.receipts is Array:
+		return _failure("render checkpoint lacks captured page or receipts")
+	if not saved.palette.is_empty() and not Indexed.validate_palette(saved.palette).is_empty():
+		return _failure("render checkpoint has invalid palette")
+	_indices = saved.indices.duplicate(); _coverage = saved.coverage.duplicate()
+	_rgba = saved.rgba.duplicate(); _live_palette = saved.palette.duplicate()
+	_capture_page = saved.capture.duplicate(true); _renders = saved.receipts.duplicate(true)
+	error = ""
+	return {"completed": true}
+
 ## Install into the indexed software surface. Existing pixels are recoloured
 ## immediately and later renders retain this palette. Window upload is a
 ## separate consumer; this receipt never claims a GPU frame was presented.

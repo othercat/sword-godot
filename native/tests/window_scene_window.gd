@@ -139,8 +139,9 @@ func _run() -> void:
 	get_root().size = Vector2i(300, 200)
 	await process_frame
 	var too_small: Dictionary = host.apply_fit()
-	check(too_small.has("error") and host.fit.scale == 2,
-		"a sub-logical window is refused by name and the previous fit survives: " + str(too_small.get("error", "")))
+	check(not too_small.has("error") and get_root().size.x >= 320 and get_root().size.y >= 200
+		and host.fit.scale >= 1,
+		"the production window enforces its logical minimum and refits without clipping")
 
 	# The accepted page survives the refits without a new composition.
 	var republished: Dictionary = host.republish_frame()

@@ -40,6 +40,10 @@ func bind_display_target(target: SubViewport, page_texture_view: TextureRect = n
 		error = "scene display target must be a real 320x200 viewport in the tree"; return false
 	stage = target; page_view = page_texture_view; error = ""; return true
 
+func unbind_display_target() -> void:
+	_invalidate()
+	stage = null; page_view = null
+
 func bind_dialogue_surface(dialogue_surface, font_owner, text_encoding: String) -> bool:
 	_invalidate(); surface = null
 	if game == null or dialogue_surface == null or not dialogue_surface.has_method("reset_page") or not dialogue_surface.has_method("apply_request"):

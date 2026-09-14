@@ -112,6 +112,14 @@ func _state_issue(state: Dictionary) -> String:
 ## Run the scene's real enter script. The caller adopts the returned state and
 ## ByRef entry only on terminal success; failures publish no candidate.
 func start(state: Dictionary, scene_id, entry, event_id = 0) -> Dictionary:
+	return _start(state, scene_id, entry, event_id, false)
+
+## T218 calls the same T258/command consumer with an active event's +8
+## trigger word. It does not use T212's scene +2 EnterScript authority.
+func start_event(state: Dictionary, scene_id, entry, event_id) -> Dictionary:
+	return _start(state, scene_id, entry, event_id, true)
+
+func _start(state: Dictionary, scene_id, entry, event_id, event_trigger: bool) -> Dictionary:
 	if _phase not in ["idle", "complete", "failed"]: return {"error": "pal98-enter: owner is active"}
 	if _identity.is_empty(): return {"error": "pal98-enter: source unavailable"}
 	if not _u2(scene_id) or scene_id < 1 or scene_id > _scene_count:
@@ -128,7 +136,16 @@ func start(state: Dictionary, scene_id, entry, event_id = 0) -> Dictionary:
 	# The immutable source record is kept beside it as a review receipt.
 	var scene_records: PackedByteArray = state.events.scene_records
 	var state_entry: int = scene_records.decode_u16((scene_id - 1) * 8 + 2)
-	if state_entry != entry:
+	if event_trigger:
+		if not _i2(event_id) or event_id < 1 or event_id > Events.CAPACITY:
+			return {"error": "pal98-enter: event trigger requires a loaded 1..160 I2 context"}
+		if state.events.loaded_scene_id != scene_id or state.globals.get("current_scene") != scene_id:
+			return {"error": "pal98-enter: event trigger requires the current loaded scene"}
+		var active: Dictionary = _storage.event_record(state.events, event_id)
+		if active.has("error"): return {"error": "pal98-enter: " + str(active.error)}
+		if active.value.decode_u16(8) != entry or entry == 0:
+			return {"error": "pal98-enter: event trigger entry does not match the loaded event's +8 WORD"}
+	elif state_entry != entry:
 		return {"error": "pal98-enter: EnterScript request does not match the loaded scene record's enter word",
 			"diagnostic": {"requested_entry": entry, "loaded_entry": state_entry,
 				"source_entry": scene.value.enter_script_word, "scene_source": scene.source.duplicate(true)}}

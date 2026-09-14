@@ -64,6 +64,11 @@ var _initial_cache
 var _start_state: Dictionary = {}
 var _start_cache
 var _start_map: Dictionary = {}
+var _start_resting := false
+var _start_render: Dictionary = {}
+var _start_palette := PackedByteArray()
+var _start_pages: Array = []
+var _start_captured: Array = []
 var _initialized := false
 var _running := false
 
@@ -106,11 +111,26 @@ func pending_model() -> String:
 	if _pending_dialogue.is_empty(): return ""
 	return String(_pending_dialogue.get("effect", {}).get("model", ""))
 
+func _checkpoint(resting: bool) -> void:
+	_start_state = state.duplicate(true); _start_cache = cache; _start_map = map_cache.duplicate(true)
+	_start_resting = resting; _start_render = renderer.checkpoint()
+	_start_palette = executor.installed_rgb6()
+	_start_pages = _page_requests.duplicate(true); _start_captured = _captured_page_requests.duplicate(true)
+
 func _failure(message: String) -> Dictionary:
 	var diagnostic := {"enters": enters_seen.duplicate(), "pending": _pending_dialogue.duplicate(true)}
 	cancel()
 	if not _start_state.is_empty():
 		state = _start_state.duplicate(true); cache = _start_cache; map_cache = _start_map.duplicate(true)
+		if _start_resting:
+			var rebound := _bind_lease(state, cache, map_cache)
+			var page: Dictionary = renderer.restore_checkpoint(_start_render)
+			var installed: Dictionary = executor.install_cold(_start_palette)
+			if rebound.is_empty() and not page.has("error") and not installed.has("error"):
+				awaiting_player = true
+				_page_requests = _start_pages.duplicate(true); _captured_page_requests = _start_captured.duplicate(true)
+			else:
+				diagnostic.rollback = {"lease": rebound, "page": page.get("error"), "palette": installed.get("error")}
 	error = "pal98-new-game: " + message
 	return {"error": error, "diagnostic": diagnostic}
 
@@ -138,7 +158,7 @@ func bind_key_map(logical_map: Array, layer_base: int, confirm_slot: int = -1) -
 	return bound
 
 func open(package) -> bool:
-	cancel(); state = {}; map_cache = {}; _start_state = {}; _initialized = false
+	cancel(); state = {}; map_cache = {}; _start_state = {}; _start_resting = false; _initialized = false
 	if package == null or package.pal98_sources == null or package.pal98_graphics == null:
 		return _open_fail("admitted package sources and graphics required")
 	_sources = package.pal98_sources; _graphics = package.pal98_graphics
@@ -201,13 +221,9 @@ func new_state(seed: int, probe_configuration: Dictionary = {}) -> Dictionary:
 ## backing and SubMain's 70-call experience projection runs on the seed.
 ## Seed kinds: "explicit_replay" takes a known DWORD; "startup_capture"
 ## samples the host wall clock once, exactly as the fixed VB startup does.
-## The opening inventory is derived, not an unverified caller input: T156
-## clears the in-use word of all 256 six-byte records at the
-## LoadResourcesIfNeeded tail, so the new-game state starts fully cleared.
-## An explicit inventory is accepted only when it is already T156-consistent
-## (right shape, every in-use word zero). The still-unverified opening words
-## (globals, dialogue, trail) remain REQUIRED explicit inputs and are never
-## renamed as recovered values.
+## T156 proves clearing InUse at the reload tail, not zero ItemId/Amount
+## at cold start. Inventory, globals, dialogue and trail therefore remain
+## explicit unverified inputs; only DATA3/experience/seed facts are derived.
 func new_state_from_source(seed, seed_kind: String, unverified: Dictionary) -> Dictionary:
 	if records == null or _initial_cache == null: return _failure("open the package first")
 	if seed_kind != "explicit_replay" and seed_kind != "startup_capture":
@@ -217,15 +233,9 @@ func new_state_from_source(seed, seed_kind: String, unverified: Dictionary) -> D
 	for key in ["party_trail"]:
 		if not unverified.get(key) is Array: return _failure("unverified opening input requires " + key)
 	var explicit_inventory = unverified.get("inventory_bytes")
-	if explicit_inventory != null:
-		if not explicit_inventory is PackedByteArray or explicit_inventory.size() != Inventory.SLOTS * Inventory.RECORD_BYTES:
-			return _failure("an explicit opening inventory requires %d six-byte records" % (Inventory.SLOTS * Inventory.RECORD_BYTES))
-		for slot in range(Inventory.SLOTS):
-			if explicit_inventory.decode_u16(slot * Inventory.RECORD_BYTES + 4) != 0:
-				return _failure("opening inventory in-use word at slot %d contradicts the T156-cleared initial state" % slot)
-	var inventory := PackedByteArray()
-	if explicit_inventory != null: inventory = explicit_inventory.duplicate()
-	else: inventory.resize(Inventory.SLOTS * Inventory.RECORD_BYTES)
+	if not explicit_inventory is PackedByteArray or explicit_inventory.size() != Inventory.SLOTS * Inventory.RECORD_BYTES:
+		return _failure("unverified opening inventory requires 1536 bytes (256 six-byte records)")
+	var inventory: PackedByteArray = explicit_inventory.duplicate()
 	var roles: Array = [0]
 	var equipment: Dictionary = kernel.initial_state(roles)
 	if equipment.is_empty() or not (equipment.get("role_words") is Array):
@@ -270,7 +280,7 @@ func _publish(candidate: Dictionary) -> Dictionary:
 	var loaded: Dictionary = _palette.load_day_night(backing, day.value, night.value)
 	if loaded.has("error"): return _failure(str(loaded.error))
 	candidate.palette_bytes = backing
-	cancel(); _start_state = {}
+	cancel(); _start_state = {}; _start_resting = false
 	var installed: Dictionary = executor.install_cold(day.value)
 	if installed.has("error"): return _failure(str(installed.error))
 	cache = _initial_cache.fork_for_reload(); map_cache = {}
@@ -284,34 +294,72 @@ func begin() -> Dictionary:
 	cancel()
 	var installed: Dictionary = executor.install_cold(executor.installed_rgb6())
 	if installed.has("error"): return _failure(str(installed.error))
-	_start_state = state.duplicate(true); _start_cache = cache; _start_map = map_cache.duplicate(true)
+	_checkpoint(false)
 	error = ""; _running = true
 	return _drive_reload(reload.start(state, cache, map_cache))
 
+## RunTriggerScript's production call shape: run one loaded event's trigger
+## script (its +8 WORD entry) with the event slot as context, on the current
+## resource lease. Nested T212 requests from the script reuse the same frame
+## machinery as the entry chain. The T218 contact gate that fires this call
+## in the original frame loop is a separate named gap, not part of this call.
+func begin_event_trigger(event_id) -> Dictionary:
+	# A refused invocation has not acquired the owner. Preserve its live frame.
+	if not _initialized: return {"error": "pal98-new-game: explicit initial state required"}
+	if _running or not awaiting_player or not _pending_dialogue.is_empty():
+		return {"error": "pal98-new-game: event trigger requires the resting map"}
+	if typeof(event_id) != TYPE_INT or event_id < 1 or event_id > Events.CAPACITY:
+		return {"error": "pal98-new-game: trigger event requires a WORD in the owned 1..160 slots"}
+	var record: Dictionary = storage.event_record(state.events, event_id)
+	if record.has("error"): return {"error": "pal98-new-game: " + str(record.error)}
+	var entry: int = record.value.decode_u16(8)
+	if entry == 0: return {"error": "pal98-new-game: event %d carries no trigger script entry" % event_id}
+	if state.events.loaded_scene_id != state.globals.get("current_scene"):
+		return {"error": "pal98-new-game: trigger requires the current loaded event backing"}
+	_checkpoint(true)
+	var rebound: Dictionary = _adopt(state, cache, map_cache)
+	if rebound.has("error"): return rebound
+	_generation += 1; _coordination_steps = 0
+	enters_seen = []; terminals = []; nested_traces = []
+	_running = true; awaiting_player = false; error = ""
+	var request: Dictionary = {"kind": "event_trigger", "state": state.duplicate(true),
+		"cache": cache, "map_cache": map_cache.duplicate(true),
+		"scene_id": state.globals.current_scene, "entry": entry, "event_id": event_id}
+	_active_enter_request = request
+	_frames = [{"reload": reload, "enter": enter, "phase": "enter",
+		"step": enter.start_event(state, request.scene_id, entry, event_id),
+		"active_enter": request, "child_request": {}, "trigger_only": true}]
+	return _drive()
+
 ## Adopt a state/cache/map lease as one binding. Validation precedes publication.
 func _adopt(candidate: Dictionary, sprites, maps: Dictionary) -> Dictionary:
-	if sprites == null or sprites.source() != _initial_cache.source(): return _failure("cache source identity mismatch")
+	var issue := _bind_lease(candidate, sprites, maps)
+	return _failure(issue) if not issue.is_empty() else {"completed": true}
+
+## Also used for rollback; never recursively enters the failure path.
+func _bind_lease(candidate: Dictionary, sprites, maps: Dictionary) -> String:
+	if sprites == null or sprites.source() != _initial_cache.source(): return ("cache source identity mismatch")
 	var issue: String = storage.validate_state(candidate.get("events", {}))
-	if not issue.is_empty(): return _failure(issue)
+	if not issue.is_empty(): return (issue)
 	issue = kernel.validate_state(candidate.get("equipment", {}))
-	if not issue.is_empty(): return _failure(issue)
+	if not issue.is_empty(): return (issue)
 	var map_id = candidate.get("globals", {}).get("loaded_map_id")
 	if typeof(map_id) != TYPE_INT or map_id < 0 or maps.get("map_id") != map_id:
-		return _failure("state and MAP cache identity mismatch")
+		return ("state and MAP cache identity mismatch")
 	if maps.get("graphics_fingerprint") != sprites.source().get("graphics_fingerprint"):
-		return _failure("MAP cache graphics identity mismatch")
+		return ("MAP cache graphics identity mismatch")
 	if not maps.get("map_bytes") is PackedByteArray or not maps.get("gop_bytes") is PackedByteArray or maps.gop_bytes.size() < 2:
-		return _failure("MAP/GOP cache backing missing")
+		return ("MAP/GOP cache backing missing")
 	var check_probe = CollisionProbe.new()
-	if not check_probe.bind(maps.map_bytes, candidate.events): return _failure(check_probe.error)
+	if not check_probe.bind(maps.map_bytes, candidate.events): return (check_probe.error)
 	var ids: Array = []
 	for role in range(6): ids.append(candidate.equipment.role_words[2 * 6 + role])
-	if not candidate.get("inventory_bytes") is PackedByteArray: return _failure("inventory backing unavailable")
-	if not adapter.bind(sprites, kernel, candidate.inventory_bytes, ids): return _failure(adapter.error)
+	if not candidate.get("inventory_bytes") is PackedByteArray: return ("inventory backing unavailable")
+	if not adapter.bind(sprites, kernel, candidate.inventory_bytes, ids): return (adapter.error)
 	# Same stable probe instance is bound by both the input and member owners.
-	if not probe.bind(maps.map_bytes, candidate.events): return _failure(probe.error)
+	if not probe.bind(maps.map_bytes, candidate.events): return (probe.error)
 	state = candidate.duplicate(true); cache = sprites; map_cache = maps.duplicate(true)
-	return {"completed": true}
+	return ""
 
 ## Each suspended T212 owns its reload, EnterScript and continuation. A child
 ## returns the current resource lease together, before its parent resumes.
@@ -345,6 +393,28 @@ func _drive() -> Dictionary:
 			if not step.get("state") is Dictionary: return _failure("coordinator terminal lacks state")
 			if frame.phase == "enter":
 				terminals.append(step.duplicate(true))
+				if frame.get("trigger_only", false):
+					var trigger_adopt: Dictionary = _adopt(step.state, step.get("cache", cache), step.get("map_cache", map_cache))
+					if trigger_adopt.has("error"): return trigger_adopt
+					var returned = step.get("return_entry", 0)
+					if returned is bool or not returned is int or returned < 0 or returned > 65535:
+						return _failure("trigger script must return its ByRef entry WORD")
+					var slot: int = frame.active_enter.event_id
+					var record: Dictionary = storage.event_record(state.events, slot)
+					if record.has("error"): return _failure(str(record.error))
+					var updated: PackedByteArray = record.value.duplicate()
+					updated.encode_u16(8, returned)
+					var written: Dictionary = storage.write_event_record(state.events, slot, updated)
+					if written.has("error"): return _failure(str(written.error))
+					state.events = written.state
+					_frames.pop_back()
+					if not _frames.is_empty():
+						return _failure("trigger frame lost its root position")
+					awaiting_player = true; _running = false
+					return {"completed": true, "state": state.duplicate(true),
+						"trace": step.get("trace", []), "enters": enters_seen.duplicate(),
+						"nested": nested_traces.duplicate(), "awaiting_player": true,
+						"awaiting_confirm": false, "trigger_event": slot}
 				frame.phase = "reload"
 				frame.step = frame.reload.resume(frame.active_enter.id,
 					{"state": step.state, "return_entry": step.get("return_entry", 0),
