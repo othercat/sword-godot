@@ -3,6 +3,7 @@ extends Control
 const Package = preload("res://src/native_package.gd")
 const Session = preload("res://src/native_session.gd")
 const Admission = preload("res://src/native_pal98_original_admission.gd")
+const Pal98Scene = preload("res://src/native_pal98_app_scene.gd")
 const Save = preload("res://src/native_save.gd")
 const World = preload("res://src/native_world.gd")
 const WalkInput = preload("res://src/native_walk_input.gd")
@@ -27,6 +28,7 @@ var classic_root: bool = false
 var render_surface: TextureRect
 var _classic_context: String = ""
 var session = Session.new()
+var pal98
 var saves = Save.new()
 var world_view
 var map_ui = preload("res://src/native_map_ui_view.gd").new()
@@ -499,11 +501,16 @@ func open_package(path: String) -> bool:
 		message.text = "无法打开 MOD：" + detail
 		if candidate.error.is_empty() and session.error.begins_with("original_source_only:"):
 			# The formal session refused the original source; show the real
-			# capability report instead of starting any stand-in gameplay.
+			# capability report and start the production pal98 display path
+			# instead of any stand-in gameplay.
 			var report: Dictionary = Admission.report_for(candidate)
 			admission_text.text = Admission.summary(report) if not report.has("error") else str(report.error)
 			admission_picker.popup_centered()
-			message.text = "原版来源包已读取；正式试玩未接入，详见能力检查。"
+			if pal98 == null: pal98 = Pal98Scene.new()
+			if pal98.start(candidate, get_window(), stage):
+				message.text = "原版开场显示已接入（开场初值未证实）；停靠在「" + pal98.pending_kind() + "」，等待生产对白页面。"
+			else:
+				message.text = "原版开场显示启动失败：" + pal98.error
 		else:
 			# A real load or bind failure: show the actual error and offer
 			# reselect or dismiss; the live session stays untouched.
@@ -512,6 +519,7 @@ func open_package(path: String) -> bool:
 		if not _preview_stop_file.is_empty(): printerr("[Native preview] " + message.text)
 		return false
 	_clear_input()
+	_stop_pal98()
 	saves.envelope_extensions = {}
 	saves.source_origin = "normal"
 	saves.migrations = []
@@ -762,7 +770,27 @@ func _unhandled_key_input(event: InputEvent) -> void:
 	# _input in the real viewport; the held-key guard prevents a duplicate call.
 	input_router.handle(self,event)
 
+func _stop_pal98() -> void:
+	if pal98 != null: pal98.stop()
+
+func _pal98_levels() -> PackedInt32Array:
+	# Held levels only: edge-accurate physical mapping is a named later
+	# capability; the parked opening consumes no movement anyway.
+	var levels := PackedInt32Array(); levels.resize(9)
+	if session.modal or not session.focused: return levels
+	var direction: Vector2i = walk_input.sample("pal.walk.v1")
+	if direction == Vector2i.UP: levels[0] = 3; levels[4] = 3
+	elif direction == Vector2i.DOWN: levels[1] = 3; levels[5] = 3
+	elif direction == Vector2i.LEFT: levels[2] = 3; levels[6] = 3
+	elif direction == Vector2i.RIGHT: levels[3] = 3; levels[7] = 3
+	return levels
+
 func _physics_process(_delta: float) -> void:
+	if pal98 != null and pal98.active():
+		if not session.modal and session.focused:
+			var shown: Dictionary = pal98.tick(_delta, _pal98_levels())
+			if shown.has("error"): message.text = "原版显示：" + str(shown.error)
+		return
 	if session.modal: return
 	var was_performance: bool = session.performance_open()
 	# A battle result may have already committed a map-performance continuation.
