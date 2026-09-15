@@ -489,6 +489,10 @@ func _drive() -> Dictionary:
 			if answer.has("error"): return _failure(str(answer.error))
 			_record_page({"kind": "restore_background"})
 			frame.step = frame.enter.resume(request.id, answer)
+		elif request.kind == "render_scene":
+			var scene_answer: Dictionary = _route_display(request)
+			if scene_answer.has("error"): return _failure(str(scene_answer.error))
+			frame.step = frame.enter.resume(request.id, scene_answer)
 		else:
 			var answer: Dictionary = _named(request.kind, request)
 			if answer.has("error"): return _failure(str(answer.error))
@@ -630,6 +634,20 @@ func _route_display(request: Dictionary) -> Dictionary:
 			var answer: Dictionary = {"completed": true, "render": rendered.receipt}
 			if request.get("state") is Dictionary: answer.state = rendered.state
 			return answer
+		"play_midi", "stop_midi", "play_sound_effect", "stop_sound":
+			# The preview plays no audio. A named skip receipt keeps the
+			# chain honest (no track is claimed to have played) while the
+			# opening script continues past its BGM cues.
+			return {"completed": true, "named_unsupported": "preview audio", "kind": kind}
+		"render_scene":
+			# The trigger redraw phase re-renders the resting scene from the
+			# live coordinator state; the mode word stays trigger-owned.
+			var redrawn: Dictionary = renderer.render(state)
+			if redrawn.has("error"): return redrawn
+			_new_scene_page()
+			var redraw_answer: Dictionary = {"completed": true, "render": redrawn.receipt}
+			redraw_answer.state = redrawn.state if redrawn.get("state") is Dictionary else state.duplicate(true)
+			return redraw_answer
 	if _doubles.has(kind):
 		return _doubles[kind].answer(request)
 	return {"error": "no execution owner bound for " + kind}

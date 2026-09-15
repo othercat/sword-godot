@@ -25,6 +25,13 @@ class EventPump:
 	func answer(request: Dictionary) -> Dictionary:
 		return {"error": "experimental preview has no event executor for " + str(request.get("kind", "unknown"))}
 
+## The preview plays no audio; the stub receipt records the skip instead of
+## pretending a track played. Same pattern as the admission probe.
+class AudioSkip:
+	func answer(request: Dictionary) -> Dictionary:
+		return {"completed": true, "named_unsupported": "preview audio",
+			"kind": request.get("kind", "")}
+
 var error := ""
 var game
 var display
@@ -87,6 +94,13 @@ func start(package, host_window: Window, content_parent: Node, experimental_inpu
 	if not display.bind_dialogue_surface(dialogue_surface, FontOwner.create(), encoding):
 		error = display.error; stop(); return false
 	var begun: Dictionary = game.begin()
+	if begun.has("error") and str(begun.error).contains("play_midi"):
+		# The opening BGM is a named unsupported capability in this preview
+		# (no audio executor); the admission-probe stub pattern keeps the
+		# chain running while the receipt records that no track played.
+		game.bind_named_double("play_midi", AudioSkip.new())
+		game.bind_named_double("play_sound_effect", AudioSkip.new())
+		begun = game.begin()
 	if begun.has("error"):
 		error = "opening chain: " + str(begun.error); stop(); return false
 	var presented: Dictionary = display.present()

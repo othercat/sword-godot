@@ -266,8 +266,12 @@ func _ready() -> void:
 	session.changed.connect(_refresh)
 	battle_view = BattleView.new(); battle_view.display_font = font; battle_view.visible = false; viewport.add_child(battle_view)
 	render_surface.battle_view = battle_view
-	get_window().focus_entered.connect(func(): session.set_focus(true))
-	get_window().focus_exited.connect(func(): _clear_input(); input_router.clear(); session.set_focus(false))
+	get_window().focus_entered.connect(func(): if pal98 == null or not pal98.active(): session.set_focus(true))
+	get_window().focus_exited.connect(func():
+		_clear_input()
+		input_router.clear()
+		if pal98 == null or not pal98.active():
+			session.set_focus(false))
 	session.battle_committed.connect(battle_view.present_committed)
 	battle_view.playback_finished.connect(_refresh)
 	battle_view.display_changed.connect(_refresh_classic_hud)
