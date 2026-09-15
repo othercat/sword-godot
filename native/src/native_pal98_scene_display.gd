@@ -129,6 +129,15 @@ func present_dialogue_page() -> Dictionary:
 		if ready.has("error"): return ready
 		if not game.has_pending_presentation(): break
 		var pending: Dictionary = game.pending_presentation()
+		if pending.effect.kind == "restore_background" and surface.captured_sha256().is_empty():
+			# Cold start: the opening state declares a captured page (the
+			# script capture gate) that no earlier beat has taken. The page
+			# just prepared from the current scene render is that capture;
+			# take it explicitly before the restore replay so the restored
+			# pixels stay tied to a real captured generation.
+			var seeded: Dictionary = await surface.apply_request({"kind": "capture_background"}, encoding,
+				{"request_id": pending.id, "generation": pending.generation, "capture_seed": "opening_page"})
+			if seeded.has("error"): return seeded
 		var applied: Dictionary = await surface.apply_request(pending.effect, encoding,
 			{"request_id": pending.id, "generation": pending.generation})
 		if binding != _binding_generation or game.presentation_generation() != generation:
