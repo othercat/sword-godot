@@ -33,6 +33,8 @@ var _experimental_package
 var _experimental_window: Window
 var _experimental_generation := 0
 var _experimental_ticking := false
+var _pal98_edges: Dictionary = {}
+var _pal98_edges_stale := false
 var _experimental_last_outcome := ""
 var saves = Save.new()
 var world_view
@@ -826,16 +828,43 @@ func _experiment_outcome(value: String) -> void:
 	if not _preview_stop_file.is_empty(): print("[Native experiment] " + value)
 
 func _pal98_levels() -> PackedInt32Array:
-	# Held levels only: edge-accurate physical mapping is a named later
-	# capability; the parked opening consumes no movement anyway.
+	# Edge-accurate physical levels: 2 is a new press this tick, 3 a hold,
+	# 1 a release and 0 idle. Confirm rides slot 8 and the coordinator only
+	# accepts its level-2 edge, so a key held across a focus loss must never
+	# produce one; after any unfocused tick the stale flag suppresses edges
+	# until every action has been observed released.
 	var levels := PackedInt32Array(); levels.resize(9)
-	if session.modal or not session.focused: return levels
-	var direction: Vector2i = walk_input.sample("pal.walk.v1")
-	if direction == Vector2i.UP: levels[0] = 3; levels[4] = 3
-	elif direction == Vector2i.DOWN: levels[1] = 3; levels[5] = 3
-	elif direction == Vector2i.LEFT: levels[2] = 3; levels[6] = 3
-	elif direction == Vector2i.RIGHT: levels[3] = 3; levels[7] = 3
+	var now: Dictionary = {}
+	for identity in key_bindings.bindings:
+		var action_index: int = key_bindings.bindings[identity]
+		if action_index < 1 or action_index >= key_bindings.ACTIONS.size(): continue
+		if Input.is_physical_key_pressed(key_bindings.SCANS[identity]):
+			now[key_bindings.ACTIONS[action_index]] = true
+	if session.modal or not session.focused:
+		_pal98_edges.clear(); _pal98_edges_stale = true
+		_pal98_advance_edges(now)
+		return levels
+	for pair in [["up",0,4],["down",1,5],["left",2,6],["right",3,7]]:
+		var level: int = _pal98_action_level(pair[0], now)
+		levels[pair[1]] = level; levels[pair[2]] = level
+	levels[8] = _pal98_action_level("confirm", now)
+	_pal98_edges_stale = false
 	return levels
+
+func _pal98_action_level(action: String, now: Dictionary) -> int:
+	var down: bool = now.get(action, false)
+	var was_down: bool = _pal98_edges.get(action, false)
+	if _pal98_edges_stale and down and not was_down:
+		_pal98_edges[action] = true
+		return 3
+	_pal98_edges[action] = down
+	if down and not was_down: return 2
+	if down and was_down: return 3
+	if was_down: return 1
+	return 0
+
+func _pal98_advance_edges(now: Dictionary) -> void:
+	for action in now: _pal98_edges[action] = true
 
 func _physics_process(_delta: float) -> void:
 	if pal98 != null and pal98.active():
