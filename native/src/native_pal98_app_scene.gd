@@ -8,6 +8,8 @@ const Display = preload("res://src/native_pal98_scene_display.gd")
 const Host = preload("res://src/native_pal98_scene_window.gd")
 const OpeningInputs = preload("res://src/native_pal98_opening_inputs.gd")
 const Schema = preload("res://src/native_schema.gd")
+const Surface = preload("res://src/native_pal98_dialogue_surface.gd")
+const FontOwner = preload("res://src/native_ui_font.gd")
 
 ## Minimal production logic clock: consumed timer units counted separately
 ## from display frames. The full recovered cadence stays a named dependency.
@@ -27,6 +29,7 @@ var error := ""
 var game
 var display
 var host
+var dialogue_surface
 var clock := LogicClock.new()
 var _runtime := EventPump.new()
 var _timer_accumulator := 0.0
@@ -76,6 +79,13 @@ func start(package, host_window: Window, content_parent: Node, experimental_inpu
 	host = Host.new()
 	if not host.bind_host(host_window, content_parent, game, display):
 		error = host.error; stop(); return false
+	# The presentation owner must exist before the opening chain parks: the
+	# restore_background request is answered by this surface, not the stage.
+	dialogue_surface = Surface.new()
+	content_parent.add_child(dialogue_surface)
+	var encoding: String = package.pal98_sources.metadata().get("text_encoding", "gbk")
+	if not display.bind_dialogue_surface(dialogue_surface, FontOwner.create(), encoding):
+		error = display.error; stop(); return false
 	var begun: Dictionary = game.begin()
 	if begun.has("error"):
 		error = "opening chain: " + str(begun.error); stop(); return false
@@ -89,6 +99,11 @@ func stop() -> void:
 	_generation += 1; _ticking = false; clock = LogicClock.new()
 	if host != null: host.unbind()
 	if game != null: game.cancel()
+	if dialogue_surface != null:
+		if is_instance_valid(dialogue_surface) and dialogue_surface.get_parent() != null:
+			dialogue_surface.get_parent().remove_child(dialogue_surface)
+			dialogue_surface.queue_free()
+	dialogue_surface = null
 	game = null; display = null; host = null
 	_present_generation = -1; _timer_accumulator = 0.0
 
