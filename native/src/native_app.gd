@@ -33,6 +33,7 @@ var _experimental_package
 var _experimental_window: Window
 var _experimental_generation := 0
 var _experimental_ticking := false
+var _experimental_last_outcome := ""
 var saves = Save.new()
 var world_view
 var map_ui = preload("res://src/native_map_ui_view.gd").new()
@@ -514,12 +515,14 @@ func open_package(path: String) -> bool:
 			var report: Dictionary = Admission.report_for(candidate)
 			admission_text.text = Admission.summary(report) if not report.has("error") else str(report.error)
 			admission_picker.popup_centered()
+			_experiment_outcome("waiting-admission: " + candidate.manifest.package_id)
 		else:
 			# A real load or bind failure: show the actual error and offer
 			# reselect or dismiss; the live session stays untouched.
 			_show_load_error("包路径：" + path + "
 实际错误：" + detail)
-		if not _preview_stop_file.is_empty(): printerr("[Native preview] " + message.text)
+		if not _preview_stop_file.is_empty() and not (candidate.error.is_empty() and session.error.begins_with("original_source_only:")):
+			printerr("[Native preview] " + message.text)
 		return false
 	_clear_input()
 	_stop_pal98()
@@ -782,6 +785,7 @@ func _stop_pal98() -> void:
 	_experimental_generation += 1; _experimental_ticking = false
 	if pal98 != null: pal98.stop()
 	if is_instance_valid(_experimental_window):
+		_experiment_outcome("stopped")
 		_experimental_window.hide(); _experimental_window.queue_free()
 	_experimental_window = null
 	_clear_input()
@@ -809,10 +813,17 @@ func start_original_experiment() -> bool:
 	pal98 = Pal98Scene.new()
 	if not pal98.start(_experimental_package, _experimental_window, _experimental_window, true):
 		var issue: String = pal98.error; _stop_pal98()
+		_experiment_outcome("error: " + issue)
 		message.text = "实验预览未启动：" + issue; return false
 	admission_picker.hide()
 	message.text = "实验预览：初值未证实；当前停靠「" + pal98.pending_kind() + "」。关闭实验窗口可返回。"
+	_experiment_outcome("parked: " + pal98.pending_kind() if not pal98.pending_kind().is_empty() else "running: 暂定初值")
 	return true
+
+func _experiment_outcome(value: String) -> void:
+	if value == _experimental_last_outcome: return
+	_experimental_last_outcome = value
+	if not _preview_stop_file.is_empty(): print("[Native experiment] " + value)
 
 func _pal98_levels() -> PackedInt32Array:
 	# Held levels only: edge-accurate physical mapping is a named later
@@ -834,7 +845,11 @@ func _physics_process(_delta: float) -> void:
 			var shown: Dictionary = await pal98.tick(_delta, _pal98_levels())
 			if generation != _experimental_generation: return
 			_experimental_ticking = false
-			if shown.has("error"): message.text = "实验预览：" + str(shown.error)
+			if shown.has("error"):
+				message.text = "实验预览：" + str(shown.error)
+				_experiment_outcome("error: " + str(shown.error))
+			else:
+				_experiment_outcome("parked: " + pal98.pending_kind() if not pal98.pending_kind().is_empty() else "running: 暂定初值")
 		return
 	if session.modal: return
 	var was_performance: bool = session.performance_open()
