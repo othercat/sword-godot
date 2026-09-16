@@ -190,8 +190,168 @@ func bind_transition_clock(clock) -> bool:
 		error = "the transition clock must consume logical units"; return false
 	_transition_clock = clock; error = ""; return true
 
-## Preparation is useful, but cannot complete T121 while full-scene target,
-## adpic lane copies, pops/visible presentation and screen-shake owners are absent.
+## Recovered map transition structure (PAL98_CLEAR_EFFECTIVE_CROSS_FADE_STAGE_
+## OPINION.md): G01B0 holds two pages, the fresh target render lands in the
+## second page and copymen publishes it into the first; CrossFadePreparedScene
+## pushscr's the live screen into G00C0, then For phase = 0 To lastPhase
+## (inclusive) runs lane = phase % 6 with the only adpic0 gate below phase 6,
+## presents and waits wtime(delay) every phase, and popscr's the exact target
+## page after the loop. pixelsPerLane is 0x29AC on the map path. The PAL.dll
+## adpic/adpic0 per-pixel blend and the six G050C lane values stay unrecovered;
+## the stride/nibble steps below cross-reference the palxex fade.cpp
+## reconstruction and are recorded as a named approximation in every receipt.
+const DEFAULT_PHASES := 88
+const MAP_PIXELS_PER_LANE := 0x29AC
+const LANE_GAPS := [0, 3, 1, 5, 2, 4]
+
+## One bound transition: advances one phase per call so the production host can
+## present every phase before the endpoint acknowledges the command. The
+## renderer's displayed page stays untouched until finish(); a clock failure or
+## cancel() publishes nothing and leaves the renderer reusable.
+class ClearCrossFade:
+	var host: RefCounted
+	var clock: Object
+	var last_phase: int = 0
+	var delay: int = 0
+	var phase: int = -1
+	var failed: bool = false
+	var finished: bool = false
+	var cancelled: bool = false
+	var work: PackedByteArray
+	var coverage: PackedByteArray
+	var target_indices: PackedByteArray
+	var target_coverage: PackedByteArray
+	var target_rgba: PackedByteArray
+	var candidate_state: Dictionary
+	var prepared: Dictionary
+	var previous_capture: Dictionary
+	var phase_receipts: Array = []
+
+	func total_phases() -> int:
+		return last_phase + 1
+
+	func complete() -> bool:
+		return phase >= last_phase
+
+	## One recovered loop round: the lane's stride pixels step toward the
+	## target page (assimilate below phase 6, one-index steps after), then the
+	## bound clock consumes wtime(delay). Nothing here can complete the host
+	## command; presentation stays the display owner's act.
+	func advance() -> Dictionary:
+		if cancelled: return {"error": "the transition owner was cancelled"}
+		if failed: return {"error": "the transition owner already failed"}
+		if finished: return {"error": "the transition already reached its endpoint"}
+		if complete(): return {"error": "the transition phases are exhausted"}
+		phase += 1
+		var lane: int = phase % 6
+		var gap: int = host.LANE_GAPS[lane]
+		var target: PackedByteArray = target_indices
+		var changed: int = 0
+		var touched: int = 0
+		var at: int = gap
+		while at < host.WIDTH * host.HEIGHT and touched < host.MAP_PIXELS_PER_LANE:
+			var before: int = work[at]
+			var goal: int = target[at]
+			var after: int = before
+			if phase < 6:
+				after = (before & 0x0F) | (goal & 0xF0)
+			else:
+				after = before + 1 if goal > before else (before - 1 if goal < before else before)
+			if after != before: work[at] = after; changed += 1
+			touched += 1; at += 6
+		var consumed: Dictionary = clock.consume(delay)
+		if consumed.has("error"):
+			failed = true
+			return {"error": "T121 wtime: " + str(consumed.error)}
+		var receipt: Dictionary = {"phase": phase, "lane": lane, "lane_gap": gap,
+			"step": "adpic0" if phase < 6 else "adpic", "wtime": delay,
+			"changed_pixels": changed, "page_sha256": host.Schema.digest(work)}
+		phase_receipts.append(receipt)
+		return {"completed": false, "receipt": receipt}
+
+	## The composed indexed page as RGBA through the live palette, for the
+	## display owner's per-phase window upload.
+	func frame_rgba() -> Dictionary:
+		if failed or cancelled: return {"error": "the transition owner is not presentable"}
+		var mapped: Dictionary = host.Indexed.rgba({"width": host.WIDTH, "height": host.HEIGHT,
+			"indices": work, "coverage": coverage}, host._live_palette, false)
+		if mapped.has("error"): return mapped
+		return {"completed": true, "rgba": mapped.value, "width": host.WIDTH,
+			"height": host.HEIGHT, "sha256": Schema.digest(work)}
+
+	## popscr(G01B0): publish the exact target page and hand back the T244
+	## candidate state. The endpoint digest must equal the prepared target.
+	func finish() -> Dictionary:
+		if cancelled: return {"error": "the transition owner was cancelled"}
+		if failed: return {"error": "the transition owner already failed"}
+		if finished: return {"error": "the transition already reached its endpoint"}
+		if not complete(): return {"error": "the transition phases are not exhausted"}
+		host._indices = target_indices.duplicate()
+		host._coverage = target_coverage.duplicate()
+		host._rgba = target_rgba.duplicate()
+		finished = true
+		var receipt: Dictionary = {"kind": "clear_effective_cross_fade", "completed": true,
+			"phases": total_phases(), "pixels_per_lane": host.MAP_PIXELS_PER_LANE,
+			"delay": delay, "lane_rotation": "phase % 6", "lane_gaps": host.LANE_GAPS.duplicate(),
+			"base_page_sha256": prepared.receipt.base_page_sha256,
+			"base_rgba_sha256": prepared.receipt.base_rgba_sha256,
+			"target_sha256": prepared.receipt.target_sha256,
+			"endpoint_sha256": host.Schema.digest(host._rgba),
+			"g00c0": {"captured_sha256": host.Schema.digest(previous_capture.get("indices", PackedByteArray())),
+				"restored_on_cancel": true},
+			"phase_receipts": phase_receipts.duplicate(true),
+			"named_gaps": ["per-phase adpic/adpic0 pixel blend stays an unrecovered PAL.dll helper; the stride-6 nibble and one-index steps cross-reference the palxex fade.cpp reconstruction",
+				"the six G050C lane init values are unrecovered; lane gaps 0,3,1,5,2,4 are the palxex reconstruction",
+				"per-phase window upload is the production display owner's act, not the renderer's"],
+			"approximation": "mid-phase presented pixels converge lane by lane instead of the unrecovered exact blend; the endpoint page is exact"}
+		host._renders.append(receipt)
+		return {"completed": true, "state": candidate_state.duplicate(true), "receipt": receipt}
+
+	## Cancel publishes nothing and restores the pre-transition G00C0.
+	func cancel() -> void:
+		if finished or cancelled: return
+		cancelled = true
+		host._capture_page = previous_capture.duplicate(true)
+
+## Binds the clock, prepares the two-page target and captures the live page
+## into G00C0 (pushscr) exactly once per transition. Completion still requires
+## the production presentation owner; the renderer-scoped shortcut stays
+## refused in execute_clear_cross_fade.
+func begin_clear_cross_fade(state: Dictionary, first: int, second: int) -> Dictionary:
+	if _transition_clock == null: return _failure("T121 execution requires a bound logical clock")
+	if _records == null or _indices.is_empty(): return _failure("cross-fade requires a bound current indexed page")
+	if not state.get("globals") is Dictionary or typeof(state.globals.get("battle_mode")) != TYPE_INT:
+		return _failure("cross-fade requires explicit battle mode")
+	if state.globals.battle_mode != 0: return _failure("T121 battle target preparation owner not bound")
+	if first < -32768 or first > 32767 or second < -32768 or second > 32767:
+		return _failure("T121 arguments outside I2")
+	var effective: int = DEFAULT_PHASES if first == 0 else first
+	if effective < 0 or second < 0: return _failure("T121 phases or delay outside the original range")
+	var prepared: Dictionary = prepare_clear_cross_fade(state, first, second)
+	if prepared.has("error"): return prepared
+	var owner := ClearCrossFade.new()
+	owner.host = self
+	owner.clock = _transition_clock
+	owner.last_phase = effective
+	owner.delay = second
+	owner.work = _indices.duplicate()
+	owner.coverage = PackedByteArray(); owner.coverage.resize(WIDTH * HEIGHT); owner.coverage.fill(1)
+	owner.target_indices = prepared.target_page.indices
+	owner.target_coverage = prepared.target_page.coverage
+	owner.target_rgba = prepared.target_rgba
+	owner.candidate_state = prepared.candidate_state
+	owner.prepared = prepared
+	owner.previous_capture = _capture_page.duplicate(true)
+	# pushscr(G00C0): the fade shares the dialog capture arena in the original;
+	# a cancel restores exactly what was here before.
+	_capture_page = {"indices": _indices.duplicate(), "coverage": _coverage.duplicate(),
+		"sha256": Schema.digest(_indices)}
+	return {"completed": false, "owner": owner, "phases": owner.total_phases(),
+		"receipt": prepared.receipt}
+
+## Preparation is useful, but the renderer alone still cannot present the
+## phases; the full command completes only through the production host's
+## presentation owner (scene display + window), never through this shortcut.
 func execute_clear_cross_fade(state: Dictionary, first: int, second: int) -> Dictionary:
 	if _transition_clock == null: return _failure("T121 execution requires a bound logical clock")
 	var prepared: Dictionary = prepare_clear_cross_fade(state, first, second)
