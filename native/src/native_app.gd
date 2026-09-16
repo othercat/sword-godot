@@ -33,8 +33,10 @@ var _experimental_package
 var _experimental_window: Window
 var _experimental_generation := 0
 var _experimental_ticking := false
-var _pal98_edges: Dictionary = {}
-var _pal98_edges_stale := false
+var _pal98_keys = preload("res://src/native_pal98_key_edges.gd").new()
+var _pal98_debug := false
+var _pal98_debug_state := ""
+var _experimental_error := ""
 var _experimental_last_outcome := ""
 var saves = Save.new()
 var world_view
@@ -277,6 +279,7 @@ func _ready() -> void:
 	battle_view.display_changed.connect(_refresh_classic_hud)
 	save_button.disabled = true
 	var args = OS.get_cmdline_user_args()
+	_pal98_debug = "--pal98-debug" in args
 	for i in range(args.size() - 1):
 		if args[i] == "--save-root": saves = Save.new(args[i + 1])
 		if args[i] == "--preview-stop-file": _preview_stop_file = args[i + 1]
@@ -743,6 +746,7 @@ func _show_status() -> void:
 	status_text.text = "\n\n".join(lines); status_picker.popup_centered()
 
 func _clear_input() -> void:
+	_pal98_keys.clear()
 	walk_input.clear(); input_router.release_movement()
 
 func _pause() -> void:
@@ -789,6 +793,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 
 func _stop_pal98() -> void:
 	_experimental_generation += 1; _experimental_ticking = false
+	_experimental_error = ""; _pal98_debug_state = ""
 	if pal98 != null: pal98.stop()
 	if is_instance_valid(_experimental_window):
 		_experiment_outcome("stopped")
@@ -811,8 +816,8 @@ func start_original_experiment() -> bool:
 	_experimental_window.min_size = Vector2i(320, 200)
 	add_child(_experimental_window)
 	_experimental_window.close_requested.connect(_stop_pal98)
-	_experimental_window.window_input.connect(func(event):
-		if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE: _stop_pal98())
+	_pal98_keys = preload("res://src/native_pal98_key_edges.gd").new()
+	_experimental_window.window_input.connect(_pal98_window_input.bind(_experimental_generation))
 	_experimental_window.focus_entered.connect(func(): session.set_focus(true))
 	_experimental_window.focus_exited.connect(func(): _clear_input(); session.set_focus(false))
 	_experimental_window.popup_centered()
@@ -831,54 +836,43 @@ func _experiment_outcome(value: String) -> void:
 	_experimental_last_outcome = value
 	if not _preview_stop_file.is_empty(): print("[Native experiment] " + value)
 
+func _pal98_window_input(event: InputEvent, generation: int) -> void:
+	if generation != _experimental_generation or not is_instance_valid(_experimental_window): return
+	if event is not InputEventKey: return
+	if event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
+		_stop_pal98(); return
+	if session.modal or not session.focused: return
+	var identity: int = key_bindings.scan(event)
+	var action: String = key_bindings.action(event)
+	_pal98_keys.accept(identity, action, event.pressed, event.echo, Time.get_ticks_usec())
+	if _pal98_debug: print("[pal98-debug] event identity=",identity," action=",action," down=",event.pressed," echo=",event.echo)
+
 func _pal98_levels() -> PackedInt32Array:
-	# Edge-accurate physical levels: 2 is a new press this tick, 3 a hold,
-	# 1 a release and 0 idle. Confirm rides slot 8 and the coordinator only
-	# accepts its level-2 edge, so a key held across a focus loss must never
-	# produce one; after any unfocused tick the stale flag suppresses edges
-	# until every action has been observed released.
 	var levels := PackedInt32Array(); levels.resize(9)
-	var now: Dictionary = {}
-	for identity in key_bindings.bindings:
-		var action_index: int = key_bindings.bindings[identity]
-		if action_index < 1 or action_index >= key_bindings.ACTIONS.size(): continue
-		if Input.is_physical_key_pressed(key_bindings.SCANS[identity]):
-			now[key_bindings.ACTIONS[action_index]] = true
 	if session.modal or not session.focused:
-		_pal98_edges.clear(); _pal98_edges_stale = true
-		_pal98_advance_edges(now)
-		return levels
+		_pal98_keys.clear(); return levels
 	for pair in [["up",0,4],["down",1,5],["left",2,6],["right",3,7]]:
-		var level: int = _pal98_action_level(pair[0], now)
+		var level: int = _pal98_keys.level(pair[0])
 		levels[pair[1]] = level; levels[pair[2]] = level
-	levels[8] = _pal98_action_level("confirm", now)
-	_pal98_edges_stale = false
+	levels[8] = _pal98_keys.level("confirm")
+	if _pal98_debug and levels[8] != 0: print("[pal98-debug] confirm=",levels[8])
 	return levels
-
-func _pal98_action_level(action: String, now: Dictionary) -> int:
-	var down: bool = now.get(action, false)
-	var was_down: bool = _pal98_edges.get(action, false)
-	if _pal98_edges_stale and down and not was_down:
-		_pal98_edges[action] = true
-		return 3
-	_pal98_edges[action] = down
-	if down and not was_down: return 2
-	if down and was_down: return 3
-	if was_down: return 1
-	return 0
-
-func _pal98_advance_edges(now: Dictionary) -> void:
-	for action in now: _pal98_edges[action] = true
 
 func _physics_process(_delta: float) -> void:
 	if pal98 != null and pal98.active():
-		if not _experimental_ticking and not session.modal and session.focused:
+		if _experimental_error.is_empty() and not _experimental_ticking and not session.modal and session.focused:
 			var generation := _experimental_generation
 			_experimental_ticking = true
 			var shown: Dictionary = await pal98.tick(_delta, _pal98_levels())
 			if generation != _experimental_generation: return
+			var debug_state: String = str(shown)
+			if _pal98_debug and debug_state != _pal98_debug_state:
+				print("[pal98-debug] tick pending=",pal98.pending_kind()," result=",shown)
+				_pal98_debug_state = debug_state
 			_experimental_ticking = false
 			if shown.has("error"):
+				_experimental_error = str(shown.error)
+				_pal98_keys.clear()
 				message.text = "实验预览：" + str(shown.error)
 				_experiment_outcome("error: " + str(shown.error))
 			else:
