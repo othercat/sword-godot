@@ -272,6 +272,9 @@ func _forward(request: Dictionary) -> Dictionary:
 	if _fallback != null and _fallback.has_method("answer"):
 		var forwarded: Dictionary = _fallback.answer(request)
 		if forwarded.has("error"): return forwarded
+		# The parked cross-fade marker travels untouched: only the display
+		# owner's finish_transition may complete this command later.
+		if forwarded.get("parked_transition", false): return forwarded
 		if forwarded.get("completed") != true: return _failure("dependent owner did not complete " + request.kind)
 		if not forwarded.has("state"): forwarded.state = request.state.duplicate(true)
 		if not forwarded.state is Dictionary or not forwarded.state.get("globals") is Dictionary:

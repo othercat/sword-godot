@@ -42,6 +42,7 @@ var terminals: Array = []
 var awaiting_player := false
 var awaiting_confirm := false
 var _pending_dialogue: Dictionary = {}
+var _pending_transition: Dictionary = {}
 var _active_enter_request: Dictionary = {}
 var _page_requests: Array = []
 var _sources
@@ -89,6 +90,9 @@ func cancel() -> void:
 	if enter != null: enter.cancel()
 	_frames = []; _coordination_steps = 0; _generation += 1; page_revision += 1
 	_pending_dialogue = {}; _active_enter_request = {}; _page_requests = []; _captured_page_requests = []
+	if not _pending_transition.is_empty() and _pending_transition.get("owner") != null:
+		_pending_transition.owner.cancel()
+	_pending_transition = {}
 	nested_traces = []
 	awaiting_confirm = false; awaiting_player = false; _running = false
 	terminals = []; enters_seen = []
@@ -481,6 +485,11 @@ func _drive() -> Dictionary:
 			if adopted.has("error"): return adopted
 			var answer: Dictionary = adapter.answer(request)
 			if answer.has("error"): return _failure("enter host: " + str(answer.error))
+			if answer.get("parked_transition", false):
+				# T121 parks here: the display owner presents every phase
+				# before finish_transition releases this waiter.
+				return {"awaiting_transition": true, "id": request.id,
+					"pending_kind": "clear_effective_cross_fade"}
 			frame.step = frame.enter.resume(request.id, answer)
 		elif request.kind == "restore_background":
 			var page_request: Dictionary = request.duplicate(true)
@@ -540,6 +549,51 @@ func pending_presentation() -> Dictionary:
 
 func presentation_generation() -> int: return _generation
 
+## T121 production owner: the renderer's bounded transition parks here and the
+## display owner presents every phase. Advancement and completion both verify
+## the caller's transition id, so a stale driver can never finish a newer
+## transition or resurrect an old one.
+func has_pending_transition() -> bool:
+	return not _pending_transition.is_empty()
+
+func pending_transition_id() -> String:
+	return String(_pending_transition.get("id", ""))
+
+func advance_transition(expected_id: String) -> Dictionary:
+	if _pending_transition.is_empty(): return {"error": "no pending cross-fade transition"}
+	if expected_id != String(_pending_transition.get("id", "")):
+		return {"error": "stale cross-fade phase request"}
+	var advanced: Dictionary = _pending_transition.owner.advance()
+	if advanced.has("error"): return advanced
+	if _pending_transition.owner.complete():
+		return {"phase": advanced.receipt, "exhausted": true}
+	return {"phase": advanced.receipt, "exhausted": false}
+
+func transition_phase_frame(expected_id: String) -> Dictionary:
+	if _pending_transition.is_empty(): return {"error": "no pending cross-fade transition"}
+	if expected_id != String(_pending_transition.get("id", "")):
+		return {"error": "stale cross-fade frame request"}
+	return _pending_transition.owner.frame_rgba()
+
+## The endpoint: publish the exact target page, adopt the T244 candidate state
+## and release the parked script waiter. Everything runs only after the display
+## owner has presented the phases it promised to.
+func finish_transition(expected_id: String) -> Dictionary:
+	if _pending_transition.is_empty(): return {"error": "no pending cross-fade transition"}
+	if expected_id != String(_pending_transition.get("id", "")):
+		return {"error": "stale cross-fade completion"}
+	var finished: Dictionary = _pending_transition.owner.finish()
+	if finished.has("error"): return finished
+	var pending: Dictionary = _pending_transition
+	_pending_transition = {}
+	var candidate: Dictionary = finished.state
+	var adopted: Dictionary = _adopt(candidate, cache, map_cache)
+	if adopted.has("error"): return adopted
+	var frame: Dictionary = _frames.back()
+	frame.step = frame.enter.resume(pending.inner_id,
+		{"completed": true, "state": state.duplicate(true)})
+	return _drive()
+
 ## Explicit test-only choice. Production defaults to awaiting real presentation.
 func bind_recording_dialogue_for_probe() -> bool:
 	if _running: return false
@@ -550,6 +604,11 @@ func require_presented_dialogue() -> void:
 	_presentation_required = true
 
 func tick(key_levels, timer_tick: bool = false) -> Dictionary:
+	if has_pending_transition():
+		# The parked cross-fade advances through its named owner only.
+		return {"completed": false, "awaiting_transition": true,
+			"id": pending_transition_id(), "pending_kind": "clear_effective_cross_fade",
+			"input_move": false}
 	var polled: Dictionary = input.poll(key_levels)
 	if polled.has("error"): return _failure(str(polled.error))
 	if not _pending_dialogue.is_empty():
@@ -648,6 +707,21 @@ func _route_display(request: Dictionary) -> Dictionary:
 			var redraw_answer: Dictionary = {"completed": true, "render": redrawn.receipt}
 			redraw_answer.state = redrawn.state if redrawn.get("state") is Dictionary else state.duplicate(true)
 			return redraw_answer
+		"clear_effective_cross_fade":
+			# T121: an explicitly bound double keeps its probe scope; the
+			# production owner otherwise parks the script waiter and the
+			# scene display presents every phase through finish_transition.
+			if _doubles.has("clear_effective_cross_fade"):
+				return _doubles["clear_effective_cross_fade"].answer(request)
+			if has_pending_transition():
+				return _failure("a cross-fade transition is already pending")
+			if typeof(request.get("first")) != TYPE_INT or typeof(request.get("second")) != TYPE_INT:
+				return _failure("cross-fade requires explicit first and second words")
+			var begun: Dictionary = renderer.begin_clear_cross_fade(state, request.first, request.second)
+			if begun.has("error"): return begun
+			_pending_transition = {"id": String(request.id), "inner_id": request.id,
+				"owner": begun.owner}
+			return {"parked_transition": true, "id": request.id, "receipt": begun.receipt}
 	if _doubles.has(kind):
 		return _doubles[kind].answer(request)
 	return {"error": "no execution owner bound for " + kind}

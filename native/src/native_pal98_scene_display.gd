@@ -162,8 +162,43 @@ func republish() -> Dictionary:
 	if page_view != null: page_view.texture = target.get_texture()
 	return {"completed": true, "frame_count": frame_count, "receipt": last_receipt}
 
+## One transition phase per display frame. Mid-phase frames upload as real
+## window pixels; the endpoint publishes and releases the parked waiter only
+## here, after the phases actually appeared on screen.
+func present_transition_phase() -> Dictionary:
+	var id: String = game.pending_transition_id()
+	var advanced: Dictionary = game.advance_transition(id)
+	if advanced.has("error"): return advanced
+	if not advanced.get("exhausted", false):
+		var frame: Dictionary = game.transition_phase_frame(id)
+		if frame.has("error"): return frame
+		if page_view != null:
+			var image := Image.create_from_data(frame.width, frame.height, false, Image.FORMAT_RGBA8, frame.rgba)
+			page_view.texture = ImageTexture.create_from_image(image)
+		frame_count += 1
+		return {"completed": false, "transition": advanced.phase,
+			"pending_kind": "clear_effective_cross_fade", "input_move": false}
+	var finished: Dictionary = game.finish_transition(id)
+	if finished.has("error"): return finished
+	if finished.get("awaiting_effect", false):
+		var page: Dictionary = await present_dialogue_page()
+		if page.has("error"): return page
+		return {"completed": game.awaiting_player, "transition": {"completed": true},
+			"awaiting_effect": true, "pending_kind": game.pending_kind(),
+			"tick": finished, "input_move": false,
+			"world": [game.state.globals.world_x, game.state.globals.world_y]}
+	if finished.get("awaiting_transition", false):
+		return finished
+	var presented: Dictionary = present()
+	if presented.has("error"): return presented
+	return {"completed": true, "transition": {"completed": true},
+		"tick": finished, "composition": presented, "input_move": false,
+		"world": [game.state.globals.world_x, game.state.globals.world_y]}
+
 func tick_presented(key_levels, timer_tick: bool = false) -> Dictionary:
 	if game == null: return {"error": "scene display is not bound"}
+	if game.has_pending_transition():
+		return await present_transition_phase()
 	var ticked: Dictionary = game.tick(key_levels, timer_tick)
 	if ticked.has("error"): return ticked
 	if ticked.get("awaiting_effect", false):
